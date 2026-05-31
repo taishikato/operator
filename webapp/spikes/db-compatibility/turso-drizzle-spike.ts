@@ -5,9 +5,13 @@ import { stat } from "node:fs/promises"
 
 import { spikeProjects } from "./schema.ts"
 
+// Constraints kept in sync with `drizzle-kit export` output for schema.ts (the source of
+// truth Atlas applies). Crucially, `id` has no NOT NULL here because Drizzle Kit beta does
+// not emit it for a TEXT PRIMARY KEY; matching that exactly keeps the spike honest about the
+// schema the real workflow produces rather than testing a stronger, fictional constraint.
 const createSpikeProjectsSql = `
 CREATE TABLE IF NOT EXISTS spike_projects (
-  id TEXT PRIMARY KEY NOT NULL,
+  id TEXT PRIMARY KEY,
   key TEXT NOT NULL UNIQUE,
   name TEXT NOT NULL,
   repo_path TEXT NOT NULL UNIQUE
