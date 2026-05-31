@@ -71,7 +71,12 @@ async function fileExists(path: string) {
   try {
     await stat(path)
     return true
-  } catch {
-    return false
+  } catch (error) {
+    // Only a missing file means "does not exist"; surface anything else
+    // (e.g. EACCES) so it cannot masquerade as a negative result.
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return false
+    }
+    throw error
   }
 }
