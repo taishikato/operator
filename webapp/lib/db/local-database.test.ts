@@ -202,11 +202,30 @@ CREATE TABLE explicit_apply_probe (id text PRIMARY KEY);
 test("bootstrapLocalDatabase default path initializes through Drizzle export and Atlas apply", async (t) => {
   if (!isAtlasAvailable()) {
     t.skip("Atlas CLI is not installed")
+    return
   }
 
   const directory = await mkdtemp(join(tmpdir(), "operator-db-bootstrap-"))
   const paths = resolveAppDataPaths({
     appDataRoot: join(directory, "app-data"),
+  })
+
+  const result = await bootstrapLocalDatabase(paths)
+
+  assert.equal(result.status, "initialized")
+  assert.equal(result.schemaApplied, true)
+  assert.equal((await stat(paths.databasePath)).isFile(), true)
+})
+
+test("bootstrapLocalDatabase default path supports app data directories with spaces", async (t) => {
+  if (!isAtlasAvailable()) {
+    t.skip("Atlas CLI is not installed")
+    return
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "operator-db-bootstrap-"))
+  const paths = resolveAppDataPaths({
+    appDataRoot: join(directory, "Application Support", "Operator"),
   })
 
   const result = await bootstrapLocalDatabase(paths)

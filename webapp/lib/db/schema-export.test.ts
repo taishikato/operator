@@ -11,3 +11,27 @@ test("exportOperatorSchemaSql exports the Operator bootstrap metadata table from
   assert.match(sql, /`value` text NOT NULL/i)
   assert.match(sql, /`updated_at` text NOT NULL/i)
 })
+
+test("exportOperatorSchemaSql reports spawn failures without masking them", () => {
+  withEmptyPath(() => {
+    assert.throws(
+      () => exportOperatorSchemaSql(),
+      /drizzle-kit export failed: .*ENOENT/
+    )
+  })
+})
+
+function withEmptyPath(callback: () => void) {
+  const originalPath = process.env.PATH
+  process.env.PATH = ""
+
+  try {
+    callback()
+  } finally {
+    if (originalPath === undefined) {
+      delete process.env.PATH
+    } else {
+      process.env.PATH = originalPath
+    }
+  }
+}
