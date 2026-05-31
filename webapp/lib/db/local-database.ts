@@ -18,6 +18,7 @@ export type ApplyLocalDatabaseSchemaResult = {
 }
 
 export type SchemaApplyOptions = {
+  autoApprove?: boolean
   databasePath: string
   schemaSql: string
 }
@@ -51,7 +52,7 @@ export async function bootstrapLocalDatabase(
     }
   }
 
-  await applySchemaAndMarkInitialized(paths, options)
+  await applySchemaAndMarkInitialized(paths, options, { autoApprove: true })
 
   return {
     databasePath: paths.databasePath,
@@ -65,7 +66,7 @@ export async function applyLocalDatabaseSchema(
   options: BootstrapLocalDatabaseOptions = defaultSchemaOptions
 ): Promise<ApplyLocalDatabaseSchemaResult> {
   await ensureAppData(paths)
-  await applySchemaAndMarkInitialized(paths, options)
+  await applySchemaAndMarkInitialized(paths, options, { autoApprove: false })
 
   return {
     databasePath: paths.databasePath,
@@ -81,10 +82,15 @@ const defaultSchemaOptions = {
 
 async function applySchemaAndMarkInitialized(
   paths: AppDataPaths,
-  options: BootstrapLocalDatabaseOptions
+  options: BootstrapLocalDatabaseOptions,
+  { autoApprove }: { autoApprove: boolean }
 ) {
   const schemaSql = await options.exportSchemaSql()
-  await options.applySchema({ databasePath: paths.databasePath, schemaSql })
+  await options.applySchema({
+    autoApprove,
+    databasePath: paths.databasePath,
+    schemaSql,
+  })
   await markDatabaseInitialized(paths.databasePath)
 }
 

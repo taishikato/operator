@@ -12,6 +12,7 @@ export function isAtlasAvailable() {
 }
 
 export async function applyOperatorSchemaWithAtlas({
+  autoApprove = false,
   databasePath,
   schemaSql,
 }: SchemaApplyOptions) {
@@ -21,21 +22,22 @@ export async function applyOperatorSchemaWithAtlas({
   try {
     await writeFile(schemaSqlPath, schemaSql, "utf8")
 
-    const result = spawnSync(
-      "atlas",
-      [
-        "schema",
-        "apply",
-        "-u",
-        sqliteDatabaseUrl(databasePath),
-        "--to",
-        pathToFileURL(schemaSqlPath).href,
-        "--dev-url",
-        "sqlite://dev?mode=memory",
-        "--auto-approve",
-      ],
-      { encoding: "utf8" }
-    )
+    const args = [
+      "schema",
+      "apply",
+      "-u",
+      sqliteDatabaseUrl(databasePath),
+      "--to",
+      pathToFileURL(schemaSqlPath).href,
+      "--dev-url",
+      "sqlite://dev?mode=memory",
+    ]
+
+    if (autoApprove) {
+      args.push("--auto-approve")
+    }
+
+    const result = spawnSync("atlas", args, { encoding: "utf8" })
 
     if (result.status !== 0) {
       const detail = spawnFailureDetail(result)

@@ -25,12 +25,16 @@ test("bootstrapLocalDatabase applies schema and creates storage on first initial
   const paths = resolveAppDataPaths({
     appDataRoot: join(directory, "app-data"),
   })
-  const applyCalls: Array<{ databasePath: string; schemaSql: string }> = []
+  const applyCalls: Array<{
+    autoApprove?: boolean
+    databasePath: string
+    schemaSql: string
+  }> = []
 
   const result = await bootstrapLocalDatabase(paths, {
     exportSchemaSql: () => schemaSql,
-    applySchema: async ({ databasePath, schemaSql }) => {
-      applyCalls.push({ databasePath, schemaSql })
+    applySchema: async ({ autoApprove, databasePath, schemaSql }) => {
+      applyCalls.push({ autoApprove, databasePath, schemaSql })
       const client = await connect(databasePath)
 
       try {
@@ -44,7 +48,7 @@ test("bootstrapLocalDatabase applies schema and creates storage on first initial
   assert.equal(result.status, "initialized")
   assert.equal(result.schemaApplied, true)
   assert.deepEqual(applyCalls, [
-    { databasePath: paths.databasePath, schemaSql },
+    { autoApprove: true, databasePath: paths.databasePath, schemaSql },
   ])
   assert.equal((await stat(paths.appDataDir)).isDirectory(), true)
   assert.equal((await stat(paths.runLogsDir)).isDirectory(), true)
@@ -173,12 +177,16 @@ CREATE TABLE IF NOT EXISTS operator_metadata (
 );
 CREATE TABLE explicit_apply_probe (id text PRIMARY KEY);
 `
-  const applyCalls: Array<{ databasePath: string; schemaSql: string }> = []
+  const applyCalls: Array<{
+    autoApprove?: boolean
+    databasePath: string
+    schemaSql: string
+  }> = []
 
   const result = await applyLocalDatabaseSchema(paths, {
     exportSchemaSql: () => explicitSchemaSql,
-    applySchema: async ({ databasePath, schemaSql }) => {
-      applyCalls.push({ databasePath, schemaSql })
+    applySchema: async ({ autoApprove, databasePath, schemaSql }) => {
+      applyCalls.push({ autoApprove, databasePath, schemaSql })
       const client = await connect(databasePath)
 
       try {
@@ -195,8 +203,58 @@ CREATE TABLE explicit_apply_probe (id text PRIMARY KEY);
     status: "applied",
   })
   assert.deepEqual(applyCalls, [
-    { databasePath: paths.databasePath, schemaSql: explicitSchemaSql },
+    {
+      autoApprove: false,
+      databasePath: paths.databasePath,
+      schemaSql: explicitSchemaSql,
+    },
   ])
+})
+
+test("applyLocalDatabaseSchema default path does not auto-approve Atlas plans for existing databases", async (t) => {
+  if (!isAtlasAvailable()) {
+    t.skip("Atlas CLI is not installed")
+    return
+  }
+
+  const directory = await mkdtemp(join(tmpdir(), "operator-db-bootstrap-"))
+  const paths = resolveAppDataPaths({
+    appDataRoot: join(directory, "app-data"),
+  })
+  await mkdir(paths.appDataDir, { recursive: true })
+
+  const client = await connect(paths.databasePath)
+  try {
+    await client.exec(`
+CREATE TABLE operator_metadata (
+  key text PRIMARY KEY,
+  value text NOT NULL,
+  updated_at text NOT NULL
+);
+INSERT INTO operator_metadata (key, value, updated_at)
+VALUES ('schema_initialized', 'true', '2026-05-31T00:00:00.000Z');
+CREATE TABLE user_projects (id text PRIMARY KEY, name text NOT NULL);
+INSERT INTO user_projects (id, name) VALUES ('project_01', 'Operator');
+`)
+  } finally {
+    await client.close()
+  }
+
+  await assert.rejects(() => applyLocalDatabaseSchema(paths), {
+    message: /atlas schema apply failed:/,
+  })
+
+  const verifyClient = await connect(paths.databasePath)
+  try {
+    const row = await verifyClient.get(
+      "SELECT name FROM user_projects WHERE id = ?",
+      "project_01"
+    )
+
+    assert.deepEqual(row, { name: "Operator" })
+  } finally {
+    await verifyClient.close()
+  }
 })
 
 test("bootstrapLocalDatabase default path initializes through Drizzle export and Atlas apply", async (t) => {
