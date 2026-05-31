@@ -3,33 +3,24 @@ import { eq } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/tursodatabase/database"
 import { stat } from "node:fs/promises"
 
+import { exportSpikeProjectsSql } from "./export-spike-schema.ts"
 import { spikeProjects } from "./schema.ts"
-
-// Constraints kept in sync with `drizzle-kit export` output for schema.ts (the source of
-// truth Atlas applies). Crucially, `id` has no NOT NULL here because Drizzle Kit beta does
-// not emit it for a TEXT PRIMARY KEY; matching that exactly keeps the spike honest about the
-// schema the real workflow produces rather than testing a stronger, fictional constraint.
-const createSpikeProjectsSql = `
-CREATE TABLE IF NOT EXISTS spike_projects (
-  id TEXT PRIMARY KEY,
-  key TEXT NOT NULL UNIQUE,
-  name TEXT NOT NULL,
-  repo_path TEXT NOT NULL UNIQUE
-);
-`
 
 export type TursoDrizzleCompatibilitySpikeOptions = {
   databasePath: string
+  /** DDL from `drizzle-kit export`; defaults to a fresh export at runtime. */
+  createTableSql?: string
 }
 
 export async function runTursoDrizzleCompatibilitySpike({
   databasePath,
+  createTableSql = exportSpikeProjectsSql(),
 }: TursoDrizzleCompatibilitySpikeOptions) {
   const client = await connect(databasePath)
   const db = drizzle({ client, schema: { spikeProjects } })
 
   try {
-    await client.exec(createSpikeProjectsSql)
+    await client.exec(createTableSql)
     await db.insert(spikeProjects).values({
       id: "project_01",
       key: "OP",
@@ -47,6 +38,30 @@ export async function runTursoDrizzleCompatibilitySpike({
       databaseCreated: await fileExists(databasePath),
       project,
     }
+  } finally {
+    await client.close()
+  }
+}
+
+export async function insertAndSelectSpikeProject(databasePath: string) {
+  const client = await connect(databasePath)
+  const db = drizzle({ client, schema: { spikeProjects } })
+
+  try {
+    await db.insert(spikeProjects).values({
+      id: "project_01",
+      key: "OP",
+      name: "Operator",
+      repoPath: "/tmp/operator",
+    })
+
+    const [project] = await db
+      .select()
+      .from(spikeProjects)
+      .where(eq(spikeProjects.id, "project_01"))
+      .limit(1)
+
+    return project
   } finally {
     await client.close()
   }
