@@ -44,6 +44,37 @@ export function applyDetectProjectSuccess(
   }
 }
 
+export function applyRepositoryPathChange(
+  state: AddProjectFormState,
+  repoPath: string
+): AddProjectFormState {
+  if (repoPath === state.repoPath) {
+    return {
+      ...state,
+      repoPath,
+    }
+  }
+
+  return {
+    ...state,
+    repoPath,
+    key: "",
+    displayName: "",
+    repositoryPreview: null,
+    errorMessage: null,
+  }
+}
+
+export function applyProjectKeyChange(
+  state: AddProjectFormState,
+  key: string
+): AddProjectFormState {
+  return {
+    ...state,
+    key: key.toUpperCase(),
+  }
+}
+
 export function applyDetectProjectError(
   state: AddProjectFormState,
   body: AddProjectApiErrorBody

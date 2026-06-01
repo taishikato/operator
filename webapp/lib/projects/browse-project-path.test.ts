@@ -16,6 +16,24 @@ test("browse Project path returns a selected path from the macOS backend picker"
   })
 })
 
+test("browse Project path treats a rejected macOS picker as a canceled selection", async () => {
+  const response = await handleBrowseProjectPathRequest({
+    platform: "darwin",
+    pickFolder: async () => {
+      throw new Error("User canceled.")
+    },
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.deepEqual(body, {
+    error: {
+      code: "browse_canceled",
+      message: "Folder selection was canceled.",
+    },
+  })
+})
+
 test("browse Project path falls back to manual input on unsupported platforms", async () => {
   const response = await handleBrowseProjectPathRequest({
     platform: "linux",

@@ -14,7 +14,9 @@ export async function handleBrowseProjectPathRequest(
   const platform = options.platform ?? process.platform
 
   if (platform === "darwin") {
-    const path = await (options.pickFolder ?? pickFolderWithAppleScript)()
+    const path = await pickFolderOrNull(
+      options.pickFolder ?? pickFolderWithAppleScript
+    )
 
     if (!path) {
       return Response.json(
@@ -42,6 +44,18 @@ export async function handleBrowseProjectPathRequest(
   )
 }
 
+async function pickFolderOrNull(pickFolder: () => Promise<string | null>) {
+  try {
+    return await pickFolder()
+  } catch (error) {
+    if (isFolderPickerCancelError(error)) {
+      return null
+    }
+
+    throw error
+  }
+}
+
 async function pickFolderWithAppleScript() {
   const { stdout } = await execFileAsync("osascript", [
     "-e",
@@ -49,4 +63,14 @@ async function pickFolderWithAppleScript() {
   ])
 
   return stdout.trim() || null
+}
+
+function isFolderPickerCancelError(error: unknown) {
+  if (!(error instanceof Error)) {
+    return false
+  }
+
+  return (
+    error.message.includes("User canceled") || error.message.includes("-128")
+  )
 }

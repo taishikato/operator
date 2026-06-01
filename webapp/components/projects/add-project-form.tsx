@@ -17,6 +17,8 @@ import {
   applyCreateProjectError,
   applyDetectProjectError,
   applyDetectProjectSuccess,
+  applyProjectKeyChange,
+  applyRepositoryPathChange,
   createInitialAddProjectFormState,
   type AddProjectApiErrorBody,
   type DetectProjectSuccessBody,
@@ -76,11 +78,7 @@ export function AddProjectForm() {
         | AddProjectApiErrorBody
 
       if (response.ok && "path" in body) {
-        setState((current) => ({
-          ...current,
-          repoPath: body.path,
-          errorMessage: null,
-        }))
+        setState((current) => applyRepositoryPathChange(current, body.path))
         return
       }
 
@@ -157,12 +155,11 @@ export function AddProjectForm() {
               <input
                 value={state.repoPath}
                 onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    repoPath: event.target.value,
-                  }))
+                  setState((current) =>
+                    applyRepositoryPathChange(current, event.target.value)
+                  )
                 }
-                className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm outline-none transition focus-visible:ring-3 focus-visible:ring-ring/40"
+                className="h-9 min-w-0 flex-1 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
                 placeholder="/Users/example/workspace/repo"
               />
               <div className="flex shrink-0 gap-2">
@@ -195,12 +192,11 @@ export function AddProjectForm() {
               <input
                 value={state.key}
                 onChange={(event) =>
-                  setState((current) => ({
-                    ...current,
-                    key: event.target.value,
-                  }))
+                  setState((current) =>
+                    applyProjectKeyChange(current, event.target.value)
+                  )
                 }
-                className="h-9 rounded-md border bg-background px-3 font-mono text-sm uppercase outline-none transition focus-visible:ring-3 focus-visible:ring-ring/40"
+                className="h-9 rounded-md border bg-background px-3 font-mono text-sm uppercase transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
                 placeholder="OP"
                 maxLength={6}
               />
@@ -215,7 +211,7 @@ export function AddProjectForm() {
                     displayName: event.target.value,
                   }))
                 }
-                className="h-9 rounded-md border bg-background px-3 text-sm outline-none transition focus-visible:ring-3 focus-visible:ring-ring/40"
+                className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
                 placeholder="Operator"
               />
             </label>
@@ -326,8 +322,8 @@ function PreviewRow({
       <dd
         className={
           mono
-            ? "mt-0.5 break-all font-mono text-xs"
-            : "mt-0.5 break-words text-sm"
+            ? "mt-0.5 font-mono text-xs break-all"
+            : "mt-0.5 text-sm break-words"
         }
       >
         {value}

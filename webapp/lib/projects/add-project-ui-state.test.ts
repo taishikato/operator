@@ -5,6 +5,8 @@ import {
   applyCreateProjectError,
   applyDetectProjectError,
   applyDetectProjectSuccess,
+  applyProjectKeyChange,
+  applyRepositoryPathChange,
   createInitialAddProjectFormState,
 } from "./add-project-ui-state.ts"
 
@@ -99,4 +101,36 @@ test("applyCreateProjectError keeps detected metadata and editable key visible",
     state.errorMessage,
     "Project key must be 1-6 uppercase letters or numbers."
   )
+})
+
+test("applyRepositoryPathChange clears detected metadata when the path changes", () => {
+  const detected = applyDetectProjectSuccess(
+    createInitialAddProjectFormState(),
+    {
+      repository: {
+        path: "/Users/example/operator",
+        name: "operator",
+        defaultBranch: "main",
+        remoteUrl: null,
+        githubSlug: null,
+        packageManagers: [],
+        instructionFiles: [],
+      },
+      suggestedKey: "OP",
+    }
+  )
+
+  const state = applyRepositoryPathChange(detected, "/Users/example/other-repo")
+
+  assert.equal(state.repoPath, "/Users/example/other-repo")
+  assert.equal(state.key, "")
+  assert.equal(state.displayName, "")
+  assert.equal(state.repositoryPreview, null)
+  assert.equal(state.errorMessage, null)
+})
+
+test("applyProjectKeyChange stores manually entered Project keys in uppercase", () => {
+  const state = applyProjectKeyChange(createInitialAddProjectFormState(), "op1")
+
+  assert.equal(state.key, "OP1")
 })
