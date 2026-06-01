@@ -40,11 +40,17 @@ export async function resolveAddProjectApiOptions(): Promise<AddProjectApiOption
 
 export async function handleDetectProjectRequest(
   request: Request,
-  _options: AddProjectApiOptions
+  _options?: AddProjectApiOptions
 ) {
   void _options
 
-  const parsed = detectProjectRequestSchema.safeParse(await request.json())
+  const body = await parseJsonRequest(request)
+
+  if (!body.success) {
+    return validationError("invalid_request", "Invalid JSON request body")
+  }
+
+  const parsed = detectProjectRequestSchema.safeParse(body.data)
 
   if (!parsed.success) {
     return validationError("invalid_request", "Invalid Project detection input")
@@ -59,7 +65,15 @@ export async function handleDetectProjectRequest(
     })
   } catch (error) {
     if (error instanceof ProjectRepositoryDetectionError) {
-      return validationError(error.code, error.message)
+      return validationError(error.code, error.message, {
+        issues: [
+          {
+            path: ["repoPath"],
+            code: error.code,
+            message: error.message,
+          },
+        ],
+      })
     }
 
     throw error
@@ -70,7 +84,13 @@ export async function handleCreateProjectRequest(
   request: Request,
   options: AddProjectApiOptions
 ) {
-  const parsed = createProjectRequestSchema.safeParse(await request.json())
+  const body = await parseJsonRequest(request)
+
+  if (!body.success) {
+    return validationError("invalid_request", "Invalid JSON request body")
+  }
+
+  const parsed = createProjectRequestSchema.safeParse(body.data)
 
   if (!parsed.success) {
     if (parsed.error.issues.some((issue) => issue.path[0] === "key")) {
@@ -183,6 +203,14 @@ export async function handleCreateProjectRequest(
     },
     { status: 201 }
   )
+}
+
+async function parseJsonRequest(request: Request) {
+  try {
+    return { success: true as const, data: await request.json() }
+  } catch {
+    return { success: false as const }
+  }
 }
 
 function validationError(

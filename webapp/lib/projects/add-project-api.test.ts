@@ -121,6 +121,66 @@ test("create Project API returns a structured validation error for a non-Git pat
   })
 })
 
+test("detect Project API returns a structured validation error for malformed JSON", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+
+  const response = await handleDetectProjectRequest(rawJsonRequest("{"), {
+    databasePath,
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.deepEqual(body, {
+    error: {
+      code: "invalid_request",
+      message: "Invalid JSON request body",
+    },
+  })
+})
+
+test("create Project API returns a structured validation error for malformed JSON", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+
+  const response = await handleCreateProjectRequest(rawJsonRequest("{"), {
+    databasePath,
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.deepEqual(body, {
+    error: {
+      code: "invalid_request",
+      message: "Invalid JSON request body",
+    },
+  })
+})
+
+test("detect Project API returns issue details for a non-Git path", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+  const repoPath = await mkdtemp(join(tmpdir(), "operator-detect-not-a-repo-"))
+
+  const response = await handleDetectProjectRequest(
+    jsonRequest({ repoPath }),
+    { databasePath }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.deepEqual(body, {
+    error: {
+      code: "not_git_repository",
+      message: "Path is not a Git repository",
+      issues: [
+        {
+          path: ["repoPath"],
+          code: "not_git_repository",
+          message: "Path is not a Git repository",
+        },
+      ],
+    },
+  })
+})
+
 test("create Project API returns a structured validation error for an invalid Project key", async () => {
   const databasePath = await createProjectDatabaseForTest()
   const repoPath = await createGitRepositoryForTest(
@@ -291,11 +351,53 @@ test("Project API route handlers expose POST endpoints", async () => {
   assert.equal(typeof projectsRoute.POST, "function")
 })
 
+test("detect Project API route does not require app data or database bootstrap", async () => {
+  const repoPath = await mkdtemp(join(tmpdir(), "operator-route-not-a-repo-"))
+  const detectRoute = await import("../../app/api/projects/detect/route.ts")
+  const previousHome = process.env.HOME
+
+  try {
+    delete process.env.HOME
+
+    const response = await detectRoute.POST(jsonRequest({ repoPath }))
+    const body = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.deepEqual(body, {
+      error: {
+        code: "not_git_repository",
+        message: "Path is not a Git repository",
+        issues: [
+          {
+            path: ["repoPath"],
+            code: "not_git_repository",
+            message: "Path is not a Git repository",
+          },
+        ],
+      },
+    })
+  } finally {
+    if (previousHome === undefined) {
+      delete process.env.HOME
+    } else {
+      process.env.HOME = previousHome
+    }
+  }
+})
+
 function jsonRequest(body: unknown) {
   return new Request("http://127.0.0.1:3927/api/projects/detect", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+  })
+}
+
+function rawJsonRequest(body: string) {
+  return new Request("http://127.0.0.1:3927/api/projects/detect", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body,
   })
 }
 
