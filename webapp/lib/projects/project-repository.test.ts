@@ -101,6 +101,138 @@ test("ProjectRepository allocates monotonically increasing Project task numbers"
   assert.equal(persisted?.nextTaskNumber, 4)
 })
 
+test("ProjectRepository reactivates a removed Project for the same repository without reusing task numbers", async () => {
+  const projects = await createProjectRepositoryForTest()
+  const project = await projects.createProject(createProjectInput())
+
+  assert.equal(await projects.allocateNextTaskNumber(project.id), 1)
+  assert.equal(await projects.allocateNextTaskNumber(project.id), 2)
+  await projects.removeProject(project.id)
+
+  const reactivated = await projects.createProject(
+    createProjectInput({
+      displayName: "Operator Restored",
+      repositoryMetadata: {
+        name: "operator",
+        defaultBranch: "develop",
+        remoteUrl: "git@github.com:example/operator.git",
+        githubSlug: "example/operator",
+        packageManagers: ["pnpm", "npm"],
+        instructionFiles: ["AGENTS.md", "CLAUDE.md"],
+      },
+      defaults: {
+        model: "cursor/gpt-5.1",
+        reasoningLevel: "medium",
+        runTimeoutSeconds: 1800,
+      },
+      schedule: {
+        enabled: true,
+        dailyTime: "10:30",
+        timezone: "Asia/Tokyo",
+        scheduledRunLimit: 2,
+      },
+    })
+  )
+
+  assert.equal(reactivated.id, project.id)
+  assert.equal(reactivated.createdAt, project.createdAt)
+  assert.equal(reactivated.removedAt, null)
+  assert.equal(reactivated.nextTaskNumber, 3)
+  assert.equal(reactivated.displayName, "Operator Restored")
+  assert.deepEqual(reactivated.repositoryMetadata.packageManagers, [
+    "pnpm",
+    "npm",
+  ])
+  assert.deepEqual(reactivated.schedule, {
+    enabled: true,
+    dailyTime: "10:30",
+    timezone: "Asia/Tokyo",
+    scheduledRunLimit: 2,
+  })
+  assert.equal(await projects.allocateNextTaskNumber(project.id), 3)
+})
+
+test("ProjectRepository rejects readding a removed repository with a different Project key", async () => {
+  const projects = await createProjectRepositoryForTest()
+  const project = await projects.createProject(createProjectInput())
+  await projects.removeProject(project.id)
+
+  await assert.rejects(
+    () =>
+      projects.createProject(
+        createProjectInput({
+          key: "OTHER",
+          displayName: "Other",
+        })
+      ),
+    (error) =>
+      error instanceof ProjectRepositoryError &&
+      error.code === "duplicate_repository_path"
+  )
+})
+
+test("ProjectRepository rejects reusing a removed Project key for a different repository", async () => {
+  const projects = await createProjectRepositoryForTest()
+  const project = await projects.createProject(createProjectInput())
+  await projects.removeProject(project.id)
+
+  await assert.rejects(
+    () =>
+      projects.createProject(
+        createProjectInput({
+          repoPath: "/Users/example/other-repo",
+          repositoryMetadata: {
+            ...createProjectInput().repositoryMetadata,
+            name: "other-repo",
+          },
+        })
+      ),
+    (error) =>
+      error instanceof ProjectRepositoryError &&
+      error.code === "duplicate_project_key"
+  )
+})
+
+test("ProjectRepository maps insert-time Project key constraint violations to typed duplicate errors", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+  await createProjectInsertRaceTrigger({
+    databasePath,
+    triggerName: "projects_insert_key_race",
+    insertedId: "01racekey0000000000000000",
+    insertedKey: "OP",
+    insertedRepoPath: "/Users/example/race-winner",
+    when: "NEW.key = 'OP' AND NEW.id <> '01racekey0000000000000000'",
+  })
+  const projects = createProjectRepository({ databasePath })
+
+  await assert.rejects(
+    () => projects.createProject(createProjectInput()),
+    (error) =>
+      error instanceof ProjectRepositoryError &&
+      error.code === "duplicate_project_key"
+  )
+})
+
+test("ProjectRepository maps insert-time repository path constraint violations to typed duplicate errors", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+  await createProjectInsertRaceTrigger({
+    databasePath,
+    triggerName: "projects_insert_repo_path_race",
+    insertedId: "01racerepo000000000000000",
+    insertedKey: "OTHER",
+    insertedRepoPath: "/Users/example/operator",
+    when: "NEW.repo_path = '/Users/example/operator' AND NEW.id <> '01racerepo000000000000000'",
+  })
+  const projects = createProjectRepository({ databasePath })
+
+  await assert.rejects(
+    () => projects.createProject(createProjectInput()),
+    (error) =>
+      error instanceof ProjectRepositoryError &&
+      error.code === "duplicate_repository_path"
+  )
+})
+
 test("ProjectRepository removes Projects from active selection and scheduling without deleting history", async () => {
   const projects = await createProjectRepositoryForTest()
   const project = await projects.createProject(
@@ -167,6 +299,12 @@ function createProjectInput(
 }
 
 async function createProjectRepositoryForTest() {
+  const databasePath = await createProjectDatabaseForTest()
+
+  return createProjectRepository({ databasePath })
+}
+
+async function createProjectDatabaseForTest() {
   const directory = await mkdtemp(join(tmpdir(), "operator-projects-"))
   const databasePath = join(directory, "operator.db")
   const client = await connect(databasePath)
@@ -177,5 +315,81 @@ async function createProjectRepositoryForTest() {
     await client.close()
   }
 
-  return createProjectRepository({ databasePath })
+  return databasePath
+}
+
+async function createProjectInsertRaceTrigger({
+  databasePath,
+  triggerName,
+  insertedId,
+  insertedKey,
+  insertedRepoPath,
+  when,
+}: {
+  databasePath: string
+  triggerName: string
+  insertedId: string
+  insertedKey: string
+  insertedRepoPath: string
+  when: string
+}) {
+  const client = await connect(databasePath)
+
+  try {
+    await client.exec(`
+      CREATE TRIGGER ${triggerName}
+      BEFORE INSERT ON projects
+      WHEN ${when}
+      BEGIN
+        INSERT INTO projects (
+          id,
+          key,
+          display_name,
+          repo_path,
+          repository_name,
+          repository_default_branch,
+          repository_remote_url,
+          repository_github_slug,
+          repository_package_managers_json,
+          repository_instruction_files_json,
+          default_model,
+          default_reasoning_level,
+          run_timeout_seconds,
+          schedule_enabled,
+          schedule_daily_time,
+          schedule_timezone,
+          scheduled_run_limit,
+          next_task_number,
+          created_at,
+          updated_at,
+          removed_at
+        )
+        VALUES (
+          '${insertedId}',
+          '${insertedKey}',
+          'Race Winner',
+          '${insertedRepoPath}',
+          'race-winner',
+          'main',
+          NULL,
+          NULL,
+          '[]',
+          '[]',
+          'cursor/gpt-5',
+          'high',
+          3600,
+          0,
+          '09:00',
+          'Asia/Tokyo',
+          1,
+          1,
+          '2026-01-01T00:00:00.000Z',
+          '2026-01-01T00:00:00.000Z',
+          NULL
+        );
+      END;
+    `)
+  } finally {
+    await client.close()
+  }
 }
