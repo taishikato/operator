@@ -122,7 +122,9 @@ function parseGitHubSlug(remoteUrl: string) {
 
 async function maybeGit(repoPath: string, args: string[]) {
   try {
-    return await git(repoPath, args)
+    const output = await git(repoPath, args)
+
+    return output || null
   } catch {
     return null
   }

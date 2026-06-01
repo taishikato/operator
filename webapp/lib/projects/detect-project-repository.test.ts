@@ -15,6 +15,7 @@ test("detectProjectRepository returns basic metadata for a valid Git repository"
 
   await execFileAsync("git", ["init", "-b", "main"], { cwd: repoPath })
   await writeFile(join(repoPath, "package.json"), "{}\n")
+  await mkdir(join(repoPath, "src"))
   await execFileAsync("git", ["add", "package.json"], { cwd: repoPath })
   await execFileAsync("git", ["commit", "-m", "Initial commit"], {
     cwd: repoPath,
@@ -28,7 +29,7 @@ test("detectProjectRepository returns basic metadata for a valid Git repository"
   })
 
   const repositoryRoot = await realpath(repoPath)
-  const metadata = await detectProjectRepository(repoPath)
+  const metadata = await detectProjectRepository(join(repoPath, "src"))
 
   assert.deepEqual(metadata, {
     path: repositoryRoot,
@@ -39,6 +40,33 @@ test("detectProjectRepository returns basic metadata for a valid Git repository"
     packageManagers: ["npm"],
     instructionFiles: [],
   })
+})
+
+test("detectProjectRepository returns null defaultBranch in detached HEAD state", async () => {
+  const repoPath = await mkdtemp(join(tmpdir(), "operator-detached-repo-"))
+
+  await execFileAsync("git", ["init", "-b", "main"], { cwd: repoPath })
+  await execFileAsync(
+    "git",
+    ["commit", "--allow-empty", "-m", "Initial commit"],
+    {
+      cwd: repoPath,
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Operator Test",
+        GIT_AUTHOR_EMAIL: "operator@example.com",
+        GIT_COMMITTER_NAME: "Operator Test",
+        GIT_COMMITTER_EMAIL: "operator@example.com",
+      },
+    }
+  )
+  await execFileAsync("git", ["checkout", "--detach", "HEAD"], {
+    cwd: repoPath,
+  })
+
+  const metadata = await detectProjectRepository(repoPath)
+
+  assert.equal(metadata.defaultBranch, null)
 })
 
 test("detectProjectRepository rejects a path that is not a Git repository", async () => {
