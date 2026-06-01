@@ -50,3 +50,30 @@ export const projects = sqliteTable(
       .where(sql`${project.removedAt} IS NULL`),
   ]
 )
+
+export const tasks = sqliteTable(
+  "tasks",
+  {
+    id: text("id").notNull().primaryKey(),
+    projectId: text("project_id").notNull(),
+    number: integer("number").notNull(),
+    displayId: text("display_id").notNull(),
+    title: text("title").notNull(),
+    bodyMarkdown: text("body_markdown").notNull(),
+    acceptanceCriteriaMarkdown: text("acceptance_criteria_markdown").notNull(),
+    status: text("status").notNull(),
+    position: integer("position").notNull(),
+    modelOverride: text("model_override"),
+    reasoningLevelOverride: text("reasoning_level_override"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    archivedAt: text("archived_at"),
+  },
+  (task) => [
+    uniqueIndex("tasks_project_number_unique").on(
+      task.projectId,
+      task.number
+    ),
+    uniqueIndex("tasks_display_id_unique").on(task.displayId),
+  ]
+)
