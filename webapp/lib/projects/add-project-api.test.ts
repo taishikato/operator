@@ -216,6 +216,107 @@ test("create Project API returns a structured validation error for an invalid Pr
   assert.deepEqual(await projects.listActiveProjects(), [])
 })
 
+test("create Project API returns a structured validation error for a blank display name", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+  const repoPath = await createGitRepositoryForTest(
+    "operator-blank-display-name-repo-"
+  )
+
+  const response = await handleCreateProjectRequest(
+    jsonRequest({
+      repoPath,
+      key: "OP",
+      displayName: "   ",
+    }),
+    { databasePath }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.deepEqual(body, {
+    error: {
+      code: "invalid_request",
+      message: "Invalid Project creation input",
+    },
+  })
+
+  const projects = createProjectRepository({ databasePath })
+  assert.deepEqual(await projects.listActiveProjects(), [])
+})
+
+test("create Project API prioritizes invalid Project key errors over other invalid input", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+  const repoPath = await createGitRepositoryForTest(
+    "operator-invalid-key-priority-repo-"
+  )
+
+  const response = await handleCreateProjectRequest(
+    jsonRequest({
+      repoPath,
+      key: "bad key",
+      displayName: "",
+    }),
+    { databasePath }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.deepEqual(body, {
+    error: {
+      code: "invalid_project_key",
+      message: "Project key must be 1-6 uppercase letters or numbers.",
+      issues: [
+        {
+          path: ["key"],
+          code: "invalid_project_key",
+          message: "Project key must be 1-6 uppercase letters or numbers.",
+        },
+      ],
+    },
+  })
+
+  const projects = createProjectRepository({ databasePath })
+  assert.deepEqual(await projects.listActiveProjects(), [])
+})
+
+test("create Project API rejects Project keys outside uppercase alphanumeric length bounds", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+  const repoPath = await createGitRepositoryForTest(
+    "operator-key-boundary-repo-"
+  )
+  const invalidKeys = ["op", "OPERATOR"]
+
+  for (const key of invalidKeys) {
+    const response = await handleCreateProjectRequest(
+      jsonRequest({
+        repoPath,
+        key,
+        displayName: "Operator",
+      }),
+      { databasePath }
+    )
+    const body = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.deepEqual(body, {
+      error: {
+        code: "invalid_project_key",
+        message: "Project key must be 1-6 uppercase letters or numbers.",
+        issues: [
+          {
+            path: ["key"],
+            code: "invalid_project_key",
+            message: "Project key must be 1-6 uppercase letters or numbers.",
+          },
+        ],
+      },
+    })
+  }
+
+  const projects = createProjectRepository({ databasePath })
+  assert.deepEqual(await projects.listActiveProjects(), [])
+})
+
 test("create Project API returns a structured validation error for a duplicate active Project key", async () => {
   const databasePath = await createProjectDatabaseForTest()
   const firstRepoPath = await createGitRepositoryForTest("operator-first-repo-")
