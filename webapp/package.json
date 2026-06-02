@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write \"**/*.{ts,tsx}\"",
-    "test": "node --experimental-strip-types --test \"**/*.test.ts\"",
+    "test": "node --experimental-strip-types --test \"**/*.test.ts\" && node --experimental-test-module-mocks --import tsx --test \"**/*.test.tsx\"",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -36,15 +36,21 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@happy-dom/global-registrator": "^20.9.0",
     "@tailwindcss/postcss": "^4",
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "happy-dom": "^20.9.0",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
     "tailwindcss": "^4",
+    "tsx": "^4.22.4",
     "typescript": "^5"
-  }
+  },
+  "packageManager": "pnpm@10.26.2+sha512.0e308ff2005fc7410366f154f625f6631ab2b16b1d2e70238444dd6ae9d630a8482d92a451144debc492416896ed16f7b114a86ec68b8404b2443869e68ffda6"
 }

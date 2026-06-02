@@ -59,6 +59,28 @@ test("unsaved Task edits do not change saved run input", () => {
   })
 })
 
+test("stale drawer edit state would save the wrong task without remounting", () => {
+  const firstTask = savedTask()
+  const secondTask = {
+    title: "Second task title",
+    bodyMarkdown: "Second body",
+    acceptanceCriteriaMarkdown: "- Second criteria",
+    modelOverride: null,
+    reasoningLevelOverride: null,
+  }
+
+  const staleState = updateTaskEditDraft(createTaskEditState(firstTask), {
+    title: "Tampered title",
+  })
+
+  assert.equal(getTaskEditSavePayload(staleState).title, "Tampered title")
+  assert.notEqual(getTaskEditSavePayload(staleState).title, secondTask.title)
+
+  const reinitialized = createTaskEditState(secondTask)
+  assert.equal(reinitialized.draft.title, secondTask.title)
+  assert.equal(hasUnsavedTaskEditChanges(reinitialized), false)
+})
+
 function savedTask() {
   return {
     title: "Original title",

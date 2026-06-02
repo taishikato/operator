@@ -9,6 +9,7 @@ import {
   resolveTaskDrawer,
   type KanbanTask,
 } from "@/lib/tasks/kanban-view"
+import { taskDrawerRemountKey } from "@/lib/tasks/task-drawer-mount"
 import { createTaskRepository } from "@/lib/tasks/task-repository"
 
 export const dynamic = "force-dynamic"
@@ -114,7 +115,11 @@ export default async function ProjectPage({
       </div>
 
       {selectedTask ? (
-        <TaskDrawer projectKey={project.key} task={selectedTask} />
+        <TaskDrawer
+          key={taskDrawerRemountKey(selectedTask.displayId)}
+          projectKey={project.key}
+          task={selectedTask}
+        />
       ) : null}
     </main>
   )
