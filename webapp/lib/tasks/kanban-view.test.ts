@@ -41,6 +41,8 @@ function task(overrides: Partial<KanbanTask> = {}): KanbanTask {
     acceptanceCriteriaMarkdown: "- Acceptance criteria",
     status: "backlog",
     position: 1,
+    modelOverride: null,
+    reasoningLevelOverride: null,
     ...overrides,
   }
 }
