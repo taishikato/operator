@@ -2,6 +2,7 @@ import { connect } from "@tursodatabase/database"
 import { stat } from "node:fs/promises"
 
 import { ensureAppData, type AppDataPaths } from "../app-data/app-data.ts"
+import { readExistingDatabaseState } from "./existing-database-state.ts"
 import { applyOperatorSchemaWithAtlas } from "./schema-apply.ts"
 import { exportOperatorSchemaSql } from "./schema-export.ts"
 
@@ -37,7 +38,12 @@ export async function bootstrapLocalDatabase(
   const fileState = await readDatabaseFileState(paths.databasePath)
 
   if (fileState === "existing") {
-    if (!(await hasInitializationMarker(paths.databasePath))) {
+    const existingState = await readExistingDatabaseState(paths.databasePath)
+
+    if (
+      !existingState.hasInitializationMarker ||
+      !existingState.hasRequiredOperatorTables
+    ) {
       return {
         databasePath: paths.databasePath,
         schemaApplied: false,
@@ -108,34 +114,6 @@ async function markDatabaseInitialized(databasePath: string) {
   } finally {
     await client.close()
   }
-}
-
-async function hasInitializationMarker(databasePath: string) {
-  const client = await connect(databasePath)
-
-  try {
-    const row = await client.get(
-      "SELECT value FROM operator_metadata WHERE key = ?",
-      "schema_initialized"
-    )
-
-    return row?.value === "true"
-  } catch (error) {
-    if (isMissingMetadataTableError(error)) {
-      return false
-    }
-
-    throw error
-  } finally {
-    await client.close()
-  }
-}
-
-function isMissingMetadataTableError(error: unknown) {
-  return (
-    error instanceof Error &&
-    error.message.includes("no such table: operator_metadata")
-  )
 }
 
 async function readDatabaseFileState(path: string) {

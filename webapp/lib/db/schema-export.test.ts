@@ -33,6 +33,29 @@ test("exportOperatorSchemaSql exports the Project persistence schema from Drizzl
   )
 })
 
+test("exportOperatorSchemaSql exports the Task persistence schema from Drizzle schema", () => {
+  const sql = exportOperatorSchemaSql()
+
+  assert.match(sql, /CREATE TABLE [`"]?tasks[`"]?/i)
+  assert.match(sql, /`project_id` text NOT NULL/i)
+  assert.match(sql, /`number` integer NOT NULL/i)
+  assert.match(sql, /`display_id` text NOT NULL/i)
+  assert.match(sql, /`title` text NOT NULL/i)
+  assert.match(sql, /`body_markdown` text NOT NULL/i)
+  assert.match(sql, /`acceptance_criteria_markdown` text NOT NULL/i)
+  assert.match(sql, /`status` text NOT NULL/i)
+  assert.match(sql, /`position` integer NOT NULL/i)
+  assert.match(sql, /`archived_at` text/i)
+  assert.match(
+    sql,
+    /CREATE UNIQUE INDEX [`"]?tasks_project_number_unique[`"]? ON [`"]?tasks[`"]? \([`"]?project_id[`"]?,\s*[`"]?number[`"]?\)/i
+  )
+  assert.match(
+    sql,
+    /CREATE UNIQUE INDEX [`"]?tasks_display_id_unique[`"]? ON [`"]?tasks[`"]? \([`"]?display_id[`"]?\)/i
+  )
+})
+
 test("exportOperatorSchemaSql reports spawn failures without masking them", () => {
   withEmptyPath(() => {
     assert.throws(
