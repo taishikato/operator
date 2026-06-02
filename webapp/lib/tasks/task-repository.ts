@@ -276,6 +276,13 @@ export function createTaskRepository({
 
             seenStatuses.add(column.status)
 
+            if (column.status === "running") {
+              throw new TaskBoardUpdateError(
+                "running_system_controlled",
+                "Running Tasks are controlled by the system and cannot be moved manually."
+              )
+            }
+
             for (const displayId of column.taskDisplayIds) {
               if (seenDisplayIds.has(displayId)) {
                 throw new TaskBoardUpdateError(
@@ -292,10 +299,7 @@ export function createTaskRepository({
                 throw new Error(`Active Task not found: ${displayId}`)
               }
 
-              if (
-                (column.status === "running" && task.status !== "running") ||
-                (task.status === "running" && column.status !== "running")
-              ) {
+              if (task.status === "running") {
                 throw new TaskBoardUpdateError(
                   "running_system_controlled",
                   "Running Tasks are controlled by the system and cannot be moved manually."

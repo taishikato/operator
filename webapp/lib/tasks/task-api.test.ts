@@ -285,6 +285,51 @@ test("handleUpdateTaskBoardRequest rejects manual movement out of Running", asyn
   assert.equal(saved?.position, 1)
 })
 
+test("handleUpdateTaskBoardRequest rejects manual Running position changes", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  const tasks = createTaskRepository({ databasePath })
+  const first = await tasks.createTask({
+    projectId: project.id,
+    title: "First running task",
+    bodyMarkdown: "The system owns this Task while it is running.",
+    acceptanceCriteriaMarkdown: "- Running cannot be reordered manually",
+  })
+  await tasks.moveTaskToStatus(first.id, "running")
+  const second = await tasks.createTask({
+    projectId: project.id,
+    title: "Second running task",
+    bodyMarkdown: "The system owns this Task while it is running too.",
+    acceptanceCriteriaMarkdown: "- Running cannot be reordered manually",
+  })
+  await tasks.moveTaskToStatus(second.id, "running")
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [{ status: "running", taskDisplayIds: ["OP-2", "OP-1"] }],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.error.code, "running_system_controlled")
+
+  const saved = await tasks.listActiveTasksForProject(project.id)
+  assert.deepEqual(
+    saved.map((task) => ({
+      displayId: task.displayId,
+      status: task.status,
+      position: task.position,
+    })),
+    [
+      { displayId: "OP-1", status: "running", position: 1 },
+      { displayId: "OP-2", status: "running", position: 2 },
+    ]
+  )
+})
+
 test("handleUpdateTaskBoardRequest reuses Ready validation for board moves", async () => {
   const databasePath = await createDatabaseForTest()
   const projects = createProjectRepository({ databasePath })
