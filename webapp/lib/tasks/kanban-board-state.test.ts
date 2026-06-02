@@ -25,6 +25,46 @@ test("moveKanbanTask reorders Tasks within a column without changing other colum
   })
 })
 
+test("moveKanbanTask moves same-column Tasks after lower targets", () => {
+  const adjacentColumns = boardColumns({
+    backlog: ["OP-1", "OP-2", "OP-3"],
+    ready: [],
+  })
+
+  assert.deepEqual(
+    displayIdsByColumn(
+      moveKanbanTask(adjacentColumns, {
+        activeDisplayId: "OP-1",
+        targetStatus: "backlog",
+        targetDisplayId: "OP-2",
+      })
+    ),
+    {
+      backlog: ["OP-2", "OP-1", "OP-3"],
+      ready: [],
+    }
+  )
+
+  const endColumns = boardColumns({
+    backlog: ["OP-1", "OP-2", "OP-3"],
+    ready: [],
+  })
+
+  assert.deepEqual(
+    displayIdsByColumn(
+      moveKanbanTask(endColumns, {
+        activeDisplayId: "OP-1",
+        targetStatus: "backlog",
+        targetDisplayId: "OP-3",
+      })
+    ),
+    {
+      backlog: ["OP-2", "OP-3", "OP-1"],
+      ready: [],
+    }
+  )
+})
+
 test("applyKanbanBoardFailure restores the last server-backed columns and reports the error", () => {
   const lastServerColumns = boardColumns({
     backlog: ["OP-1", "OP-2"],

@@ -50,10 +50,22 @@ export function moveKanbanTask(
         return [...tasks, task]
       }
 
+      const activeIndexBeforeMove = column.tasks.findIndex(
+        (candidate) => candidate.displayId === move.activeDisplayId
+      )
+      const targetIndexBeforeMove = column.tasks.findIndex(
+        (candidate) => candidate.displayId === move.targetDisplayId
+      )
+      const insertAfterTarget =
+        activeIndexBeforeMove !== -1 &&
+        targetIndexBeforeMove !== -1 &&
+        targetIndexBeforeMove > activeIndexBeforeMove
+      const insertionIndex = insertAfterTarget ? targetIndex + 1 : targetIndex
+
       return [
-        ...tasks.slice(0, targetIndex),
+        ...tasks.slice(0, insertionIndex),
         task,
-        ...tasks.slice(targetIndex),
+        ...tasks.slice(insertionIndex),
       ]
     }
   })
