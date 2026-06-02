@@ -5,6 +5,7 @@ import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { createProjectRepository } from "../projects/project-repository.ts"
 import {
   createTaskRepository,
+  TaskBoardUpdateError,
   TaskValidationError,
   TASK_STATUSES,
   validateTaskStatusTransition,
@@ -25,6 +26,19 @@ const updateTaskRequestSchema = z
     modelOverride: z.string().nullable().optional(),
     reasoningLevelOverride: z.string().nullable().optional(),
     status: z.enum(TASK_STATUSES).optional(),
+  })
+  .strict()
+
+const updateTaskBoardRequestSchema = z
+  .object({
+    columns: z.array(
+      z
+        .object({
+          status: z.enum(TASK_STATUSES),
+          taskDisplayIds: z.array(z.string().min(1)),
+        })
+        .strict()
+    ),
   })
   .strict()
 
@@ -197,6 +211,55 @@ export async function handleUpdateTaskRequest(
   }
 
   return Response.json({ task })
+}
+
+export async function handleUpdateTaskBoardRequest(
+  request: Request,
+  options: TaskApiOptions
+) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
+  const body = await parseJsonRequest(request)
+
+  if (!body.success) {
+    return validationError("invalid_request", "Invalid JSON request body")
+  }
+
+  const parsed = updateTaskBoardRequestSchema.safeParse(body.data)
+
+  if (!parsed.success) {
+    return validationError("invalid_request", "Invalid Task board update input")
+  }
+
+  const project = await loadProject(options)
+
+  if (!project) {
+    return validationError("project_not_found", "Project not found", {
+      status: 404,
+    })
+  }
+
+  let tasks: Task[]
+
+  try {
+    tasks = await createTaskRepository({
+      databasePath: options.databasePath,
+    }).updateTaskBoard(project.id, parsed.data.columns)
+  } catch (error) {
+    if (error instanceof TaskValidationError) {
+      return validationError(error.code, error.message)
+    }
+
+    if (error instanceof TaskBoardUpdateError) {
+      return validationError(error.code, error.message)
+    }
+
+    throw error
+  }
+
+  return Response.json({ tasks })
 }
 
 async function loadProject(options: TaskApiOptions) {

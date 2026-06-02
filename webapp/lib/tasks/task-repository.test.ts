@@ -154,6 +154,34 @@ test("TaskRepository requires saved Task content before moving into Ready", asyn
   assert.equal(moved.acceptanceCriteriaMarkdown, "- Has acceptance criteria")
 })
 
+test("TaskRepository exposes Ready Tasks in persisted run selection order", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  await tasks.createTask({
+    projectId: project.id,
+    title: "First ready task",
+    bodyMarkdown: "Run this task.",
+    acceptanceCriteriaMarkdown: "- It can run",
+  })
+  await tasks.createTask({
+    projectId: project.id,
+    title: "Second ready task",
+    bodyMarkdown: "Run this task too.",
+    acceptanceCriteriaMarkdown: "- It can run",
+  })
+
+  await tasks.updateTaskBoard(project.id, [
+    { status: "ready", taskDisplayIds: ["OP-2", "OP-1"] },
+  ])
+
+  assert.deepEqual(
+    (await tasks.listReadyTasksForRunSelection(project.id)).map(
+      (task) => task.displayId
+    ),
+    ["OP-2", "OP-1"]
+  )
+})
+
 async function createRepositoriesForTest() {
   const databasePath = await createDatabaseForTest()
 

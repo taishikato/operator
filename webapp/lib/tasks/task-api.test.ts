@@ -12,9 +12,11 @@ import {
   createProjectRepository,
   type CreateProjectInput,
 } from "../projects/project-repository.ts"
+import { createTaskRepository } from "./task-repository.ts"
 import {
   handleCreateTaskRequest,
   handleListTasksRequest,
+  handleUpdateTaskBoardRequest,
   handleUpdateTaskRequest,
 } from "./task-api.ts"
 
@@ -73,6 +75,168 @@ test("handleCreateTaskRequest creates a Project Task with display ID through the
     listBody.tasks.map((task: { displayId: string }) => task.displayId),
     ["OP-1"]
   )
+})
+
+test("handleUpdateTaskBoardRequest persists same-column ordering through the public board API", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+
+  await handleCreateTaskRequest(
+    jsonRequest({
+      title: "First backlog task",
+      bodyMarkdown: "First task body.",
+      acceptanceCriteriaMarkdown: "- First task is saved",
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  await handleCreateTaskRequest(
+    jsonRequest({
+      title: "Second backlog task",
+      bodyMarkdown: "Second task body.",
+      acceptanceCriteriaMarkdown: "- Second task is saved",
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [{ status: "backlog", taskDisplayIds: ["OP-2", "OP-1"] }],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(
+    body.tasks.map((task: { displayId: string; position: number }) => ({
+      displayId: task.displayId,
+      position: task.position,
+    })),
+    [
+      { displayId: "OP-2", position: 1 },
+      { displayId: "OP-1", position: 2 },
+    ]
+  )
+
+  const listResponse = await handleListTasksRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+  })
+  const listBody = await listResponse.json()
+
+  assert.deepEqual(
+    listBody.tasks.map((task: { displayId: string; position: number }) => ({
+      displayId: task.displayId,
+      position: task.position,
+    })),
+    [
+      { displayId: "OP-2", position: 1 },
+      { displayId: "OP-1", position: 2 },
+    ]
+  )
+})
+
+test("handleUpdateTaskBoardRequest rejects manual movement into Running", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+
+  await handleCreateTaskRequest(
+    jsonRequest({
+      title: "Backlog task",
+      bodyMarkdown: "This task should not enter Running manually.",
+      acceptanceCriteriaMarkdown: "- Running stays system-controlled",
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [{ status: "running", taskDisplayIds: ["OP-1"] }],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.error.code, "running_system_controlled")
+
+  const listResponse = await handleListTasksRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+  })
+  const listBody = await listResponse.json()
+
+  assert.equal(listBody.tasks[0].status, "backlog")
+  assert.equal(listBody.tasks[0].position, 1)
+})
+
+test("handleUpdateTaskBoardRequest rejects manual movement out of Running", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Running task",
+    bodyMarkdown: "The system owns this Task while it is running.",
+    acceptanceCriteriaMarkdown: "- Running cannot be moved manually",
+  })
+  await tasks.moveTaskToStatus(task.id, "running")
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [{ status: "review", taskDisplayIds: ["OP-1"] }],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.error.code, "running_system_controlled")
+
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+  assert.equal(saved?.status, "running")
+  assert.equal(saved?.position, 1)
+})
+
+test("handleUpdateTaskBoardRequest reuses Ready validation for board moves", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+
+  await handleCreateTaskRequest(
+    jsonRequest({
+      title: "No instructions yet",
+      bodyMarkdown: "",
+      acceptanceCriteriaMarkdown: "",
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [{ status: "ready", taskDisplayIds: ["OP-1"] }],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.error.code, "ready_content_required")
+
+  const listResponse = await handleListTasksRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+  })
+  const listBody = await listResponse.json()
+
+  assert.equal(listBody.tasks[0].status, "backlog")
+  assert.equal(listBody.tasks[0].position, 1)
 })
 
 test("handleUpdateTaskRequest saves Task instruction edits through the public API contract", async () => {
@@ -305,6 +469,14 @@ INSERT INTO projects (id, key) VALUES ('project_01', 'OP');
         "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database.",
     },
   })
+})
+
+test("Task board API route exposes a PATCH endpoint", async () => {
+  const boardRoute = await import(
+    "../../app/api/projects/[projectKey]/tasks/board/route.ts"
+  )
+
+  assert.equal(typeof boardRoute.PATCH, "function")
 })
 
 async function createDatabaseForTest() {

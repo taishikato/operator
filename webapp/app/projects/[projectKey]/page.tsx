@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation"
 
+import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskCreateForm } from "@/components/tasks/task-create-form"
 import { TaskDrawer } from "@/components/tasks/task-drawer"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
@@ -75,43 +76,7 @@ export default async function ProjectPage({
           <TaskCreateForm projectKey={project.key} />
         </aside>
 
-        <section className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-6">
-          {columns.map((column) => (
-            <div
-              key={column.status}
-              className="min-h-56 rounded-lg border bg-card p-3 shadow-sm"
-            >
-              <div className="flex items-center justify-between gap-2">
-                <h2 className="text-sm font-semibold">{column.label}</h2>
-                <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-                  {column.tasks.length}
-                </span>
-              </div>
-              <div className="mt-4 grid gap-2">
-                {column.tasks.length > 0 ? (
-                  column.tasks.map((task) => (
-                    <a
-                      key={task.id}
-                      href={`/projects/${encodeURIComponent(project.key)}?task=${encodeURIComponent(task.displayId)}`}
-                      className="block rounded-md border bg-background p-3 text-left transition hover:border-foreground/35"
-                    >
-                      <div className="font-mono text-xs text-muted-foreground">
-                        {task.displayId}
-                      </div>
-                      <div className="mt-1 text-sm font-medium break-words">
-                        {task.title}
-                      </div>
-                    </a>
-                  ))
-                ) : (
-                  <div className="rounded-md border border-dashed bg-muted/25 p-3 text-xs text-muted-foreground">
-                    No tasks yet.
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-        </section>
+        <KanbanBoard projectKey={project.key} initialColumns={columns} />
       </div>
 
       {selectedTask ? (
