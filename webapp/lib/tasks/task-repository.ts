@@ -180,7 +180,7 @@ export function createTaskRepository({
         }
 
         const currentTask = toTask(existing)
-        validateStatusTransition(currentTask, status)
+        validateTaskStatusTransition(currentTask, status)
 
         const position =
           currentTask.status === status
@@ -247,7 +247,7 @@ async function nextPositionForStatus(
   return (row?.position ?? 0) + 1
 }
 
-function validateStatusTransition(task: Task, status: TaskStatus) {
+export function validateTaskStatusTransition(task: Task, status: TaskStatus) {
   if (status !== "ready") {
     return
   }

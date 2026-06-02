@@ -7,6 +7,8 @@ import {
   createTaskRepository,
   TaskValidationError,
   TASK_STATUSES,
+  validateTaskStatusTransition,
+  type Task,
 } from "./task-repository.ts"
 
 const createTaskRequestSchema = z.object({
@@ -163,28 +165,14 @@ export async function handleUpdateTaskRequest(
     parsed.data.acceptanceCriteriaMarkdown !== undefined ||
     parsed.data.modelOverride !== undefined ||
     parsed.data.reasoningLevelOverride !== undefined
-
-  if (shouldUpdateInstructions) {
-    task = await taskRepository.updateTaskInstructions(task.id, {
-      title: parsed.data.title ?? task.title,
-      bodyMarkdown: parsed.data.bodyMarkdown ?? task.bodyMarkdown,
-      acceptanceCriteriaMarkdown:
-        parsed.data.acceptanceCriteriaMarkdown ??
-        task.acceptanceCriteriaMarkdown,
-      modelOverride:
-        parsed.data.modelOverride === undefined
-          ? task.modelOverride
-          : normalizeNullableOverride(parsed.data.modelOverride),
-      reasoningLevelOverride:
-        parsed.data.reasoningLevelOverride === undefined
-          ? task.reasoningLevelOverride
-          : normalizeNullableOverride(parsed.data.reasoningLevelOverride),
-    })
-  }
+  const instructionUpdate = buildTaskInstructionUpdate(task, parsed.data)
 
   if (parsed.data.status !== undefined) {
     try {
-      task = await taskRepository.moveTaskToStatus(task.id, parsed.data.status)
+      validateTaskStatusTransition(
+        shouldUpdateInstructions ? instructionUpdate : task,
+        parsed.data.status
+      )
     } catch (error) {
       if (error instanceof TaskValidationError) {
         return validationError(error.code, error.message)
@@ -192,6 +180,20 @@ export async function handleUpdateTaskRequest(
 
       throw error
     }
+  }
+
+  if (shouldUpdateInstructions) {
+    task = await taskRepository.updateTaskInstructions(task.id, {
+      title: instructionUpdate.title,
+      bodyMarkdown: instructionUpdate.bodyMarkdown,
+      acceptanceCriteriaMarkdown: instructionUpdate.acceptanceCriteriaMarkdown,
+      modelOverride: instructionUpdate.modelOverride,
+      reasoningLevelOverride: instructionUpdate.reasoningLevelOverride,
+    })
+  }
+
+  if (parsed.data.status !== undefined) {
+    task = await taskRepository.moveTaskToStatus(task.id, parsed.data.status)
   }
 
   return Response.json({ task })
@@ -229,6 +231,27 @@ function schemaApplyRequiredError() {
     "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database.",
     { status: 503 }
   )
+}
+
+function buildTaskInstructionUpdate(
+  task: Task,
+  data: z.infer<typeof updateTaskRequestSchema>
+): Task {
+  return {
+    ...task,
+    title: data.title ?? task.title,
+    bodyMarkdown: data.bodyMarkdown ?? task.bodyMarkdown,
+    acceptanceCriteriaMarkdown:
+      data.acceptanceCriteriaMarkdown ?? task.acceptanceCriteriaMarkdown,
+    modelOverride:
+      data.modelOverride === undefined
+        ? task.modelOverride
+        : normalizeNullableOverride(data.modelOverride),
+    reasoningLevelOverride:
+      data.reasoningLevelOverride === undefined
+        ? task.reasoningLevelOverride
+        : normalizeNullableOverride(data.reasoningLevelOverride),
+  }
 }
 
 function normalizeNullableOverride(value: string | null) {

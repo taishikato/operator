@@ -116,6 +116,63 @@ test("handleUpdateTaskRequest saves Task instruction edits through the public AP
   assert.equal(body.task.status, "backlog")
 })
 
+test("handleUpdateTaskRequest rejects mixed Ready moves without persisting instruction edits", async () => {
+  const previousCursorApiKey = process.env.CURSOR_API_KEY
+  delete process.env.CURSOR_API_KEY
+
+  try {
+    const databasePath = await createDatabaseForTest()
+    const projects = createProjectRepository({ databasePath })
+    const project = await projects.createProject(createProjectInput())
+    const taskResponse = await handleCreateTaskRequest(
+      jsonRequest({
+        title: "Ready task",
+        bodyMarkdown: "Enough saved context.",
+        acceptanceCriteriaMarkdown: "",
+      }),
+      { databasePath, databaseStatus: "ready", projectKey: project.key }
+    )
+    const taskBody = await taskResponse.json()
+
+    const response = await handleUpdateTaskRequest(
+      jsonRequest({
+        title: "",
+        status: "ready",
+      }),
+      {
+        databasePath,
+        databaseStatus: "ready",
+        projectKey: project.key,
+        taskDisplayId: taskBody.task.displayId,
+      }
+    )
+    const body = await response.json()
+
+    assert.equal(response.status, 400)
+    assert.equal(body.error.code, "ready_title_required")
+
+    const savedResponse = await handleListTasksRequest(
+      new Request("http://test"),
+      {
+        databasePath,
+        databaseStatus: "ready",
+        projectKey: project.key,
+      }
+    )
+    const savedBody = await savedResponse.json()
+
+    assert.equal(savedBody.tasks[0].title, "Ready task")
+    assert.equal(savedBody.tasks[0].status, "backlog")
+    assert.equal(savedBody.tasks[0].bodyMarkdown, "Enough saved context.")
+  } finally {
+    if (previousCursorApiKey === undefined) {
+      delete process.env.CURSOR_API_KEY
+    } else {
+      process.env.CURSOR_API_KEY = previousCursorApiKey
+    }
+  }
+})
+
 test("handleUpdateTaskRequest validates only saved Task content when moving into Ready", async () => {
   const previousCursorApiKey = process.env.CURSOR_API_KEY
   delete process.env.CURSOR_API_KEY
