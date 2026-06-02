@@ -38,10 +38,6 @@ export function discardTaskEditDraft(state: TaskEditState): TaskEditState {
   }
 }
 
-export function commitTaskEditDraft(state: TaskEditState): TaskEditState {
-  return createTaskEditState(state.draft)
-}
-
 export function hasUnsavedTaskEditChanges(state: TaskEditState) {
   return (
     state.saved.title !== state.draft.title ||
@@ -55,8 +51,4 @@ export function hasUnsavedTaskEditChanges(state: TaskEditState) {
 
 export function getTaskEditSavePayload(state: TaskEditState) {
   return { ...state.draft }
-}
-
-export function getSavedTaskRunInput(state: TaskEditState) {
-  return { ...state.saved }
 }

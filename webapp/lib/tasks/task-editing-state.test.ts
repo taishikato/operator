@@ -2,10 +2,8 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import {
-  commitTaskEditDraft,
   createTaskEditState,
   discardTaskEditDraft,
-  getSavedTaskRunInput,
   getTaskEditSavePayload,
   hasUnsavedTaskEditChanges,
   updateTaskEditDraft,
@@ -36,7 +34,7 @@ test("Task edit state saves and discards explicit draft changes", () => {
   assert.equal(discarded.draft.title, "Original title")
   assert.equal(discarded.draft.bodyMarkdown, "Original body")
 
-  const committed = commitTaskEditDraft(edited)
+  const committed = createTaskEditState(edited.draft)
   assert.equal(hasUnsavedTaskEditChanges(committed), false)
   assert.equal(committed.saved.title, "Edited title")
   assert.equal(committed.draft.title, "Edited title")
@@ -50,7 +48,7 @@ test("unsaved Task edits do not change saved run input", () => {
     acceptanceCriteriaMarkdown: "",
   })
 
-  assert.deepEqual(getSavedTaskRunInput(edited), {
+  assert.deepEqual(edited.saved, {
     title: "Original title",
     bodyMarkdown: "Original body",
     acceptanceCriteriaMarkdown: "- Original criteria",
