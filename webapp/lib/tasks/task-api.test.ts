@@ -17,6 +17,29 @@ import {
   handleListTasksRequest,
 } from "./task-api.ts"
 
+test("handleCreateTaskRequest returns schema apply requirement when databaseStatus is requires_explicit_apply", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  await projects.createProject(createProjectInput())
+
+  const response = await handleCreateTaskRequest(
+    jsonRequest({
+      title: "Blocked task",
+      bodyMarkdown: "Should not persist.",
+      acceptanceCriteriaMarkdown: "- Blocked",
+    }),
+    {
+      databasePath,
+      databaseStatus: "requires_explicit_apply",
+      projectKey: "OP",
+    }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 503)
+  assert.equal(body.error.code, "schema_apply_required")
+})
+
 test("handleCreateTaskRequest creates a Project Task with display ID through the public API contract", async () => {
   const databasePath = await createDatabaseForTest()
   const projects = createProjectRepository({ databasePath })
@@ -28,7 +51,7 @@ test("handleCreateTaskRequest creates a Project Task with display ID through the
       bodyMarkdown: "Persist a task from an API request.",
       acceptanceCriteriaMarkdown: "- Response includes the display ID",
     }),
-    { databasePath, projectKey: "OP" }
+    { databasePath, databaseStatus: "ready", projectKey: "OP" }
   )
   const body = await response.json()
 
@@ -39,6 +62,7 @@ test("handleCreateTaskRequest creates a Project Task with display ID through the
 
   const listResponse = await handleListTasksRequest(new Request("http://test"), {
     databasePath,
+    databaseStatus: "ready",
     projectKey: "OP",
   })
   const listBody = await listResponse.json()

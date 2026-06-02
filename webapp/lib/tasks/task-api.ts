@@ -11,9 +11,14 @@ const createTaskRequestSchema = z.object({
   acceptanceCriteriaMarkdown: z.string(),
 })
 
+export type OperatorDatabaseStatus =
+  | "initialized"
+  | "ready"
+  | "requires_explicit_apply"
+
 export type TaskApiOptions = {
   databasePath: string
-  databaseStatus?: "initialized" | "ready" | "requires_explicit_apply"
+  databaseStatus: OperatorDatabaseStatus
   projectKey: string
 }
 
