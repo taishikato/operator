@@ -18,7 +18,7 @@ import {
 import { CSS } from "@dnd-kit/utilities"
 import { GripVertical } from "lucide-react"
 import { useRouter } from "next/navigation"
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 
 import {
   applyKanbanBoardFailure,
@@ -56,12 +56,24 @@ export function KanbanBoard({
   const [lastServerColumns, setLastServerColumns] = useState(initialColumns)
   const [errorMessage, setErrorMessage] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const lastSyncedInitialColumns = useRef(initialColumns)
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   )
+
+  useEffect(() => {
+    if (initialColumns === lastSyncedInitialColumns.current || isSaving) {
+      return
+    }
+
+    lastSyncedInitialColumns.current = initialColumns
+    setColumns(initialColumns)
+    setLastServerColumns(initialColumns)
+    setErrorMessage("")
+  }, [initialColumns, isSaving])
 
   async function saveBoard(nextColumns: KanbanColumn[]) {
     setIsSaving(true)
