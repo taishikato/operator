@@ -2,6 +2,7 @@ import { connect } from "@tursodatabase/database"
 import { stat } from "node:fs/promises"
 
 import { ensureAppData, type AppDataPaths } from "../app-data/app-data.ts"
+import { getRequiredOperatorTableNames } from "./required-operator-tables.ts"
 import { applyOperatorSchemaWithAtlas } from "./schema-apply.ts"
 import { exportOperatorSchemaSql } from "./schema-export.ts"
 
@@ -147,12 +148,15 @@ function isMissingMetadataTableError(error: unknown) {
 }
 
 async function hasRequiredOperatorTables(databasePath: string) {
+  const requiredTableNames = getRequiredOperatorTableNames()
   const client = await connect(databasePath)
 
   try {
+    const placeholders = requiredTableNames.map(() => "?").join(", ")
     const rows = await client.all(
       `SELECT name FROM sqlite_master
-       WHERE type = 'table' AND name IN ('operator_metadata', 'projects', 'tasks')`
+       WHERE type = 'table' AND name IN (${placeholders})`,
+      ...requiredTableNames
     )
     const tableNames = new Set(
       rows
@@ -160,9 +164,7 @@ async function hasRequiredOperatorTables(databasePath: string) {
         .filter((name): name is string => typeof name === "string")
     )
 
-    return ["operator_metadata", "projects", "tasks"].every((name) =>
-      tableNames.has(name)
-    )
+    return requiredTableNames.every((name) => tableNames.has(name))
   } finally {
     await client.close()
   }

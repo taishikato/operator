@@ -77,3 +77,9 @@ export const tasks = sqliteTable(
     uniqueIndex("tasks_display_id_unique").on(task.displayId),
   ]
 )
+
+export const operatorSchemaTables = [
+  operatorMetadata,
+  projects,
+  tasks,
+] as const
