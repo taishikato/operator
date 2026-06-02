@@ -34,6 +34,10 @@ CREATE TABLE tasks (
   id text PRIMARY KEY,
   project_id text NOT NULL
 );
+CREATE TABLE runs (
+  id text PRIMARY KEY,
+  task_id text NOT NULL
+);
 `
 
 test("bootstrapLocalDatabase applies schema and creates storage on first initialization", async () => {

@@ -4,6 +4,11 @@ import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { createProjectRepository } from "../projects/project-repository.ts"
 import {
+  createRunOrchestrator,
+  type CursorRunAdapter,
+  type GitRunAdapter,
+} from "../runs/run-orchestration.ts"
+import {
   createTaskRepository,
   TaskBoardUpdateError,
   TaskValidationError,
@@ -55,6 +60,12 @@ export type TaskApiOptions = {
 
 export type UpdateTaskApiOptions = TaskApiOptions & {
   taskDisplayId: string
+}
+
+export type RunTaskApiOptions = UpdateTaskApiOptions & {
+  cursorApiKey?: string
+  cursorAdapter?: CursorRunAdapter
+  gitAdapter?: GitRunAdapter
 }
 
 export async function resolveTaskApiOptions({
@@ -260,6 +271,27 @@ export async function handleUpdateTaskBoardRequest(
   }
 
   return Response.json({ tasks })
+}
+
+export async function handleRunTaskNowRequest(
+  _request: Request,
+  options: RunTaskApiOptions
+) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
+  const result = await createRunOrchestrator({
+    databasePath: options.databasePath,
+    cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
+    cursorAdapter: options.cursorAdapter,
+    gitAdapter: options.gitAdapter,
+  }).runTaskNow({
+    projectKey: options.projectKey,
+    taskDisplayId: options.taskDisplayId,
+  })
+
+  return Response.json({ result })
 }
 
 async function loadProject(options: TaskApiOptions) {

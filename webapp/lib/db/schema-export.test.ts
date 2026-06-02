@@ -45,6 +45,8 @@ test("exportOperatorSchemaSql exports the Task persistence schema from Drizzle s
   assert.match(sql, /`acceptance_criteria_markdown` text NOT NULL/i)
   assert.match(sql, /`status` text NOT NULL/i)
   assert.match(sql, /`position` integer NOT NULL/i)
+  assert.match(sql, /`task_branch_name` text/i)
+  assert.match(sql, /`blocked_reason` text/i)
   assert.match(sql, /`archived_at` text/i)
   assert.match(
     sql,
@@ -54,6 +56,23 @@ test("exportOperatorSchemaSql exports the Task persistence schema from Drizzle s
     sql,
     /CREATE UNIQUE INDEX [`"]?tasks_display_id_unique[`"]? ON [`"]?tasks[`"]? \([`"]?display_id[`"]?\)/i
   )
+})
+
+test("exportOperatorSchemaSql exports the Run persistence schema from Drizzle schema", () => {
+  const sql = exportOperatorSchemaSql()
+
+  assert.match(sql, /CREATE TABLE [`"]?runs[`"]?/i)
+  assert.match(sql, /`project_id` text NOT NULL/i)
+  assert.match(sql, /`task_id` text NOT NULL/i)
+  assert.match(sql, /`task_display_id` text NOT NULL/i)
+  assert.match(sql, /`task_branch_name` text NOT NULL/i)
+  assert.match(sql, /`model` text NOT NULL/i)
+  assert.match(sql, /`reasoning_level` text NOT NULL/i)
+  assert.match(sql, /`head_before` text NOT NULL/i)
+  assert.match(sql, /`head_after` text/i)
+  assert.match(sql, /`worktree_dirty_before` integer NOT NULL/i)
+  assert.match(sql, /`worktree_dirty_after` integer/i)
+  assert.match(sql, /`adapter_run_id` text/i)
 })
 
 test("exportOperatorSchemaSql reports spawn failures without masking them", () => {

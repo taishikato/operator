@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical } from "lucide-react"
+import { GripVertical, Play } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 
@@ -56,6 +56,7 @@ export function KanbanBoard({
   const [lastServerColumns, setLastServerColumns] = useState(initialColumns)
   const [errorMessage, setErrorMessage] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set())
   const lastSyncedInitialColumns = useRef(initialColumns)
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -167,6 +168,34 @@ export function KanbanBoard({
     void saveBoard(nextColumns)
   }
 
+  async function runTaskNow(task: KanbanTask) {
+    setRunningTaskIds((current) => new Set(current).add(task.displayId))
+    setErrorMessage("")
+
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectKey)}/tasks/${encodeURIComponent(task.displayId)}/run`,
+        { method: "POST" }
+      )
+      const body = (await response.json()) as BoardResponseBody
+
+      if (!response.ok) {
+        setErrorMessage(getBoardErrorMessage(body))
+        return
+      }
+
+      router.refresh()
+    } catch {
+      setErrorMessage("Could not reach the local Run Now API.")
+    } finally {
+      setRunningTaskIds((current) => {
+        const next = new Set(current)
+        next.delete(task.displayId)
+        return next
+      })
+    }
+  }
+
   return (
     <div className="grid min-w-0 gap-3">
       {errorMessage ? (
@@ -188,6 +217,8 @@ export function KanbanBoard({
               key={column.status}
               column={column}
               projectKey={projectKey}
+              runningTaskIds={runningTaskIds}
+              onRunTask={runTaskNow}
             />
           ))}
         </section>
@@ -199,9 +230,13 @@ export function KanbanBoard({
 function KanbanBoardColumn({
   column,
   projectKey,
+  runningTaskIds,
+  onRunTask,
 }: {
   column: KanbanColumn
   projectKey: string
+  runningTaskIds: Set<string>
+  onRunTask: (task: KanbanTask) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
     id: columnId(column.status),
@@ -233,6 +268,8 @@ function KanbanBoardColumn({
                 key={task.id}
                 projectKey={projectKey}
                 task={task}
+                isRunPending={runningTaskIds.has(task.displayId)}
+                onRunTask={onRunTask}
               />
             ))
           ) : (
@@ -249,11 +286,16 @@ function KanbanBoardColumn({
 function KanbanTaskCard({
   projectKey,
   task,
+  isRunPending,
+  onRunTask,
 }: {
   projectKey: string
   task: KanbanTask
+  isRunPending: boolean
+  onRunTask: (task: KanbanTask) => void
 }) {
   const disabled = task.status === "running"
+  const canRun = canRunTaskNow(task.status)
   const {
     attributes,
     listeners,
@@ -291,23 +333,50 @@ function KanbanTaskCard({
             {task.title}
           </div>
         </a>
-        <button
-          type="button"
-          aria-label={`Drag ${task.displayId}`}
-          title={
-            disabled
-              ? "Running Tasks are controlled by the system"
-              : "Drag Task"
-          }
-          disabled={disabled}
-          className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
-          {...attributes}
-          {...listeners}
-        >
-          <GripVertical className="h-4 w-4" />
-        </button>
+        <div className="flex shrink-0 items-center gap-1">
+          {canRun ? (
+            <button
+              type="button"
+              aria-label={`Run ${task.displayId}`}
+              title="Run Now"
+              disabled={isRunPending}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-wait disabled:opacity-40"
+              onClick={(event) => {
+                event.preventDefault()
+                event.stopPropagation()
+                onRunTask(task)
+              }}
+            >
+              <Play className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          <button
+            type="button"
+            aria-label={`Drag ${task.displayId}`}
+            title={
+              disabled
+                ? "Running Tasks are controlled by the system"
+                : "Drag Task"
+            }
+            disabled={disabled}
+            className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+            {...attributes}
+            {...listeners}
+          >
+            <GripVertical className="h-4 w-4" />
+          </button>
+        </div>
       </div>
     </div>
+  )
+}
+
+function canRunTaskNow(status: TaskStatus) {
+  return (
+    status === "backlog" ||
+    status === "ready" ||
+    status === "blocked" ||
+    status === "review"
   )
 }
 

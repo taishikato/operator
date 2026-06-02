@@ -26,6 +26,8 @@ export type Task = {
   acceptanceCriteriaMarkdown: string
   status: TaskStatus
   position: number
+  taskBranchName: string | null
+  blockedReason: string | null
   modelOverride: string | null
   reasoningLevelOverride: string | null
   createdAt: string
@@ -131,6 +133,8 @@ export function createTaskRepository({
             acceptanceCriteriaMarkdown: input.acceptanceCriteriaMarkdown,
             status,
             position,
+            taskBranchName: null,
+            blockedReason: null,
             modelOverride: null,
             reasoningLevelOverride: null,
             createdAt: now,
@@ -235,6 +239,7 @@ export function createTaskRepository({
           .set({
             status,
             position,
+            blockedReason: status === "blocked" ? currentTask.blockedReason : null,
             updatedAt: new Date().toISOString(),
           })
           .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
@@ -374,7 +379,98 @@ export function createTaskRepository({
         return toTask(task)
       })
     },
+
+    async setTaskBranchName(taskId: string, branchName: string) {
+      return withDb(databasePath, async (db) => {
+        const [existing] = await db
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+          .limit(1)
+
+        if (!existing) {
+          throw new Error(`Active Task not found: ${taskId}`)
+        }
+
+        if (existing.taskBranchName) {
+          return existing.taskBranchName
+        }
+
+        const [task] = await db
+          .update(tasks)
+          .set({
+            taskBranchName: branchName,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+          .returning()
+
+        if (!task) {
+          throw new Error(`Active Task not found: ${taskId}`)
+        }
+
+        return task.taskBranchName ?? branchName
+      })
+    },
+
+    async markTaskRunning(taskId: string) {
+      return moveSystemControlledTaskStatus(databasePath, taskId, "running", null)
+    },
+
+    async markTaskReview(taskId: string) {
+      return moveSystemControlledTaskStatus(databasePath, taskId, "review", null)
+    },
+
+    async markTaskBlocked(taskId: string, blockedReason: string) {
+      return moveSystemControlledTaskStatus(
+        databasePath,
+        taskId,
+        "blocked",
+        blockedReason
+      )
+    },
   }
+}
+
+async function moveSystemControlledTaskStatus(
+  databasePath: string,
+  taskId: string,
+  status: TaskStatus,
+  blockedReason: string | null
+) {
+  return withDb(databasePath, async (db) => {
+    const [existing] = await db
+      .select()
+      .from(tasks)
+      .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+      .limit(1)
+
+    if (!existing) {
+      throw new Error(`Active Task not found: ${taskId}`)
+    }
+
+    const currentTask = toTask(existing)
+    const position =
+      currentTask.status === status
+        ? currentTask.position
+        : await nextPositionForStatus(db, currentTask.projectId, status)
+    const [task] = await db
+      .update(tasks)
+      .set({
+        status,
+        position,
+        blockedReason,
+        updatedAt: new Date().toISOString(),
+      })
+      .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+      .returning()
+
+    if (!task) {
+      throw new Error(`Active Task not found: ${taskId}`)
+    }
+
+    return toTask(task)
+  })
 }
 
 async function nextPositionForStatus(
@@ -450,6 +546,8 @@ function toTask(row: typeof tasks.$inferSelect): Task {
     acceptanceCriteriaMarkdown: row.acceptanceCriteriaMarkdown,
     status: row.status,
     position: row.position,
+    taskBranchName: row.taskBranchName,
+    blockedReason: row.blockedReason,
     modelOverride: row.modelOverride,
     reasoningLevelOverride: row.reasoningLevelOverride,
     createdAt: row.createdAt,

@@ -64,6 +64,10 @@ CREATE TABLE tasks (
   id text PRIMARY KEY,
   project_id text NOT NULL
 );
+CREATE TABLE runs (
+  id text PRIMARY KEY,
+  task_id text NOT NULL
+);
 `
     )
   })
