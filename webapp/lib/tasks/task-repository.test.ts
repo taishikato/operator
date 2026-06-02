@@ -154,10 +154,86 @@ test("TaskRepository requires saved Task content before moving into Ready", asyn
   assert.equal(moved.acceptanceCriteriaMarkdown, "- Has acceptance criteria")
 })
 
+test("TaskRepository exposes Ready Tasks in persisted run selection order", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  await tasks.createTask({
+    projectId: project.id,
+    title: "First ready task",
+    bodyMarkdown: "Run this task.",
+    acceptanceCriteriaMarkdown: "- It can run",
+  })
+  await tasks.createTask({
+    projectId: project.id,
+    title: "Second ready task",
+    bodyMarkdown: "Run this task too.",
+    acceptanceCriteriaMarkdown: "- It can run",
+  })
+
+  await tasks.updateTaskBoard(project.id, [
+    { status: "ready", taskDisplayIds: ["OP-2", "OP-1"] },
+  ])
+
+  assert.deepEqual(
+    (await tasks.listReadyTasksForRunSelection(project.id)).map(
+      (task) => task.displayId
+    ),
+    ["OP-2", "OP-1"]
+  )
+})
+
+test("TaskRepository rolls back board updates when a later write fails", async () => {
+  const { databasePath, projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  await tasks.createTask({
+    projectId: project.id,
+    title: "First task",
+    bodyMarkdown: "Keep the original position if the board update fails.",
+    acceptanceCriteriaMarkdown: "- It stays first",
+  })
+  await tasks.createTask({
+    projectId: project.id,
+    title: "Second task",
+    bodyMarkdown: "This update happens before the forced failure.",
+    acceptanceCriteriaMarkdown: "- It stays second after rollback",
+  })
+  await runSql(
+    databasePath,
+    `
+CREATE TRIGGER fail_op_1_board_update
+BEFORE UPDATE ON tasks
+WHEN OLD.display_id = 'OP-1'
+BEGIN
+  SELECT RAISE(FAIL, 'forced board update failure');
+END;
+`
+  )
+
+  await assert.rejects(
+    () =>
+      tasks.updateTaskBoard(project.id, [
+        { status: "backlog", taskDisplayIds: ["OP-2", "OP-1"] },
+      ])
+  )
+
+  assert.deepEqual(
+    (await tasks.listActiveTasksForProject(project.id)).map((task) => ({
+      displayId: task.displayId,
+      status: task.status,
+      position: task.position,
+    })),
+    [
+      { displayId: "OP-1", status: "backlog", position: 1 },
+      { displayId: "OP-2", status: "backlog", position: 2 },
+    ]
+  )
+})
+
 async function createRepositoriesForTest() {
   const databasePath = await createDatabaseForTest()
 
   return {
+    databasePath,
     projects: createProjectRepository({ databasePath }),
     tasks: createTaskRepository({ databasePath }),
   }
@@ -175,6 +251,16 @@ async function createDatabaseForTest() {
   }
 
   return databasePath
+}
+
+async function runSql(databasePath: string, sql: string) {
+  const client = await connect(databasePath)
+
+  try {
+    await client.exec(sql)
+  } finally {
+    await client.close()
+  }
 }
 
 function createProjectInput(
