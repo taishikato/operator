@@ -48,6 +48,80 @@ mock.module("next/navigation", {
   },
 })
 
+test("Save stays disabled while Ready move is in flight", async () => {
+  const { TaskDrawer } = await import("./task-drawer.tsx")
+
+  const task = createDrawerTask("OP-1", "First task")
+  let resolveReady: (response: Response) => void = () => {}
+  const readyResponse = new Promise<Response>((resolve) => {
+    resolveReady = resolve
+  })
+
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async (input, init) => {
+    const body =
+      typeof init?.body === "string" ? JSON.parse(init.body) : undefined
+
+    if (init?.method === "PATCH" && body?.status === "ready") {
+      return readyResponse
+    }
+
+    return originalFetch(input, init)
+  }) as typeof fetch
+
+  try {
+    const view = render(<TaskDrawer projectKey="demo" task={task} />)
+
+    const readyButton = view.getByRole("button", { name: "Ready" })
+
+    fireEvent.click(readyButton)
+
+    const saveButtonWhileBusy = view.getByRole("button", { name: "Save" })
+    const readyButtonWhileBusy = view.getByRole("button", { name: "Ready" })
+    const titleInputWhileBusy =
+      view.getByDisplayValue("First task") as HTMLInputElement
+
+    assert.equal((readyButtonWhileBusy as HTMLButtonElement).disabled, true)
+    assert.equal((saveButtonWhileBusy as HTMLButtonElement).disabled, true)
+    assert.equal(titleInputWhileBusy.disabled, true)
+
+    resolveReady(
+      new Response(
+        JSON.stringify({
+          task: {
+            ...task,
+            status: "ready",
+          },
+        }),
+        { status: 200 }
+      )
+    )
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    view.rerender(
+      <TaskDrawer
+        projectKey="demo"
+        task={{
+          ...task,
+          status: "ready",
+        }}
+      />
+    )
+
+    const saveButtonAfterReady = view.getByRole("button", { name: "Save" })
+    const readyButtonAfterReady = view.getByRole("button", { name: "Ready" })
+    const titleInputAfterReady =
+      view.getByDisplayValue("First task") as HTMLInputElement
+
+    assert.equal((readyButtonAfterReady as HTMLButtonElement).disabled, true)
+    assert.equal((saveButtonAfterReady as HTMLButtonElement).disabled, true)
+    assert.equal(titleInputAfterReady.disabled, false)
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+})
+
 test("selected task drawer remount clears stale edit draft when task changes", async () => {
   const { TaskDrawer } = await import("./task-drawer.tsx")
 

@@ -14,6 +14,9 @@ import {
   type TaskEditState,
   type TaskInstructionFields,
 } from "@/lib/tasks/task-editing-state"
+import {
+  getTaskDrawerActionState,
+} from "@/lib/tasks/task-drawer-actions"
 import type { TaskStatus } from "@/lib/tasks/task-repository"
 
 type TaskDrawerTask = TaskInstructionFields & {
@@ -51,6 +54,12 @@ export function TaskDrawer({
   const [isSaving, setIsSaving] = useState(false)
   const [isMovingReady, setIsMovingReady] = useState(false)
   const hasChanges = hasUnsavedTaskEditChanges(editState)
+  const actionState = getTaskDrawerActionState({
+    hasChanges,
+    isSaving,
+    isMovingReady,
+    taskStatus: task.status,
+  })
 
   function updateDraft(patch: Partial<TaskInstructionFields>) {
     setEditState((current) => updateTaskEditDraft(current, patch))
@@ -146,7 +155,8 @@ export function TaskDrawer({
           <input
             value={editState.draft.title}
             onChange={(event) => updateDraft({ title: event.target.value })}
-            className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+            disabled={actionState.inputsDisabled}
+            className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
           />
         </label>
 
@@ -156,6 +166,7 @@ export function TaskDrawer({
           preview={bodyPreview}
           onPreviewChange={setBodyPreview}
           onChange={(bodyMarkdown) => updateDraft({ bodyMarkdown })}
+          disabled={actionState.inputsDisabled}
         />
 
         <MarkdownEditor
@@ -166,6 +177,7 @@ export function TaskDrawer({
           onChange={(acceptanceCriteriaMarkdown) =>
             updateDraft({ acceptanceCriteriaMarkdown })
           }
+          disabled={actionState.inputsDisabled}
         />
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -180,7 +192,8 @@ export function TaskDrawer({
                   modelOverride: event.target.value || null,
                 })
               }
-              className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+              disabled={actionState.inputsDisabled}
+              className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="">Project default</option>
               <option value="cursor/gpt-5">cursor/gpt-5</option>
@@ -199,7 +212,8 @@ export function TaskDrawer({
                   reasoningLevelOverride: event.target.value || null,
                 })
               }
-              className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+              disabled={actionState.inputsDisabled}
+              className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
             >
               <option value="">Project default</option>
               <option value="low">low</option>
@@ -223,8 +237,8 @@ export function TaskDrawer({
             type="button"
             variant="outline"
             onClick={moveToReady}
-            disabled={isMovingReady || task.status === "ready"}
-            title="Move to Ready"
+            disabled={actionState.readyDisabled}
+            title={actionState.readyTitle}
           >
             <CheckCircle2 data-icon="inline-start" />
             Ready
@@ -237,7 +251,7 @@ export function TaskDrawer({
               onClick={() =>
                 setEditState((current) => discardTaskEditDraft(current))
               }
-              disabled={!hasChanges || isSaving}
+              disabled={actionState.discardDisabled}
               title="Discard changes"
             >
               <RotateCcw data-icon="inline-start" />
@@ -246,7 +260,7 @@ export function TaskDrawer({
             <Button
               type="button"
               onClick={saveTask}
-              disabled={!hasChanges || isSaving}
+              disabled={actionState.saveDisabled}
               title="Save changes"
             >
               <Save data-icon="inline-start" />
@@ -265,12 +279,14 @@ function MarkdownEditor({
   preview,
   onPreviewChange,
   onChange,
+  disabled = false,
 }: {
   label: string
   value: string
   preview: boolean
   onPreviewChange: (preview: boolean) => void
   onChange: (value: string) => void
+  disabled?: boolean
 }) {
   return (
     <div className="grid gap-1.5">
@@ -282,7 +298,8 @@ function MarkdownEditor({
           <button
             type="button"
             onClick={() => onPreviewChange(false)}
-            className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs transition ${
+            disabled={disabled}
+            className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
               preview ? "text-muted-foreground" : "bg-background shadow-sm"
             }`}
             title="Edit markdown"
@@ -293,7 +310,8 @@ function MarkdownEditor({
           <button
             type="button"
             onClick={() => onPreviewChange(true)}
-            className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs transition ${
+            disabled={disabled}
+            className={`inline-flex h-7 items-center gap-1 rounded px-2 text-xs transition disabled:cursor-not-allowed disabled:opacity-50 ${
               preview ? "bg-background shadow-sm" : "text-muted-foreground"
             }`}
             title="Preview markdown"
@@ -310,7 +328,8 @@ function MarkdownEditor({
         <textarea
           value={value}
           onChange={(event) => onChange(event.target.value)}
-          className="min-h-32 resize-y rounded-md border bg-background px-3 py-2 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+          disabled={disabled}
+          className="min-h-32 resize-y rounded-md border bg-background px-3 py-2 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
         />
       )}
     </div>
