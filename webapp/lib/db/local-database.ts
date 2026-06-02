@@ -45,6 +45,14 @@ export async function bootstrapLocalDatabase(
       }
     }
 
+    if (!(await hasRequiredOperatorTables(paths.databasePath))) {
+      return {
+        databasePath: paths.databasePath,
+        schemaApplied: false,
+        status: "requires_explicit_apply",
+      }
+    }
+
     return {
       databasePath: paths.databasePath,
       schemaApplied: false,
@@ -136,6 +144,28 @@ function isMissingMetadataTableError(error: unknown) {
     error instanceof Error &&
     error.message.includes("no such table: operator_metadata")
   )
+}
+
+async function hasRequiredOperatorTables(databasePath: string) {
+  const client = await connect(databasePath)
+
+  try {
+    const rows = await client.all(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'table' AND name IN ('operator_metadata', 'projects', 'tasks')`
+    )
+    const tableNames = new Set(
+      rows
+        .map((row) => row.name)
+        .filter((name): name is string => typeof name === "string")
+    )
+
+    return ["operator_metadata", "projects", "tasks"].every((name) =>
+      tableNames.has(name)
+    )
+  } finally {
+    await client.close()
+  }
 }
 
 async function readDatabaseFileState(path: string) {

@@ -13,6 +13,7 @@ const createTaskRequestSchema = z.object({
 
 export type TaskApiOptions = {
   databasePath: string
+  databaseStatus?: "initialized" | "ready" | "requires_explicit_apply"
   projectKey: string
 }
 
@@ -23,13 +24,21 @@ export async function resolveTaskApiOptions({
 }): Promise<TaskApiOptions> {
   const result = await bootstrapLocalDatabase(resolveAppDataPaths({}))
 
-  return { databasePath: result.databasePath, projectKey }
+  return {
+    databasePath: result.databasePath,
+    databaseStatus: result.status,
+    projectKey,
+  }
 }
 
 export async function handleListTasksRequest(
   _request: Request,
   options: TaskApiOptions
 ) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
   const project = await loadProject(options)
 
   if (!project) {
@@ -49,6 +58,10 @@ export async function handleCreateTaskRequest(
   request: Request,
   options: TaskApiOptions
 ) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
   const body = await parseJsonRequest(request)
 
   if (!body.success) {
@@ -105,4 +118,12 @@ function validationError(
   } = {}
 ) {
   return Response.json({ error: { code, message } }, { status })
+}
+
+function schemaApplyRequiredError() {
+  return validationError(
+    "schema_apply_required",
+    "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database.",
+    { status: 503 }
+  )
 }

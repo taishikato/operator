@@ -33,10 +33,12 @@ Completed in branch `operator-mvp-issue-07-task-schema-kanban`.
 - Added Task repository behavior for creation, active listing, display ID lookup, and archival without number reuse.
 - Added `GET` and `POST` Task API handlers under `/api/projects/[projectKey]/tasks`.
 - Replaced the Project placeholder with the first Kanban skeleton, Task creation form, Backlog placement for new Tasks, and a minimal URL-addressable Task drawer.
+- Added an initialized-old-database guard so databases missing the new `tasks` table are reported as requiring explicit schema apply instead of failing with `no such table: tasks`.
 - Kept drag-and-drop, Task editing/preview, run orchestration, scheduler, raw logs, and PR creation out of scope.
 
 Verification:
 
+- `node --experimental-strip-types --test lib/db/local-database.test.ts lib/tasks/task-api.test.ts`
 - `node --experimental-strip-types --test lib/db/schema-export.test.ts lib/tasks/task-repository.test.ts lib/tasks/task-api.test.ts lib/tasks/kanban-view.test.ts`
 - `pnpm test`
 - `pnpm typecheck`

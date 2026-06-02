@@ -21,13 +21,30 @@ export default async function ProjectPage({
 }) {
   const { projectKey } = await params
   const { task: selectedTaskDisplayId } = await searchParams
-  const { databasePath } = await resolveAddProjectApiOptions()
+  const { databasePath, databaseStatus } = await resolveAddProjectApiOptions()
   const project = await createProjectRepository({
     databasePath,
   }).getActiveProjectByKey(projectKey)
 
   if (!project) {
     notFound()
+  }
+
+  if (databaseStatus === "requires_explicit_apply") {
+    return (
+      <main className="min-h-svh bg-background">
+        <ProjectHeader project={project} />
+        <section className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+          <div
+            role="alert"
+            className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100"
+          >
+            Operator database schema is out of date. Run the explicit database
+            apply command or reset the local Operator database.
+          </div>
+        </section>
+      </main>
+    )
   }
 
   const tasks = await createTaskRepository({
@@ -47,24 +64,7 @@ export default async function ProjectPage({
 
   return (
     <main className="min-h-svh bg-background">
-      <header className="border-b px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium uppercase text-muted-foreground">
-              Project {project.key}
-            </p>
-            <h1 className="truncate text-xl font-semibold tracking-normal">
-              {project.displayName}
-            </h1>
-            <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
-              {project.repoPath}
-            </p>
-          </div>
-          <div className="rounded-md border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-            Schedule off
-          </div>
-        </div>
-      </header>
+      <ProjectHeader project={project} />
 
       <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:px-8">
         <aside className="min-w-0">
@@ -150,5 +150,36 @@ export default async function ProjectPage({
         </aside>
       ) : null}
     </main>
+  )
+}
+
+function ProjectHeader({
+  project,
+}: {
+  project: {
+    displayName: string
+    key: string
+    repoPath: string
+  }
+}) {
+  return (
+    <header className="border-b px-4 py-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase text-muted-foreground">
+            Project {project.key}
+          </p>
+          <h1 className="truncate text-xl font-semibold tracking-normal">
+            {project.displayName}
+          </h1>
+          <p className="mt-1 truncate font-mono text-xs text-muted-foreground">
+            {project.repoPath}
+          </p>
+        </div>
+        <div className="rounded-md border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+          Schedule off
+        </div>
+      </div>
+    </header>
   )
 }

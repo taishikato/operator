@@ -30,12 +30,13 @@ const createProjectRequestSchema = z.object({
 
 type AddProjectApiOptions = {
   databasePath: string
+  databaseStatus?: "initialized" | "ready" | "requires_explicit_apply"
 }
 
 export async function resolveAddProjectApiOptions(): Promise<AddProjectApiOptions> {
   const result = await bootstrapLocalDatabase(resolveAppDataPaths({}))
 
-  return { databasePath: result.databasePath }
+  return { databasePath: result.databasePath, databaseStatus: result.status }
 }
 
 export async function handleDetectProjectRequest(
