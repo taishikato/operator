@@ -8,6 +8,8 @@ export type KanbanTask = {
   acceptanceCriteriaMarkdown: string
   status: TaskStatus
   position: number
+  modelOverride: string | null
+  reasoningLevelOverride: string | null
 }
 
 export type KanbanColumn = {

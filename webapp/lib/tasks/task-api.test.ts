@@ -15,6 +15,7 @@ import {
 import {
   handleCreateTaskRequest,
   handleListTasksRequest,
+  handleUpdateTaskRequest,
 } from "./task-api.ts"
 
 test("handleCreateTaskRequest returns schema apply requirement when databaseStatus is requires_explicit_apply", async () => {
@@ -72,6 +73,123 @@ test("handleCreateTaskRequest creates a Project Task with display ID through the
     listBody.tasks.map((task: { displayId: string }) => task.displayId),
     ["OP-1"]
   )
+})
+
+test("handleUpdateTaskRequest saves Task instruction edits through the public API contract", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  const taskResponse = await handleCreateTaskRequest(
+    jsonRequest({
+      title: "Original title",
+      bodyMarkdown: "Original body",
+      acceptanceCriteriaMarkdown: "- Original criteria",
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const taskBody = await taskResponse.json()
+
+  const response = await handleUpdateTaskRequest(
+    jsonRequest({
+      title: "Edited title",
+      bodyMarkdown: "Edited body",
+      acceptanceCriteriaMarkdown: "- Edited criteria",
+      modelOverride: "cursor/gpt-5.1",
+      reasoningLevelOverride: "medium",
+    }),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+      taskDisplayId: taskBody.task.displayId,
+    }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(body.task.displayId, "OP-1")
+  assert.equal(body.task.title, "Edited title")
+  assert.equal(body.task.bodyMarkdown, "Edited body")
+  assert.equal(body.task.acceptanceCriteriaMarkdown, "- Edited criteria")
+  assert.equal(body.task.modelOverride, "cursor/gpt-5.1")
+  assert.equal(body.task.reasoningLevelOverride, "medium")
+  assert.equal(body.task.status, "backlog")
+})
+
+test("handleUpdateTaskRequest validates only saved Task content when moving into Ready", async () => {
+  const previousCursorApiKey = process.env.CURSOR_API_KEY
+  delete process.env.CURSOR_API_KEY
+
+  try {
+    const databasePath = await createDatabaseForTest()
+    const projects = createProjectRepository({ databasePath })
+    const project = await projects.createProject(createProjectInput())
+    const invalidTaskResponse = await handleCreateTaskRequest(
+      jsonRequest({
+        title: "No instructions",
+        bodyMarkdown: "",
+        acceptanceCriteriaMarkdown: "",
+      }),
+      { databasePath, databaseStatus: "ready", projectKey: project.key }
+    )
+    const invalidTaskBody = await invalidTaskResponse.json()
+
+    const invalidResponse = await handleUpdateTaskRequest(
+      jsonRequest({ status: "ready" }),
+      {
+        databasePath,
+        databaseStatus: "ready",
+        projectKey: project.key,
+        taskDisplayId: invalidTaskBody.task.displayId,
+      }
+    )
+    const invalidBody = await invalidResponse.json()
+
+    assert.equal(invalidResponse.status, 400)
+    assert.equal(invalidBody.error.code, "ready_content_required")
+
+    const savedResponse = await handleListTasksRequest(
+      new Request("http://test"),
+      {
+        databasePath,
+        databaseStatus: "ready",
+        projectKey: project.key,
+      }
+    )
+    const savedBody = await savedResponse.json()
+    assert.equal(savedBody.tasks[0].status, "backlog")
+    assert.equal(savedBody.tasks[0].bodyMarkdown, "")
+
+    const validTaskResponse = await handleCreateTaskRequest(
+      jsonRequest({
+        title: "Ready task",
+        bodyMarkdown: "Enough saved context.",
+        acceptanceCriteriaMarkdown: "",
+      }),
+      { databasePath, databaseStatus: "ready", projectKey: project.key }
+    )
+    const validTaskBody = await validTaskResponse.json()
+
+    const readyResponse = await handleUpdateTaskRequest(
+      jsonRequest({ status: "ready" }),
+      {
+        databasePath,
+        databaseStatus: "ready",
+        projectKey: project.key,
+        taskDisplayId: validTaskBody.task.displayId,
+      }
+    )
+    const readyBody = await readyResponse.json()
+
+    assert.equal(readyResponse.status, 200)
+    assert.equal(readyBody.task.status, "ready")
+  } finally {
+    if (previousCursorApiKey === undefined) {
+      delete process.env.CURSOR_API_KEY
+    } else {
+      process.env.CURSOR_API_KEY = previousCursorApiKey
+    }
+  }
 })
 
 test("handleListTasksRequest reports schema apply requirement before querying missing Task tables", async () => {

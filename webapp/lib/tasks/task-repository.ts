@@ -40,9 +40,30 @@ export type CreateTaskInput = {
   acceptanceCriteriaMarkdown: string
 }
 
+export type UpdateTaskInstructionsInput = {
+  title: string
+  bodyMarkdown: string
+  acceptanceCriteriaMarkdown: string
+  modelOverride: string | null
+  reasoningLevelOverride: string | null
+}
+
 type TaskDb = ReturnType<
   typeof drizzle<{ projects: typeof projects; tasks: typeof tasks }>
 >
+
+export class TaskValidationError extends Error {
+  readonly code: "ready_title_required" | "ready_content_required"
+
+  constructor(
+    code: "ready_title_required" | "ready_content_required",
+    message: string
+  ) {
+    super(message)
+    this.name = "TaskValidationError"
+    this.code = code
+  }
+}
 
 export function createTaskRepository({
   databasePath,
@@ -120,6 +141,69 @@ export function createTaskRepository({
       })
     },
 
+    async updateTaskInstructions(
+      taskId: string,
+      input: UpdateTaskInstructionsInput
+    ) {
+      return withDb(databasePath, async (db) => {
+        const [task] = await db
+          .update(tasks)
+          .set({
+            title: input.title,
+            bodyMarkdown: input.bodyMarkdown,
+            acceptanceCriteriaMarkdown: input.acceptanceCriteriaMarkdown,
+            modelOverride: input.modelOverride,
+            reasoningLevelOverride: input.reasoningLevelOverride,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+          .returning()
+
+        if (!task) {
+          throw new Error(`Active Task not found: ${taskId}`)
+        }
+
+        return toTask(task)
+      })
+    },
+
+    async moveTaskToStatus(taskId: string, status: TaskStatus) {
+      return withDb(databasePath, async (db) => {
+        const [existing] = await db
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+          .limit(1)
+
+        if (!existing) {
+          throw new Error(`Active Task not found: ${taskId}`)
+        }
+
+        const currentTask = toTask(existing)
+        validateStatusTransition(currentTask, status)
+
+        const position =
+          currentTask.status === status
+            ? currentTask.position
+            : await nextPositionForStatus(db, currentTask.projectId, status)
+        const [task] = await db
+          .update(tasks)
+          .set({
+            status,
+            position,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+          .returning()
+
+        if (!task) {
+          throw new Error(`Active Task not found: ${taskId}`)
+        }
+
+        return toTask(task)
+      })
+    },
+
     async archiveTask(taskId: string) {
       return withDb(databasePath, async (db) => {
         const now = new Date().toISOString()
@@ -161,6 +245,29 @@ async function nextPositionForStatus(
     )
 
   return (row?.position ?? 0) + 1
+}
+
+function validateStatusTransition(task: Task, status: TaskStatus) {
+  if (status !== "ready") {
+    return
+  }
+
+  if (task.title.trim().length === 0) {
+    throw new TaskValidationError(
+      "ready_title_required",
+      "Task title is required before moving to Ready."
+    )
+  }
+
+  if (
+    task.bodyMarkdown.trim().length === 0 &&
+    task.acceptanceCriteriaMarkdown.trim().length === 0
+  ) {
+    throw new TaskValidationError(
+      "ready_content_required",
+      "Task body or acceptance criteria is required before moving to Ready."
+    )
+  }
 }
 
 async function withDb<T>(

@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation"
 
 import { TaskCreateForm } from "@/components/tasks/task-create-form"
+import { TaskDrawer } from "@/components/tasks/task-drawer"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
 import { createProjectRepository } from "@/lib/projects/project-repository"
 import {
@@ -58,6 +59,8 @@ export default async function ProjectPage({
     acceptanceCriteriaMarkdown: task.acceptanceCriteriaMarkdown,
     status: task.status,
     position: task.position,
+    modelOverride: task.modelOverride,
+    reasoningLevelOverride: task.reasoningLevelOverride,
   }))
   const columns = createKanbanColumns(kanbanTasks)
   const selectedTask = resolveTaskDrawer(selectedTaskDisplayId, kanbanTasks)
@@ -111,43 +114,7 @@ export default async function ProjectPage({
       </div>
 
       {selectedTask ? (
-        <aside className="fixed inset-y-0 right-0 z-20 w-full max-w-md overflow-y-auto border-l bg-background p-5 shadow-xl">
-          <div className="flex items-start justify-between gap-4">
-            <div className="min-w-0">
-              <p className="font-mono text-xs text-muted-foreground">
-                {selectedTask.displayId}
-              </p>
-              <h2 className="mt-1 text-lg font-semibold tracking-normal break-words">
-                {selectedTask.title}
-              </h2>
-            </div>
-            <a
-              href={`/projects/${encodeURIComponent(project.key)}`}
-              className="rounded-md border px-2 py-1 text-xs text-muted-foreground transition hover:text-foreground"
-            >
-              Close
-            </a>
-          </div>
-          <section className="mt-5 grid gap-4 text-sm">
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground">
-                Body
-              </h3>
-              <pre className="mt-2 whitespace-pre-wrap rounded-md border bg-muted/25 p-3 font-sans text-sm">
-                {selectedTask.bodyMarkdown || "No body yet."}
-              </pre>
-            </div>
-            <div>
-              <h3 className="text-xs font-semibold text-muted-foreground">
-                Acceptance criteria
-              </h3>
-              <pre className="mt-2 whitespace-pre-wrap rounded-md border bg-muted/25 p-3 font-sans text-sm">
-                {selectedTask.acceptanceCriteriaMarkdown ||
-                  "No acceptance criteria yet."}
-              </pre>
-            </div>
-          </section>
-        </aside>
+        <TaskDrawer projectKey={project.key} task={selectedTask} />
       ) : null}
     </main>
   )

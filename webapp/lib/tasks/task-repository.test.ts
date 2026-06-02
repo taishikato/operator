@@ -75,6 +75,85 @@ test("TaskRepository does not reuse Project task numbers after archival", async 
   )
 })
 
+test("TaskRepository updates saved Task instructions explicitly", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Original title",
+    bodyMarkdown: "Original body",
+    acceptanceCriteriaMarkdown: "- Original criteria",
+  })
+
+  const updated = await tasks.updateTaskInstructions(task.id, {
+    title: "Edited title",
+    bodyMarkdown: "Edited body",
+    acceptanceCriteriaMarkdown: "- Edited criteria",
+    modelOverride: "cursor/gpt-5.1",
+    reasoningLevelOverride: "medium",
+  })
+
+  assert.equal(updated.id, task.id)
+  assert.equal(updated.title, "Edited title")
+  assert.equal(updated.bodyMarkdown, "Edited body")
+  assert.equal(updated.acceptanceCriteriaMarkdown, "- Edited criteria")
+  assert.equal(updated.modelOverride, "cursor/gpt-5.1")
+  assert.equal(updated.reasoningLevelOverride, "medium")
+  assert.equal(updated.status, "backlog")
+
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+  assert.equal(saved?.title, "Edited title")
+  assert.equal(saved?.bodyMarkdown, "Edited body")
+  assert.equal(saved?.acceptanceCriteriaMarkdown, "- Edited criteria")
+})
+
+test("TaskRepository requires saved Task content before moving into Ready", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  const incomplete = await tasks.createTask({
+    projectId: project.id,
+    title: "  ",
+    bodyMarkdown: "  ",
+    acceptanceCriteriaMarkdown: "",
+  })
+
+  await assert.rejects(
+    () => tasks.moveTaskToStatus(incomplete.id, "ready"),
+    /Task title is required before moving to Ready/
+  )
+
+  const stillSaved = await tasks.getActiveTaskByDisplayId(incomplete.displayId)
+  assert.equal(stillSaved?.title, "  ")
+  assert.equal(stillSaved?.bodyMarkdown, "  ")
+  assert.equal(stillSaved?.acceptanceCriteriaMarkdown, "")
+  assert.equal(stillSaved?.status, "backlog")
+
+  const withoutInstructions = await tasks.createTask({
+    projectId: project.id,
+    title: "Needs instructions",
+    bodyMarkdown: "  ",
+    acceptanceCriteriaMarkdown: "",
+  })
+
+  await assert.rejects(
+    () => tasks.moveTaskToStatus(withoutInstructions.id, "ready"),
+    /Task body or acceptance criteria is required before moving to Ready/
+  )
+
+  const valid = await tasks.createTask({
+    projectId: project.id,
+    title: "Ready task",
+    bodyMarkdown: "",
+    acceptanceCriteriaMarkdown: "- Has acceptance criteria",
+  })
+
+  const moved = await tasks.moveTaskToStatus(valid.id, "ready")
+
+  assert.equal(moved.status, "ready")
+  assert.equal(moved.title, "Ready task")
+  assert.equal(moved.acceptanceCriteriaMarkdown, "- Has acceptance criteria")
+})
+
 async function createRepositoriesForTest() {
   const databasePath = await createDatabaseForTest()
 
