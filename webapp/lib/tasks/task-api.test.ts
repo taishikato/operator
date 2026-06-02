@@ -138,6 +138,88 @@ test("handleUpdateTaskBoardRequest persists same-column ordering through the pub
   )
 })
 
+test("handleUpdateTaskBoardRequest rejects duplicate Task display IDs in the board payload", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "First task",
+    bodyMarkdown: "This task can move.",
+    acceptanceCriteriaMarkdown: "- It is valid",
+  })
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [
+        { status: "backlog", taskDisplayIds: ["OP-1"] },
+        { status: "ready", taskDisplayIds: ["OP-1"] },
+      ],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.error.code, "duplicate_board_task")
+})
+
+test("handleUpdateTaskBoardRequest rejects duplicate statuses in the board payload", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "First task",
+    bodyMarkdown: "This task can move.",
+    acceptanceCriteriaMarkdown: "- It is valid",
+  })
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Second task",
+    bodyMarkdown: "This task can move too.",
+    acceptanceCriteriaMarkdown: "- It is valid",
+  })
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [
+        { status: "backlog", taskDisplayIds: ["OP-1"] },
+        { status: "backlog", taskDisplayIds: ["OP-2"] },
+      ],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.error.code, "duplicate_board_status")
+})
+
+test("handleUpdateTaskBoardRequest rejects payloads missing active non-Running Tasks", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "First task",
+    bodyMarkdown: "This task can move.",
+    acceptanceCriteriaMarkdown: "- It is valid",
+  })
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Second task",
+    bodyMarkdown: "This task should not disappear from the board payload.",
+    acceptanceCriteriaMarkdown: "- It remains represented",
+  })
+
+  const response = await handleUpdateTaskBoardRequest(
+    jsonRequest({
+      columns: [{ status: "backlog", taskDisplayIds: ["OP-1"] }],
+    }),
+    { databasePath, databaseStatus: "ready", projectKey: project.key }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 400)
+  assert.equal(body.error.code, "missing_board_task")
+})
+
 test("handleUpdateTaskBoardRequest rejects manual movement into Running", async () => {
   const databasePath = await createDatabaseForTest()
   const projects = createProjectRepository({ databasePath })
@@ -505,6 +587,22 @@ function jsonRequest(body: unknown) {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
+  })
+}
+
+async function createTaskThroughApi(
+  databasePath: string,
+  projectKey: string,
+  body: {
+    title: string
+    bodyMarkdown: string
+    acceptanceCriteriaMarkdown: string
+  }
+) {
+  return handleCreateTaskRequest(jsonRequest(body), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey,
   })
 }
 

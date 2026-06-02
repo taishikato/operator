@@ -71,9 +71,20 @@ export class TaskValidationError extends Error {
 }
 
 export class TaskBoardUpdateError extends Error {
-  readonly code: "running_system_controlled"
+  readonly code:
+    | "running_system_controlled"
+    | "duplicate_board_status"
+    | "duplicate_board_task"
+    | "missing_board_task"
 
-  constructor(code: "running_system_controlled", message: string) {
+  constructor(
+    code:
+      | "running_system_controlled"
+      | "duplicate_board_status"
+      | "duplicate_board_task"
+      | "missing_board_task",
+    message: string
+  ) {
     super(message)
     this.name = "TaskBoardUpdateError"
     this.code = code
@@ -251,10 +262,30 @@ export function createTaskRepository({
           const tasksByDisplayId = new Map(
             activeRows.map((task) => [task.displayId, toTask(task)])
           )
+          const seenStatuses = new Set<TaskStatus>()
+          const seenDisplayIds = new Set<string>()
           const now = new Date().toISOString()
 
           for (const column of columns) {
+            if (seenStatuses.has(column.status)) {
+              throw new TaskBoardUpdateError(
+                "duplicate_board_status",
+                "Task board update cannot include the same status more than once."
+              )
+            }
+
+            seenStatuses.add(column.status)
+
             for (const displayId of column.taskDisplayIds) {
+              if (seenDisplayIds.has(displayId)) {
+                throw new TaskBoardUpdateError(
+                  "duplicate_board_task",
+                  "Task board update cannot include the same Task more than once."
+                )
+              }
+
+              seenDisplayIds.add(displayId)
+
               const task = tasksByDisplayId.get(displayId)
 
               if (!task) {
@@ -272,6 +303,19 @@ export function createTaskRepository({
               }
 
               validateTaskStatusTransition(task, column.status)
+            }
+          }
+
+          for (const task of tasksByDisplayId.values()) {
+            if (task.status === "running") {
+              continue
+            }
+
+            if (!seenDisplayIds.has(task.displayId)) {
+              throw new TaskBoardUpdateError(
+                "missing_board_task",
+                "Task board update must include every active non-Running Task."
+              )
             }
           }
 
