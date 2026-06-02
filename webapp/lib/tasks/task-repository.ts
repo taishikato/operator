@@ -242,64 +242,68 @@ export function createTaskRepository({
       columns: UpdateTaskBoardColumnInput[]
     ) {
       return withDb(databasePath, async (db) => {
-        const activeRows = await db
-          .select()
-          .from(tasks)
-          .where(and(eq(tasks.projectId, projectId), isNull(tasks.archivedAt)))
-
-        const tasksByDisplayId = new Map(
-          activeRows.map((task) => [task.displayId, toTask(task)])
-        )
-        const now = new Date().toISOString()
-
-        for (const column of columns) {
-          for (const displayId of column.taskDisplayIds) {
-            const task = tasksByDisplayId.get(displayId)
-
-            if (!task) {
-              throw new Error(`Active Task not found: ${displayId}`)
-            }
-
-            if (
-              (column.status === "running" && task.status !== "running") ||
-              (task.status === "running" && column.status !== "running")
-            ) {
-              throw new TaskBoardUpdateError(
-                "running_system_controlled",
-                "Running Tasks are controlled by the system and cannot be moved manually."
-              )
-            }
-
-            validateTaskStatusTransition(task, column.status)
-          }
-        }
-
-        for (const column of columns) {
-          for (const [index, displayId] of column.taskDisplayIds.entries()) {
-            const task = tasksByDisplayId.get(displayId)
-
-            if (!task) {
-              throw new Error(`Active Task not found: ${displayId}`)
-            }
-
-            await db
-              .update(tasks)
-              .set({
-                status: column.status,
-                position: index + 1,
-                updatedAt: now,
-              })
-              .where(and(eq(tasks.id, task.id), isNull(tasks.archivedAt)))
-          }
-        }
-
-        return (
-          await db
+        return db.transaction(async (tx) => {
+          const activeRows = await tx
             .select()
             .from(tasks)
             .where(and(eq(tasks.projectId, projectId), isNull(tasks.archivedAt)))
-            .orderBy(asc(tasks.position), asc(tasks.createdAt))
-        ).map(toTask)
+
+          const tasksByDisplayId = new Map(
+            activeRows.map((task) => [task.displayId, toTask(task)])
+          )
+          const now = new Date().toISOString()
+
+          for (const column of columns) {
+            for (const displayId of column.taskDisplayIds) {
+              const task = tasksByDisplayId.get(displayId)
+
+              if (!task) {
+                throw new Error(`Active Task not found: ${displayId}`)
+              }
+
+              if (
+                (column.status === "running" && task.status !== "running") ||
+                (task.status === "running" && column.status !== "running")
+              ) {
+                throw new TaskBoardUpdateError(
+                  "running_system_controlled",
+                  "Running Tasks are controlled by the system and cannot be moved manually."
+                )
+              }
+
+              validateTaskStatusTransition(task, column.status)
+            }
+          }
+
+          for (const column of columns) {
+            for (const [index, displayId] of column.taskDisplayIds.entries()) {
+              const task = tasksByDisplayId.get(displayId)
+
+              if (!task) {
+                throw new Error(`Active Task not found: ${displayId}`)
+              }
+
+              await tx
+                .update(tasks)
+                .set({
+                  status: column.status,
+                  position: index + 1,
+                  updatedAt: now,
+                })
+                .where(and(eq(tasks.id, task.id), isNull(tasks.archivedAt)))
+            }
+          }
+
+          return (
+            await tx
+              .select()
+              .from(tasks)
+              .where(
+                and(eq(tasks.projectId, projectId), isNull(tasks.archivedAt))
+              )
+              .orderBy(asc(tasks.position), asc(tasks.createdAt))
+          ).map(toTask)
+        })
       })
     },
 
