@@ -2,7 +2,7 @@ import { connect } from "@tursodatabase/database"
 import { stat } from "node:fs/promises"
 
 import { ensureAppData, type AppDataPaths } from "../app-data/app-data.ts"
-import { getRequiredOperatorTableNames } from "./required-operator-tables.ts"
+import { readExistingDatabaseState } from "./existing-database-state.ts"
 import { applyOperatorSchemaWithAtlas } from "./schema-apply.ts"
 import { exportOperatorSchemaSql } from "./schema-export.ts"
 
@@ -38,15 +38,12 @@ export async function bootstrapLocalDatabase(
   const fileState = await readDatabaseFileState(paths.databasePath)
 
   if (fileState === "existing") {
-    if (!(await hasInitializationMarker(paths.databasePath))) {
-      return {
-        databasePath: paths.databasePath,
-        schemaApplied: false,
-        status: "requires_explicit_apply",
-      }
-    }
+    const existingState = await readExistingDatabaseState(paths.databasePath)
 
-    if (!(await hasRequiredOperatorTables(paths.databasePath))) {
+    if (
+      !existingState.hasInitializationMarker ||
+      !existingState.hasRequiredOperatorTables
+    ) {
       return {
         databasePath: paths.databasePath,
         schemaApplied: false,
@@ -114,57 +111,6 @@ async function markDatabaseInitialized(databasePath: string) {
       "true",
       new Date().toISOString()
     )
-  } finally {
-    await client.close()
-  }
-}
-
-async function hasInitializationMarker(databasePath: string) {
-  const client = await connect(databasePath)
-
-  try {
-    const row = await client.get(
-      "SELECT value FROM operator_metadata WHERE key = ?",
-      "schema_initialized"
-    )
-
-    return row?.value === "true"
-  } catch (error) {
-    if (isMissingMetadataTableError(error)) {
-      return false
-    }
-
-    throw error
-  } finally {
-    await client.close()
-  }
-}
-
-function isMissingMetadataTableError(error: unknown) {
-  return (
-    error instanceof Error &&
-    error.message.includes("no such table: operator_metadata")
-  )
-}
-
-async function hasRequiredOperatorTables(databasePath: string) {
-  const requiredTableNames = getRequiredOperatorTableNames()
-  const client = await connect(databasePath)
-
-  try {
-    const placeholders = requiredTableNames.map(() => "?").join(", ")
-    const rows = await client.all(
-      `SELECT name FROM sqlite_master
-       WHERE type = 'table' AND name IN (${placeholders})`,
-      ...requiredTableNames
-    )
-    const tableNames = new Set(
-      rows
-        .map((row) => row.name)
-        .filter((name): name is string => typeof name === "string")
-    )
-
-    return requiredTableNames.every((name) => tableNames.has(name))
   } finally {
     await client.close()
   }
