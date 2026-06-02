@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 Type: AFK
 
 # Task schema, creation, and Kanban skeleton
