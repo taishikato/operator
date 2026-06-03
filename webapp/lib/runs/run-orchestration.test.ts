@@ -297,6 +297,70 @@ test("runTaskNow records adapter failures as agent_error instead of escaping the
   assert.equal(saved?.blockedReason, "agent_error")
 })
 
+test("runTaskNow records preflight git status failures as git_error without launching Cursor", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const cursor = new FakeCursorRunAdapter()
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new ThrowingWorktreeGitRunAdapter(),
+    cursorAdapter: cursor,
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+  const saved = await createTaskRepository({
+    databasePath,
+  }).getActiveTaskByDisplayId(task.displayId)
+
+  assert.equal(result.status, "blocked")
+  assert.equal(result.blockedReason, "git_error")
+  assert.equal(result.runId, null)
+  assert.equal(cursor.calls.length, 0)
+  assert.equal(saved?.status, "blocked")
+  assert.equal(saved?.blockedReason, "git_error")
+})
+
+test("runTaskNow records Cursor adapter timeouts as timeout and finishes the run", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  await projects.createProject(
+    createProjectInput({ defaults: { model: "cursor/gpt-5", reasoningLevel: "high", runTimeoutSeconds: 1 } })
+  )
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.createTask({
+    projectId: (await projects.getActiveProjectByKey("OP"))!.id,
+    title: "Run Task now",
+    bodyMarkdown: "Run the Task through Cursor.",
+    acceptanceCriteriaMarkdown: "- It finishes with a classified outcome",
+  })
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter({
+      cleanBefore: true,
+      cleanAfter: true,
+      headBefore: "a",
+      headAfter: "a",
+    }),
+    cursorAdapter: new HangingCursorRunAdapter(),
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+  const saved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  assert.equal(result.status, "blocked")
+  assert.equal(result.blockedReason, "timeout")
+  assert.ok(result.runId)
+  assert.equal(saved?.status, "blocked")
+  assert.equal(saved?.blockedReason, "timeout")
+})
+
 test("runTaskNow records branch checkout failures as git_error without launching Cursor", async () => {
   const { databasePath, task } = await createRunnableTaskForTest()
   const cursor = new FakeCursorRunAdapter()
@@ -524,5 +588,20 @@ class FakeCursorRunAdapter implements CursorRunAdapter {
 class FailingCheckoutGitRunAdapter extends FakeGitRunAdapter {
   async checkoutOrCreateBranch() {
     throw new Error("fake checkout failure")
+  }
+}
+
+class ThrowingWorktreeGitRunAdapter extends FakeGitRunAdapter {
+  override async isWorktreeClean(): Promise<boolean> {
+    throw new Error("git status failed")
+  }
+}
+
+class HangingCursorRunAdapter implements CursorRunAdapter {
+  async run(
+    input: Parameters<CursorRunAdapter["run"]>[0]
+  ): Promise<{ adapterRunId?: string | null }> {
+    void input
+    return new Promise(() => {})
   }
 }

@@ -102,6 +102,10 @@ type CursorSdkModule = {
   }
 }
 
+export class CursorRunTimeoutError extends Error {
+  override name = "CursorRunTimeoutError"
+}
+
 const RUNNABLE_TASK_STATUSES = new Set<TaskStatus>([
   "backlog",
   "ready",
@@ -244,32 +248,32 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
       const git =
         options.gitAdapter ?? createLocalGitRunAdapter(project.repoPath)
 
-      if (!(await git.repositoryExists())) {
-        await tasks.markTaskBlocked(task.id, "repository_not_found")
-        return blockedWithoutRun("repository_not_found", taskBranchName)
-      }
-
-      if (!(await git.isGitRepository())) {
-        await tasks.markTaskBlocked(task.id, "git_error")
-        return blockedWithoutRun("git_error", taskBranchName)
-      }
-
-      const baseBranch = project.repositoryMetadata.defaultBranch
-      const currentBranch = await git.getCurrentBranch()
-
-      if (!baseBranch || !currentBranch) {
-        await tasks.markTaskBlocked(task.id, "git_error")
-        return blockedWithoutRun("git_error", taskBranchName)
-      }
-
-      if (!(await git.isWorktreeClean())) {
-        await tasks.markTaskBlocked(task.id, "dirty_worktree")
-        return blockedWithoutRun("dirty_worktree", taskBranchName)
-      }
-
       let headBefore: string
+      const baseBranch = project.repositoryMetadata.defaultBranch
 
       try {
+        if (!(await git.repositoryExists())) {
+          await tasks.markTaskBlocked(task.id, "repository_not_found")
+          return blockedWithoutRun("repository_not_found", taskBranchName)
+        }
+
+        if (!(await git.isGitRepository())) {
+          await tasks.markTaskBlocked(task.id, "git_error")
+          return blockedWithoutRun("git_error", taskBranchName)
+        }
+
+        const currentBranch = await git.getCurrentBranch()
+
+        if (!baseBranch || !currentBranch) {
+          await tasks.markTaskBlocked(task.id, "git_error")
+          return blockedWithoutRun("git_error", taskBranchName)
+        }
+
+        if (!(await git.isWorktreeClean())) {
+          await tasks.markTaskBlocked(task.id, "dirty_worktree")
+          return blockedWithoutRun("dirty_worktree", taskBranchName)
+        }
+
         await git.checkoutOrCreateBranch(taskBranchName, baseBranch)
         headBefore = await git.getHeadSha()
       } catch (error) {
@@ -293,22 +297,25 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
 
       try {
         const cursor = options.cursorAdapter ?? createCursorSdkRunAdapter()
-        const adapterResult = await cursor.run({
-          apiKey: options.cursorApiKey,
-          branchName: taskBranchName,
-          model,
-          prompt: buildCursorRunPrompt({
-            projectKey: project.key,
-            projectName: project.displayName,
-            repoPath: project.repoPath,
+        const adapterResult = await runCursorAdapterWithTimeout(
+          cursor.run({
+            apiKey: options.cursorApiKey,
             branchName: taskBranchName,
-            task,
-            checks: ["pnpm test", "pnpm typecheck", "pnpm lint", "pnpm build"],
+            model,
+            prompt: buildCursorRunPrompt({
+              projectKey: project.key,
+              projectName: project.displayName,
+              repoPath: project.repoPath,
+              branchName: taskBranchName,
+              task,
+              checks: ["pnpm test", "pnpm typecheck", "pnpm lint", "pnpm build"],
+            }),
+            reasoningLevel,
+            repoPath: project.repoPath,
+            timeoutSeconds: project.defaults.runTimeoutSeconds,
           }),
-          reasoningLevel,
-          repoPath: project.repoPath,
-          timeoutSeconds: project.defaults.runTimeoutSeconds,
-        })
+          project.defaults.runTimeoutSeconds
+        )
         const headAfter = await git.getHeadSha()
         const cleanAfter = await git.isWorktreeClean()
         const classification = classifyRunResult({
@@ -340,17 +347,20 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         }
       } catch (error) {
         void error
+        const blockedReason: RunBlockedReason =
+          error instanceof CursorRunTimeoutError ? "timeout" : "agent_error"
+
         await finishRun(options.databasePath, runId, {
           status: "blocked",
-          blockedReason: "agent_error",
+          blockedReason,
           headAfter: null,
           worktreeDirtyAfter: null,
         })
-        await tasks.markTaskBlocked(task.id, "agent_error")
+        await tasks.markTaskBlocked(task.id, blockedReason)
 
         return {
           status: "blocked",
-          blockedReason: "agent_error",
+          blockedReason,
           taskBranchName,
           runId,
         }
@@ -577,21 +587,56 @@ export function createLocalGitRunAdapter(repoPath: string): GitRunAdapter {
 export function createCursorSdkRunAdapter(): CursorRunAdapter {
   return {
     async run(input) {
-      const { Agent } = await importCursorSdk()
-      const agent = await Agent.create({
-        apiKey: input.apiKey,
-        model: { id: input.model },
-        local: { cwd: input.repoPath },
-      })
-      const run = await agent.send(input.prompt)
-
-      for await (const event of run.stream()) {
-        void event
-        // Issue #10 only needs orchestration and final Git classification.
-      }
-
-      return { adapterRunId: "id" in run ? String(run.id) : null }
+      return runCursorSdkAgent(input)
     },
+  }
+}
+
+async function runCursorSdkAgent(input: {
+  apiKey: string
+  model: string
+  prompt: string
+  repoPath: string
+}) {
+  const { Agent } = await importCursorSdk()
+  const agent = await Agent.create({
+    apiKey: input.apiKey,
+    model: { id: input.model },
+    local: { cwd: input.repoPath },
+  })
+  const run = await agent.send(input.prompt)
+
+  for await (const event of run.stream()) {
+    void event
+    // Issue #10 only needs orchestration and final Git classification.
+  }
+
+  return { adapterRunId: run.id != null ? String(run.id) : null }
+}
+
+export async function runCursorAdapterWithTimeout<T>(
+  promise: Promise<T>,
+  timeoutSeconds: number
+): Promise<T> {
+  if (timeoutSeconds <= 0) {
+    throw new CursorRunTimeoutError("Run timed out")
+  }
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new CursorRunTimeoutError("Run timed out"))
+        }, timeoutSeconds * 1000)
+      }),
+    ])
+  } finally {
+    if (timeoutId !== undefined) {
+      clearTimeout(timeoutId)
+    }
   }
 }
 
