@@ -58,6 +58,11 @@ export type UpdateProjectScheduleInput = Omit<
   "lastScheduledLocalDate"
 >
 
+export type UpdateProjectSettingsInput = {
+  defaults: ProjectDefaults
+  schedule: UpdateProjectScheduleInput
+}
+
 export class ProjectRepositoryError extends Error {
   code: "duplicate_project_key" | "duplicate_repository_path"
 
@@ -350,6 +355,34 @@ export function createProjectRepository({
             scheduleDailyTime: schedule.dailyTime,
             scheduleTimezone: schedule.timezone,
             scheduledRunLimit: schedule.scheduledRunLimit,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(and(eq(projects.id, projectId), isNull(projects.removedAt)))
+          .returning()
+
+        if (!project) {
+          throw new Error(`Active Project not found: ${projectId}`)
+        }
+
+        return toProject(project)
+      })
+    },
+
+    async updateProjectSettings(
+      projectId: string,
+      settings: UpdateProjectSettingsInput
+    ) {
+      return withDb(databasePath, async (db) => {
+        const [project] = await db
+          .update(projects)
+          .set({
+            defaultModel: settings.defaults.model,
+            defaultReasoningLevel: settings.defaults.reasoningLevel,
+            runTimeoutSeconds: settings.defaults.runTimeoutSeconds,
+            scheduleEnabled: settings.schedule.enabled,
+            scheduleDailyTime: settings.schedule.dailyTime,
+            scheduleTimezone: settings.schedule.timezone,
+            scheduledRunLimit: settings.schedule.scheduledRunLimit,
             updatedAt: new Date().toISOString(),
           })
           .where(and(eq(projects.id, projectId), isNull(projects.removedAt)))
