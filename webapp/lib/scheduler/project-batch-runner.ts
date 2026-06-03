@@ -1,4 +1,5 @@
 import type { RunTaskNowResult } from "../runs/run-orchestration.ts"
+import { runWithProjectExecutionLock } from "./project-execution-lock.ts"
 
 type ReadyTask = {
   displayId: string
@@ -20,8 +21,6 @@ export type ProjectBatchResult = {
   results: RunTaskNowResult[]
 }
 
-const activeProjectIds = new Set<string>()
-
 export function createProjectBatchRunner({
   tasks,
   runs,
@@ -39,32 +38,34 @@ export function createProjectBatchRunner({
       projectKey: string
       limit: number
     }): Promise<ProjectBatchResult> {
-      if (activeProjectIds.has(projectId)) {
+      const lockedResult = await runWithProjectExecutionLock(
+        projectId,
+        async () => {
+          const readyTasks =
+            await tasks.listReadyTasksForRunSelection(projectId)
+          const results: RunTaskNowResult[] = []
+
+          for (const task of readyTasks.slice(0, limit)) {
+            const result = await runs.runTaskNow({
+              projectKey,
+              taskDisplayId: task.displayId,
+            })
+            results.push(result)
+
+            if (result.status !== "review") {
+              return { status: "stopped" as const, results }
+            }
+          }
+
+          return { status: "completed" as const, results }
+        }
+      )
+
+      if (lockedResult.status === "already_running") {
         return { status: "already_running", results: [] }
       }
 
-      activeProjectIds.add(projectId)
-
-      try {
-        const readyTasks = await tasks.listReadyTasksForRunSelection(projectId)
-        const results: RunTaskNowResult[] = []
-
-        for (const task of readyTasks.slice(0, limit)) {
-          const result = await runs.runTaskNow({
-            projectKey,
-            taskDisplayId: task.displayId,
-          })
-          results.push(result)
-
-          if (result.status !== "review") {
-            return { status: "stopped", results }
-          }
-        }
-
-        return { status: "completed", results }
-      } finally {
-        activeProjectIds.delete(projectId)
-      }
+      return lockedResult.value
     },
   }
 }

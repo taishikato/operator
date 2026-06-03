@@ -14,6 +14,7 @@ import {
   createProjectBatchRunner,
   type ProjectBatchResult,
 } from "../scheduler/project-batch-runner.ts"
+import { runWithProjectExecutionLock } from "../scheduler/project-execution-lock.ts"
 import {
   createTaskRepository,
   TaskBoardUpdateError,
@@ -318,9 +319,12 @@ export async function handleRunTaskNowRequest(
     })
   }
 
-  const task = await createTaskRepository({
+  const taskRepository = createTaskRepository({
     databasePath: options.databasePath,
-  }).getActiveTaskByDisplayId(options.taskDisplayId)
+  })
+  const task = await taskRepository.getActiveTaskByDisplayId(
+    options.taskDisplayId
+  )
 
   if (!task || task.projectId !== project.id) {
     return validationError("task_not_found", "Task not found", { status: 404 })
@@ -334,15 +338,29 @@ export async function handleRunTaskNowRequest(
     )
   }
 
-  const result = await createRunOrchestrator({
-    databasePath: options.databasePath,
-    cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
-    cursorAdapter: options.cursorAdapter,
-    gitAdapter: options.gitAdapter,
-  }).runTaskNow({
-    projectKey: options.projectKey,
-    taskDisplayId: options.taskDisplayId,
-  })
+  if (await taskRepository.hasRunningTaskForProject(project.id)) {
+    return projectTaskAlreadyRunningError()
+  }
+
+  const lockedResult = await runWithProjectExecutionLock(
+    project.id,
+    async () =>
+      createRunOrchestrator({
+        databasePath: options.databasePath,
+        cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
+        cursorAdapter: options.cursorAdapter,
+        gitAdapter: options.gitAdapter,
+      }).runTaskNow({
+        projectKey: options.projectKey,
+        taskDisplayId: options.taskDisplayId,
+      })
+  )
+
+  if (lockedResult.status === "already_running") {
+    return projectTaskAlreadyRunningError()
+  }
+
+  const result = lockedResult.value
 
   if (result.blockedReason === "task_not_runnable" && result.runId === null) {
     return validationError(
@@ -442,6 +460,14 @@ function schemaApplyRequiredError() {
     "schema_apply_required",
     "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database.",
     { status: 503 }
+  )
+}
+
+function projectTaskAlreadyRunningError() {
+  return validationError(
+    "project_task_already_running",
+    "Another Task is already running for this Project.",
+    { status: 409 }
   )
 }
 

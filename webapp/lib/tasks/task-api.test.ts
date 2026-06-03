@@ -592,6 +592,39 @@ test("handleRunTaskNowRequest runs a Task through fake adapters without requirin
   assert.equal(cursor.calls.length, 1)
 })
 
+test("handleRunTaskNowRequest rejects Run Now when another Task is already running in the Project", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  const tasks = createTaskRepository({ databasePath })
+  const runningTask = await tasks.createTask({
+    projectId: project.id,
+    title: "Already running",
+    bodyMarkdown: "This Task is occupying the Project runner.",
+    acceptanceCriteriaMarkdown: "- It keeps the Project busy",
+  })
+  await tasks.moveTaskToStatus(runningTask.id, "running")
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Run later",
+    bodyMarkdown: "This Task should not start while another Task runs.",
+    acceptanceCriteriaMarkdown: "- Project execution remains serial",
+  })
+
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-2",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: new FakeCursorRunAdapter(),
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "project_task_already_running")
+})
+
 test("handleRunReadyTasksRequest defaults the manual batch count to the Project scheduled run limit", async () => {
   const databasePath = await createDatabaseForTest()
   const projects = createProjectRepository({ databasePath })
