@@ -55,6 +55,27 @@ test("getRunDetail returns run summary and raw log lines in file order", async (
   assert.equal(detail?.shouldPoll, true)
 })
 
+test("getRunDetail returns an empty log when the raw log file is missing", async () => {
+  const { databasePath, appDataPaths, taskId } = await createRunDataForTest()
+  const { createRunRepository } = await getRunRepository()
+  const repository = createRunRepository({ databasePath, appDataPaths })
+
+  await insertRunForTest({
+    databasePath,
+    id: "run_missing_log",
+    taskId,
+    taskDisplayId: "OP-1",
+    status: "running",
+    rawLogKey: "runs/run_missing_log.jsonl",
+  })
+
+  const detail = await repository.getRunDetail("run_missing_log")
+
+  assert.equal(detail?.run.id, "run_missing_log")
+  assert.deepEqual(detail?.lines, [])
+  assert.equal(detail?.rawLogText, "")
+})
+
 test("shouldPollRunLog only polls active runs", async () => {
   const { shouldPollRunLog } = await getRunRepository()
 

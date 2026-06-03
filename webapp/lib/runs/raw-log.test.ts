@@ -1,8 +1,8 @@
 import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
-import { mkdtemp } from "node:fs/promises"
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
-import { join } from "node:path"
+import { dirname, join } from "node:path"
 import { test } from "node:test"
 
 import { resolveAppDataPaths } from "../app-data/app-data.ts"
@@ -61,6 +61,46 @@ test("appendRunLogEvent appends redacted JSONL lines in chronological file order
   assert.equal(readLines[1]?.payload.token, "[REDACTED]")
   assert.equal(readLines[1]?.payload.password, "[REDACTED]")
   assert.doesNotMatch(raw, /cursor-secret|abc\.def\.ghi|plain-token|pw/)
+})
+
+test("readRunLogLines returns no events when the log file is missing", async () => {
+  const { createRawRunLogKey, readRunLogLines } = await getRawLog()
+  const appDataRoot = await mkdtemp(join(tmpdir(), "operator-raw-log-"))
+  const paths = resolveAppDataPaths({ appDataRoot })
+
+  const lines = await readRunLogLines(paths, createRawRunLogKey("missing"))
+
+  assert.deepEqual(lines, [])
+})
+
+test("readRunLogLines ignores a partially written trailing JSONL line", async () => {
+  const { createRawRunLogKey, readRunLogLines } = await getRawLog()
+  const appDataRoot = await mkdtemp(join(tmpdir(), "operator-raw-log-"))
+  const paths = resolveAppDataPaths({ appDataRoot })
+  const logKey = createRawRunLogKey("partial")
+  const logPath = join(appDataRoot, logKey)
+
+  await mkdir(dirname(logPath), { recursive: true })
+  await writeFile(
+    logPath,
+    [
+      JSON.stringify({
+        source: "operator",
+        type: "run.created",
+        payload: {},
+        timestamp: "2026-06-01T00:00:00.000Z",
+      }),
+      '{"source":"cursor"',
+    ].join("\n"),
+    "utf8"
+  )
+
+  const lines = await readRunLogLines(paths, logKey)
+
+  assert.deepEqual(
+    lines.map((line) => line.type),
+    ["run.created"]
+  )
 })
 
 async function getRawLog() {

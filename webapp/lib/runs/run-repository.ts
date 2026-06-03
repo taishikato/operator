@@ -1,11 +1,14 @@
 import { connect } from "@tursodatabase/database"
 import { desc, eq, inArray } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/tursodatabase/database"
-import { readFile } from "node:fs/promises"
 
-import { resolveRunLogPath, type AppDataPaths } from "../app-data/app-data.ts"
+import { type AppDataPaths } from "../app-data/app-data.ts"
 import { runs } from "../db/schema.ts"
-import { readRunLogLines, type StoredRunLogEvent } from "./raw-log.ts"
+import {
+  parseRunLogText,
+  readRawRunLogText,
+  type StoredRunLogEvent,
+} from "./raw-log.ts"
 export { shouldPollRunLog } from "./run-status.ts"
 import { shouldPollRunLog } from "./run-status.ts"
 
@@ -55,10 +58,12 @@ export function createRunRepository({
         return null
       }
 
+      const rawLogText = await readRawRunLogText(appDataPaths, run.rawLogKey)
+
       return {
         run,
-        lines: await readRunLogLines(appDataPaths, run.rawLogKey),
-        rawLogText: await readRawLogText(appDataPaths, run.rawLogKey),
+        lines: parseRunLogText(rawLogText),
+        rawLogText,
         shouldPoll: shouldPollRunLog(run.status),
       }
     },
@@ -110,18 +115,6 @@ async function selectRun(databasePath: string, runId: string) {
   })
 }
 
-async function readRawLogText(paths: AppDataPaths, logKey: string) {
-  try {
-    return await readFile(resolveRunLogPath(paths, logKey), "utf8")
-  } catch (error) {
-    if (isFileNotFoundError(error)) {
-      return ""
-    }
-
-    throw error
-  }
-}
-
 function toRunSummary(row: typeof runs.$inferSelect): RunSummary {
   return {
     id: row.id,
@@ -151,12 +144,4 @@ async function withRunDb<T>(
   } finally {
     await client.close()
   }
-}
-
-function isFileNotFoundError(error: unknown) {
-  return (
-    error instanceof Error &&
-    "code" in error &&
-    (error as NodeJS.ErrnoException).code === "ENOENT"
-  )
 }

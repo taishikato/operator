@@ -23,5 +23,9 @@ export async function handleGetRunRequest(
     )
   }
 
-  return Response.json(detail)
+  return Response.json({
+    run: detail.run,
+    rawLogText: detail.rawLogText,
+    shouldPoll: detail.shouldPoll,
+  })
 }

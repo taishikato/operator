@@ -44,13 +44,37 @@ export async function appendRunLogEvent(
 }
 
 export async function readRunLogLines(paths: AppDataPaths, logKey: string) {
-  const logPath = resolveRunLogPath(paths, logKey)
-  const raw = await readFile(logPath, "utf8")
+  return parseRunLogText(await readRawRunLogText(paths, logKey))
+}
 
-  return raw
+export async function readRawRunLogText(paths: AppDataPaths, logKey: string) {
+  try {
+    return await readFile(resolveRunLogPath(paths, logKey), "utf8")
+  } catch (error) {
+    if (isFileNotFoundError(error)) {
+      return ""
+    }
+
+    throw error
+  }
+}
+
+export function parseRunLogText(raw: string) {
+  const lines = raw
     .split("\n")
     .filter((line) => line.trim().length > 0)
-    .map((line) => JSON.parse(line) as StoredRunLogEvent)
+
+  return lines.flatMap((line, index) => {
+    try {
+      return [JSON.parse(line) as StoredRunLogEvent]
+    } catch (error) {
+      if (index === lines.length - 1) {
+        return []
+      }
+
+      throw error
+    }
+  })
 }
 
 function toStoredEvent(event: RunLogEvent): StoredRunLogEvent {
@@ -87,4 +111,12 @@ function redactValue(value: unknown, fieldName?: string): unknown {
   }
 
   return value
+}
+
+function isFileNotFoundError(error: unknown) {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    (error as NodeJS.ErrnoException).code === "ENOENT"
+  )
 }

@@ -27,6 +27,7 @@ test("handleGetRunRequest returns run summary and raw log text", async () => {
   assert.equal(body.run.status, "running")
   assert.equal(body.shouldPoll, true)
   assert.match(body.rawLogText, /run\.created/)
+  assert.equal("lines" in body, false)
 })
 
 test("handleGetRunRequest returns 404 for unknown runs", async () => {
