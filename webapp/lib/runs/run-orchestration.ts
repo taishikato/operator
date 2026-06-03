@@ -1,7 +1,7 @@
 import { connect } from "@tursodatabase/database"
 import { existsSync } from "node:fs"
 import { spawnSync } from "node:child_process"
-import { and, eq, lt } from "drizzle-orm"
+import { and, eq, isNull, lt, sql } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/tursodatabase/database"
 import { ulid } from "ulid"
 
@@ -44,6 +44,7 @@ export type CursorRunAdapter = {
     reasoningLevel: string
     repoPath: string
     timeoutSeconds: number
+    abortSignal: AbortSignal
   }): Promise<{ adapterRunId?: string | null }>
 }
 
@@ -97,6 +98,7 @@ type CursorSdkModule = {
       send(prompt: string): Promise<{
         id?: string
         stream(): AsyncIterable<unknown>
+        cancel(): Promise<void>
       }>
     }>
   }
@@ -258,6 +260,7 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         return blockedWithoutRun("missing_cursor_api_key", taskBranchName)
       }
 
+      const cursorApiKey = options.cursorApiKey
       const model = task.modelOverride ?? project.defaults.model
       const reasoningLevel =
         task.reasoningLevelOverride ?? project.defaults.reasoningLevel
@@ -323,22 +326,29 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
       try {
         const cursor = options.cursorAdapter ?? createCursorSdkRunAdapter()
         const adapterResult = await runCursorAdapterWithTimeout(
-          cursor.run({
-            apiKey: options.cursorApiKey,
-            branchName: taskBranchName,
-            model,
-            prompt: buildCursorRunPrompt({
-              projectKey: project.key,
-              projectName: project.displayName,
-              repoPath: project.repoPath,
+          (abortSignal) =>
+            cursor.run({
+              apiKey: cursorApiKey,
               branchName: taskBranchName,
-              task,
-              checks: ["pnpm test", "pnpm typecheck", "pnpm lint", "pnpm build"],
+              model,
+              prompt: buildCursorRunPrompt({
+                projectKey: project.key,
+                projectName: project.displayName,
+                repoPath: project.repoPath,
+                branchName: taskBranchName,
+                task,
+                checks: [
+                  "pnpm test",
+                  "pnpm typecheck",
+                  "pnpm lint",
+                  "pnpm build",
+                ],
+              }),
+              reasoningLevel,
+              repoPath: project.repoPath,
+              timeoutSeconds: project.defaults.runTimeoutSeconds,
+              abortSignal,
             }),
-            reasoningLevel,
-            repoPath: project.repoPath,
-            timeoutSeconds: project.defaults.runTimeoutSeconds,
-          }),
           project.defaults.runTimeoutSeconds
         )
 
@@ -544,20 +554,61 @@ async function markInterruptedRuns(
           updatedAt: now,
         })
         .where(eq(runs.id, run.id))
-      await db
-        .update(taskRows)
-        .set({
-          status: "blocked",
-          blockedReason: "interrupted",
-          updatedAt: now,
+
+      const [task] = await db
+        .select({
+          id: taskRows.id,
+          projectId: taskRows.projectId,
         })
+        .from(taskRows)
         .where(
           and(eq(taskRows.id, run.taskId), eq(taskRows.status, "running"))
         )
+        .limit(1)
+
+      if (task) {
+        const position = await nextRunPositionForStatus(
+          db,
+          task.projectId,
+          "blocked"
+        )
+        await db
+          .update(taskRows)
+          .set({
+            status: "blocked",
+            position,
+            blockedReason: "interrupted",
+            updatedAt: now,
+          })
+          .where(
+            and(eq(taskRows.id, run.taskId), eq(taskRows.status, "running"))
+          )
+      }
     }
 
     return staleRuns.length
   })
+}
+
+async function nextRunPositionForStatus(
+  db: RunDb,
+  projectId: string,
+  status: TaskStatus
+) {
+  const [row] = await db
+    .select({
+      position: sql<number>`coalesce(max(${taskRows.position}), 0)`,
+    })
+    .from(taskRows)
+    .where(
+      and(
+        eq(taskRows.projectId, projectId),
+        eq(taskRows.status, status),
+        isNull(taskRows.archivedAt)
+      )
+    )
+
+  return (row?.position ?? 0) + 1
 }
 
 async function withRunDb<T>(
@@ -649,6 +700,7 @@ async function runCursorSdkAgent(input: {
   model: string
   prompt: string
   repoPath: string
+  abortSignal: AbortSignal
 }) {
   const { Agent } = await importCursorSdk()
   const agent = await Agent.create({
@@ -657,20 +709,30 @@ async function runCursorSdkAgent(input: {
     local: { cwd: input.repoPath },
   })
   const run = await agent.send(input.prompt)
+  const removeAbortListener = addAbortListener(input.abortSignal, () => {
+    void run.cancel()
+  })
 
-  for await (const event of run.stream()) {
-    void event
-    // Issue #10 only needs orchestration and final Git classification.
+  try {
+    for await (const event of run.stream()) {
+      void event
+      // Issue #10 only needs orchestration and final Git classification.
+    }
+  } finally {
+    removeAbortListener()
   }
 
   return { adapterRunId: run.id != null ? String(run.id) : null }
 }
 
 export async function runCursorAdapterWithTimeout<T>(
-  promise: Promise<T>,
+  run: (abortSignal: AbortSignal) => Promise<T>,
   timeoutSeconds: number
 ): Promise<T> {
+  const abortController = new AbortController()
+
   if (timeoutSeconds <= 0) {
+    abortController.abort()
     throw new CursorRunTimeoutError("Run timed out")
   }
 
@@ -678,9 +740,10 @@ export async function runCursorAdapterWithTimeout<T>(
 
   try {
     return await Promise.race([
-      promise,
+      run(abortController.signal),
       new Promise<T>((_, reject) => {
         timeoutId = setTimeout(() => {
+          abortController.abort()
           reject(new CursorRunTimeoutError("Run timed out"))
         }, timeoutSeconds * 1000)
       }),
@@ -690,6 +753,16 @@ export async function runCursorAdapterWithTimeout<T>(
       clearTimeout(timeoutId)
     }
   }
+}
+
+function addAbortListener(signal: AbortSignal, listener: () => void) {
+  if (signal.aborted) {
+    listener()
+    return () => {}
+  }
+
+  signal.addEventListener("abort", listener, { once: true })
+  return () => signal.removeEventListener("abort", listener)
 }
 
 async function importCursorSdk(): Promise<CursorSdkModule> {

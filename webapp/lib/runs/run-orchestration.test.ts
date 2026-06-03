@@ -358,6 +358,59 @@ test("reconcileInterruptedRuns leaves Tasks that already left Running unchanged"
   assert.equal(run.blocked_reason, "interrupted")
 })
 
+test("reconcileInterruptedRuns moves interrupted Tasks to the next Blocked position", async () => {
+  const { databasePath, project } = await createRunnableTaskForTest()
+  const tasks = createTaskRepository({ databasePath })
+  const blocked = await tasks.createTask({
+    projectId: project.id,
+    title: "Already blocked",
+    bodyMarkdown: "Keep first blocked position.",
+    acceptanceCriteriaMarkdown: "- Stays first",
+  })
+  const interrupted = await tasks.createTask({
+    projectId: project.id,
+    title: "Interrupted run",
+    bodyMarkdown: "Move after existing blocked task.",
+    acceptanceCriteriaMarkdown: "- Repositioned in Blocked",
+  })
+  await tasks.markTaskBlocked(blocked.id, "agent_error")
+  await tasks.moveTaskToStatus(interrupted.id, "running")
+  await insertRunningRunForTest({
+    databasePath,
+    taskId: interrupted.id,
+    taskDisplayId: interrupted.displayId,
+    startedAt: "2026-06-01T00:00:00.000Z",
+  })
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter(),
+    cursorAdapter: new FakeCursorRunAdapter(),
+  })
+
+  await orchestrator.reconcileInterruptedRuns({
+    interruptedBefore: new Date("2026-06-02T00:00:00.000Z"),
+  })
+
+  assert.deepEqual(
+    (await tasks.listActiveTasksForProject(project.id))
+      .filter((task) => task.status === "blocked")
+      .map((task) => ({
+        displayId: task.displayId,
+        position: task.position,
+        blockedReason: task.blockedReason,
+      })),
+    [
+      { displayId: blocked.displayId, position: 1, blockedReason: "agent_error" },
+      {
+        displayId: interrupted.displayId,
+        position: 2,
+        blockedReason: "interrupted",
+      },
+    ]
+  )
+})
+
 test("reconcileStaleRunsOnStartup marks in-flight runs as interrupted", async () => {
   const { databasePath, task } = await createRunnableTaskForTest()
   const tasks = createTaskRepository({ databasePath })
@@ -468,6 +521,42 @@ test("runTaskNow records Cursor adapter timeouts as timeout and finishes the run
   assert.ok(result.runId)
   assert.equal(saved?.status, "blocked")
   assert.equal(saved?.blockedReason, "timeout")
+})
+
+test("runTaskNow aborts the Cursor adapter when a run times out", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  await projects.createProject(
+    createProjectInput({ defaults: { model: "cursor/gpt-5", reasoningLevel: "high", runTimeoutSeconds: 1 } })
+  )
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.createTask({
+    projectId: (await projects.getActiveProjectByKey("OP"))!.id,
+    title: "Cancelable run",
+    bodyMarkdown: "Abort Cursor when timeout fires.",
+    acceptanceCriteriaMarkdown: "- Adapter sees an aborted signal",
+  })
+  const cursor = new SignalAwareHangingCursorRunAdapter()
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter({
+      cleanBefore: true,
+      cleanAfter: true,
+      headBefore: "a",
+      headAfter: "a",
+    }),
+    cursorAdapter: cursor,
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+
+  assert.equal(result.blockedReason, "timeout")
+  assert.equal(cursor.abortSignals.length, 1)
+  assert.equal(cursor.abortSignals[0]?.aborted, true)
 })
 
 test("runTaskNow records branch checkout failures as git_error without launching Cursor", async () => {
@@ -746,6 +835,20 @@ class HangingCursorRunAdapter implements CursorRunAdapter {
     input: Parameters<CursorRunAdapter["run"]>[0]
   ): Promise<{ adapterRunId?: string | null }> {
     void input
+    return new Promise(() => {})
+  }
+}
+
+class SignalAwareHangingCursorRunAdapter implements CursorRunAdapter {
+  abortSignals: AbortSignal[] = []
+
+  async run(
+    input: Parameters<CursorRunAdapter["run"]>[0]
+  ): Promise<{ adapterRunId?: string | null }> {
+    if (input.abortSignal) {
+      this.abortSignals.push(input.abortSignal)
+    }
+
     return new Promise(() => {})
   }
 }

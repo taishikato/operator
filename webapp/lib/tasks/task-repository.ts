@@ -348,6 +348,8 @@ export function createTaskRepository({
                 .set({
                   status: column.status,
                   position: index + 1,
+                  blockedReason:
+                    column.status === "blocked" ? task.blockedReason : null,
                   updatedAt: now,
                 })
                 .where(and(eq(tasks.id, task.id), isNull(tasks.archivedAt)))
