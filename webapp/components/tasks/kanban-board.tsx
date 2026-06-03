@@ -43,6 +43,7 @@ type BoardResponseBody =
 
 const TASK_ID_PREFIX = "task:"
 const COLUMN_ID_PREFIX = "column:"
+const MAX_READY_BATCH_COUNT = 100
 
 export function KanbanBoard({
   projectKey,
@@ -213,6 +214,11 @@ export function KanbanBoard({
 
     if (!Number.isInteger(count) || count < 1) {
       setErrorMessage("Enter a whole number of Ready Tasks to run.")
+      return
+    }
+
+    if (count > MAX_READY_BATCH_COUNT) {
+      setErrorMessage("Enter 100 or fewer Ready Tasks to run.")
       return
     }
 

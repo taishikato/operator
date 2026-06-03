@@ -117,6 +117,54 @@ test("KanbanBoard confirms Ready batch runs with the Project limit and submits a
   }
 })
 
+test("KanbanBoard rejects Ready batch counts over the server limit before submitting", async () => {
+  const { KanbanBoard } = await import("./kanban-board.tsx")
+  const requests: Array<{ url: string; body: unknown }> = []
+  const originalFetch = globalThis.fetch
+  const originalPrompt = globalThis.prompt
+
+  globalThis.fetch = async (url, init) => {
+    requests.push({
+      url: String(url),
+      body: JSON.parse(String(init?.body)),
+    })
+
+    return new Response(
+      JSON.stringify({
+        error: { message: "Invalid Ready batch input" },
+      }),
+      {
+        status: 400,
+        headers: { "content-type": "application/json" },
+      }
+    )
+  }
+  globalThis.prompt = () => "101"
+
+  try {
+    const view = render(
+      <KanbanBoard
+        projectKey="OP"
+        scheduledRunLimit={3}
+        initialColumns={boardColumns({ ready: ["OP-1"] })}
+      />
+    )
+
+    fireEvent.click(view.getByRole("button", { name: "Run Ready Tasks" }))
+
+    await waitFor(() =>
+      assert.equal(
+        view.getByRole("alert").textContent,
+        "Enter 100 or fewer Ready Tasks to run."
+      )
+    )
+    assert.deepEqual(requests, [])
+  } finally {
+    globalThis.fetch = originalFetch
+    globalThis.prompt = originalPrompt
+  }
+})
+
 function boardColumns(input: {
   backlog?: string[]
   ready?: string[]
