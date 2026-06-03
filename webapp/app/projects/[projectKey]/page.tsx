@@ -1,3 +1,4 @@
+import { Settings } from "lucide-react"
 import { notFound } from "next/navigation"
 
 import { KanbanBoard } from "@/components/tasks/kanban-board"
@@ -118,6 +119,9 @@ function ProjectHeader({
     displayName: string
     key: string
     repoPath: string
+    schedule: {
+      enabled: boolean
+    }
   }
 }) {
   return (
@@ -134,8 +138,17 @@ function ProjectHeader({
             {project.repoPath}
           </p>
         </div>
-        <div className="rounded-md border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
-          Schedule off
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="rounded-md border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
+            Schedule {project.schedule.enabled ? "on" : "off"}
+          </div>
+          <a
+            href={`/projects/${encodeURIComponent(project.key)}/settings`}
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm font-medium transition hover:bg-muted"
+          >
+            <Settings className="h-4 w-4" />
+            Settings
+          </a>
         </div>
       </div>
     </header>
