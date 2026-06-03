@@ -56,7 +56,7 @@ export async function prepareTaskPullRequestDraft(input: {
   const commitSha = (
     await runRequiredCommand(input.command, {
       command: "git",
-      args: ["rev-parse", "HEAD"],
+      args: ["rev-parse", branchName],
       cwd: input.project.repoPath,
     })
   ).trim()

@@ -98,3 +98,20 @@ test("Create PR action is available only for unchanged Review Tasks with a branc
     "Save your changes before creating a pull request"
   )
 })
+
+test("Create PR action is blocked when the confirmed title is empty", () => {
+  const state = getTaskDrawerActionState({
+    hasChanges: false,
+    isSaving: false,
+    isMovingReady: false,
+    isCreatingPullRequest: false,
+    taskStatus: "review",
+    taskBranchName: "operator/op-1-manual-pr",
+    pullRequestUrl: null,
+    pullRequestTitle: "   ",
+  })
+
+  assert.equal(state.createPullRequestVisible, true)
+  assert.equal(state.createPullRequestDisabled, true)
+  assert.equal(state.createPullRequestTitle, "Enter a pull request title")
+})

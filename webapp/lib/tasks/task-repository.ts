@@ -482,9 +482,14 @@ export function createTaskRepository({
 
     async recordTaskPullRequestError(taskId: string, pullRequestError: string) {
       return withDb(databasePath, async (db) => {
+        const existing = await requireActiveTask(db, taskId)
+
+        if (existing.pullRequestUrl !== null) {
+          return toTask(existing)
+        }
+
         return toTask(
           await updateActiveTask(db, taskId, {
-            pullRequestUrl: null,
             pullRequestError,
           })
         )

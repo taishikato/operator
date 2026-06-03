@@ -11,7 +11,7 @@ import type { Task } from "./task-repository.ts"
 
 test("prepareTaskPullRequestDraft previews branch, remote, commit, title, body, and draft status without pushing", async () => {
   const command = new FakeTaskPrCommandAdapter({
-    "git rev-parse HEAD": "abc123\n",
+    "git rev-parse operator/op-14-manual-pr": "abc123\n",
     "git remote get-url origin": "git@github.com:example/operator.git\n",
   })
 
@@ -45,13 +45,35 @@ test("prepareTaskPullRequestDraft previews branch, remote, commit, title, body, 
   })
   assert.deepEqual(
     command.calls.map((call) => `${call.command} ${call.args.join(" ")}`),
-    ["git rev-parse HEAD", "git remote get-url origin"]
+    ["git rev-parse operator/op-14-manual-pr", "git remote get-url origin"]
+  )
+})
+
+test("prepareTaskPullRequestDraft previews the task branch commit when HEAD differs", async () => {
+  const command = new FakeTaskPrCommandAdapter({
+    "git rev-parse operator/op-14-manual-pr": "task-branch-sha\n",
+    "git remote get-url origin": "git@github.com:example/operator.git\n",
+  })
+
+  const draft = await prepareTaskPullRequestDraft({
+    command,
+    project: project(),
+    task: task({
+      status: "review",
+      taskBranchName: "operator/op-14-manual-pr",
+    }),
+  })
+
+  assert.equal(draft.commitSha, "task-branch-sha")
+  assert.deepEqual(
+    command.calls.map((call) => `${call.command} ${call.args.join(" ")}`),
+    ["git rev-parse operator/op-14-manual-pr", "git remote get-url origin"]
   )
 })
 
 test("createTaskPullRequest pushes the confirmed branch before creating a draft PR with gh", async () => {
   const command = new FakeTaskPrCommandAdapter({
-    "git rev-parse HEAD": "abc123\n",
+    "git rev-parse operator/op-14-manual-pr": "abc123\n",
     "git remote get-url origin": "git@github.com:example/operator.git\n",
     "git push -u origin operator/op-14-manual-pr": "",
     "gh pr create --draft --base main --head operator/op-14-manual-pr --title OP-14: Manual draft PR creation --body Confirmed body":
@@ -78,7 +100,7 @@ test("createTaskPullRequest pushes the confirmed branch before creating a draft 
   assert.deepEqual(
     command.calls.map((call) => `${call.command} ${call.args.join(" ")}`),
     [
-      "git rev-parse HEAD",
+      "git rev-parse operator/op-14-manual-pr",
       "git remote get-url origin",
       "git push -u origin operator/op-14-manual-pr",
       "gh pr create --draft --base main --head operator/op-14-manual-pr --title OP-14: Manual draft PR creation --body Confirmed body",

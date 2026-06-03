@@ -109,7 +109,9 @@ export function TaskDrawer({
     taskStatus: task.status,
     taskBranchName: task.taskBranchName,
     pullRequestUrl: task.pullRequestUrl,
+    pullRequestTitle: pullRequestDraft ? pullRequestTitle : null,
   })
+  const pullRequestCreateDisabled = actionState.createPullRequestDisabled
 
   function updateDraft(patch: Partial<TaskInstructionFields>) {
     setEditState((current) => updateTaskEditDraft(current, patch))
@@ -379,6 +381,7 @@ export function TaskDrawer({
             title={pullRequestTitle}
             body={pullRequestBody}
             disabled={isCreatingPullRequest}
+            createDisabled={pullRequestCreateDisabled}
             onTitleChange={setPullRequestTitle}
             onBodyChange={setPullRequestBody}
             onCancel={() => setPullRequestDraft(null)}
@@ -444,6 +447,7 @@ function PullRequestConfirmation({
   title,
   body,
   disabled,
+  createDisabled,
   onTitleChange,
   onBodyChange,
   onCancel,
@@ -453,6 +457,7 @@ function PullRequestConfirmation({
   title: string
   body: string
   disabled: boolean
+  createDisabled: boolean
   onTitleChange: (title: string) => void
   onBodyChange: (body: string) => void
   onCancel: () => void
@@ -504,7 +509,14 @@ function PullRequestConfirmation({
         >
           Cancel
         </Button>
-        <Button type="button" onClick={onCreate} disabled={disabled}>
+        <Button
+          type="button"
+          onClick={onCreate}
+          disabled={createDisabled}
+          title={
+            title.trim().length === 0 ? "Enter a pull request title" : undefined
+          }
+        >
           <GitPullRequest data-icon="inline-start" />
           Create draft PR
         </Button>

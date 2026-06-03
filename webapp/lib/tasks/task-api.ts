@@ -426,11 +426,21 @@ export async function handlePrepareTaskPullRequestRequest(
     return taskPullRequestUnavailableError()
   }
 
-  const draft = await prepareTaskPullRequestDraft({
-    command: options.commandAdapter ?? createLocalTaskPrCommandAdapter(),
-    project,
-    task,
-  })
+  let draft: Awaited<ReturnType<typeof prepareTaskPullRequestDraft>>
+
+  try {
+    draft = await prepareTaskPullRequestDraft({
+      command: options.commandAdapter ?? createLocalTaskPrCommandAdapter(),
+      project,
+      task,
+    })
+  } catch (error) {
+    return validationError(
+      "pull_request_prepare_failed",
+      pullRequestErrorMessage(error),
+      { status: 502 }
+    )
+  }
 
   return Response.json({ draft })
 }

@@ -8,6 +8,7 @@ export type TaskDrawerActionStateInput = {
   taskStatus: TaskStatus
   taskBranchName?: string | null
   pullRequestUrl?: string | null
+  pullRequestTitle?: string | null
 }
 
 export function getTaskDrawerActionState({
@@ -18,8 +19,11 @@ export function getTaskDrawerActionState({
   taskStatus,
   taskBranchName = null,
   pullRequestUrl = null,
+  pullRequestTitle = null,
 }: TaskDrawerActionStateInput) {
   const isBusy = isSaving || isMovingReady || isCreatingPullRequest
+  const hasEmptyPullRequestTitle =
+    pullRequestTitle !== null && pullRequestTitle.trim().length === 0
   const createPullRequestVisible =
     taskStatus === "review" &&
     taskBranchName !== null &&
@@ -35,9 +39,11 @@ export function getTaskDrawerActionState({
     discardDisabled: !hasChanges || isBusy,
     inputsDisabled: isBusy,
     createPullRequestVisible,
-    createPullRequestDisabled: isBusy || hasChanges,
+    createPullRequestDisabled: isBusy || hasChanges || hasEmptyPullRequestTitle,
     createPullRequestTitle: hasChanges
       ? "Save your changes before creating a pull request"
-      : "Create draft pull request",
+      : hasEmptyPullRequestTitle
+        ? "Enter a pull request title"
+        : "Create draft pull request",
   }
 }
