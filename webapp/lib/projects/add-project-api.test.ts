@@ -84,6 +84,7 @@ test("create Project API persists a Project from a valid repository path and key
     dailyTime: "09:00",
     timezone: "UTC",
     scheduledRunLimit: 1,
+    lastScheduledLocalDate: null,
   })
   assert.equal(body.route.projectPath, "/projects/OP")
 

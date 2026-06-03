@@ -184,6 +184,24 @@ export function createTaskRepository({
       })
     },
 
+    async hasRunningTaskForProject(projectId: string) {
+      return withDb(databasePath, async (db) => {
+        const [task] = await db
+          .select({ id: tasks.id })
+          .from(tasks)
+          .where(
+            and(
+              eq(tasks.projectId, projectId),
+              eq(tasks.status, "running"),
+              isNull(tasks.archivedAt)
+            )
+          )
+          .limit(1)
+
+        return Boolean(task)
+      })
+    },
+
     async getActiveTaskByDisplayId(displayId: string) {
       return withDb(databasePath, async (db) => {
         const [task] = await db

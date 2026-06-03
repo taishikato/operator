@@ -1,5 +1,10 @@
 import { z } from "zod"
 
+import {
+  parseJsonRequest,
+  schemaApplyRequiredError,
+  validationError,
+} from "../api/api-response.ts"
 import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { createProjectRepository } from "../projects/project-repository.ts"
@@ -10,6 +15,11 @@ import {
   type CursorRunAdapter,
   type GitRunAdapter,
 } from "../runs/run-orchestration.ts"
+import {
+  createProjectBatchRunner,
+  type ProjectBatchResult,
+} from "../scheduler/project-batch-runner.ts"
+import { runWithProjectExecutionLock } from "../scheduler/project-execution-lock.ts"
 import {
   createTaskRepository,
   TaskBoardUpdateError,
@@ -49,6 +59,12 @@ const updateTaskBoardRequestSchema = z
   })
   .strict()
 
+const runReadyTasksRequestSchema = z
+  .object({
+    count: z.number().int().positive().max(100).optional(),
+  })
+  .strict()
+
 export type OperatorDatabaseStatus =
   | "initialized"
   | "ready"
@@ -68,6 +84,19 @@ export type RunTaskApiOptions = UpdateTaskApiOptions & {
   cursorApiKey?: string
   cursorAdapter?: CursorRunAdapter
   gitAdapter?: GitRunAdapter
+}
+
+export type RunReadyTasksApiOptions = TaskApiOptions & {
+  cursorApiKey?: string
+  cursorAdapter?: CursorRunAdapter
+  gitAdapter?: GitRunAdapter
+  batchRunner?: {
+    runReadyTaskBatch(input: {
+      projectId: string
+      projectKey: string
+      limit: number
+    }): Promise<ProjectBatchResult>
+  }
 }
 
 export async function resolveTaskApiOptions({
@@ -295,9 +324,12 @@ export async function handleRunTaskNowRequest(
     })
   }
 
-  const task = await createTaskRepository({
+  const taskRepository = createTaskRepository({
     databasePath: options.databasePath,
-  }).getActiveTaskByDisplayId(options.taskDisplayId)
+  })
+  const task = await taskRepository.getActiveTaskByDisplayId(
+    options.taskDisplayId
+  )
 
   if (!task || task.projectId !== project.id) {
     return validationError("task_not_found", "Task not found", { status: 404 })
@@ -311,20 +343,90 @@ export async function handleRunTaskNowRequest(
     )
   }
 
-  const result = await createRunOrchestrator({
-    databasePath: options.databasePath,
-    cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
-    cursorAdapter: options.cursorAdapter,
-    gitAdapter: options.gitAdapter,
-  }).runTaskNow({
-    projectKey: options.projectKey,
-    taskDisplayId: options.taskDisplayId,
-  })
+  if (await taskRepository.hasRunningTaskForProject(project.id)) {
+    return projectTaskAlreadyRunningError()
+  }
+
+  const lockedResult = await runWithProjectExecutionLock(
+    project.id,
+    async () =>
+      createRunOrchestrator({
+        databasePath: options.databasePath,
+        cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
+        cursorAdapter: options.cursorAdapter,
+        gitAdapter: options.gitAdapter,
+      }).runTaskNow({
+        projectKey: options.projectKey,
+        taskDisplayId: options.taskDisplayId,
+      })
+  )
+
+  if (lockedResult.status === "already_running") {
+    return projectTaskAlreadyRunningError()
+  }
+
+  const result = lockedResult.value
 
   if (result.blockedReason === "task_not_runnable" && result.runId === null) {
     return validationError(
       "task_not_runnable",
       "Task status cannot be run now.",
+      { status: 409 }
+    )
+  }
+
+  return Response.json({ result })
+}
+
+export async function handleRunReadyTasksRequest(
+  request: Request,
+  options: RunReadyTasksApiOptions
+) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
+  const body = await parseJsonRequest(request)
+
+  if (!body.success) {
+    return validationError("invalid_request", "Invalid JSON request body")
+  }
+
+  const parsed = runReadyTasksRequestSchema.safeParse(body.data)
+
+  if (!parsed.success) {
+    return validationError("invalid_request", "Invalid Ready batch input")
+  }
+
+  const project = await loadProject(options)
+
+  if (!project) {
+    return validationError("project_not_found", "Project not found", {
+      status: 404,
+    })
+  }
+
+  const batchRunner =
+    options.batchRunner ??
+    createProjectBatchRunner({
+      tasks: createTaskRepository({ databasePath: options.databasePath }),
+      runs: createRunOrchestrator({
+        databasePath: options.databasePath,
+        cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
+        cursorAdapter: options.cursorAdapter,
+        gitAdapter: options.gitAdapter,
+      }),
+    })
+  const result = await batchRunner.runReadyTaskBatch({
+    projectId: project.id,
+    projectKey: project.key,
+    limit: parsed.data.count ?? project.schedule.scheduledRunLimit,
+  })
+
+  if (result.status === "already_running") {
+    return validationError(
+      "project_batch_already_running",
+      "A Ready batch is already running for this Project.",
       { status: 409 }
     )
   }
@@ -338,31 +440,11 @@ async function loadProject(options: TaskApiOptions) {
   }).getActiveProjectByKey(options.projectKey)
 }
 
-async function parseJsonRequest(request: Request) {
-  try {
-    return { success: true as const, data: await request.json() }
-  } catch {
-    return { success: false as const }
-  }
-}
-
-function validationError(
-  code: string,
-  message: string,
-  {
-    status = 400,
-  }: {
-    status?: number
-  } = {}
-) {
-  return Response.json({ error: { code, message } }, { status })
-}
-
-function schemaApplyRequiredError() {
+function projectTaskAlreadyRunningError() {
   return validationError(
-    "schema_apply_required",
-    "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database.",
-    { status: 503 }
+    "project_task_already_running",
+    "Another Task is already running for this Project.",
+    { status: 409 }
   )
 }
 

@@ -1,5 +1,9 @@
 import { z } from "zod"
 
+import {
+  parseJsonRequest,
+  validationError,
+} from "../api/api-response.ts"
 import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import {
@@ -203,36 +207,5 @@ export async function handleCreateProjectRequest(
       },
     },
     { status: 201 }
-  )
-}
-
-async function parseJsonRequest(request: Request) {
-  try {
-    return { success: true as const, data: await request.json() }
-  } catch {
-    return { success: false as const }
-  }
-}
-
-function validationError(
-  code: string,
-  message: string,
-  {
-    status = 400,
-    issues,
-  }: {
-    status?: number
-    issues?: Array<{ path: string[]; code: string; message: string }>
-  } = {}
-) {
-  return Response.json(
-    {
-      error: {
-        code,
-        message,
-        ...(issues ? { issues } : {}),
-      },
-    },
-    { status }
   )
 }

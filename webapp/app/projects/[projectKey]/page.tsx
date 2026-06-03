@@ -7,6 +7,7 @@ import { resolveAppDataPaths } from "@/lib/app-data/app-data"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
 import { createProjectRepository } from "@/lib/projects/project-repository"
 import { createRunRepository } from "@/lib/runs/run-repository"
+import { ensureProjectSchedulerRuntimeStarted } from "@/lib/scheduler/project-scheduler-runtime"
 import {
   attachLatestRunSummaries,
   createKanbanColumns,
@@ -53,6 +54,8 @@ export default async function ProjectPage({
     )
   }
 
+  ensureProjectSchedulerRuntimeStarted({ databasePath })
+
   const tasks = await createTaskRepository({
     databasePath,
   }).listActiveTasksForProject(project.id)
@@ -90,7 +93,11 @@ export default async function ProjectPage({
           <TaskCreateForm projectKey={project.key} />
         </aside>
 
-        <KanbanBoard projectKey={project.key} initialColumns={columns} />
+        <KanbanBoard
+          projectKey={project.key}
+          scheduledRunLimit={project.schedule.scheduledRunLimit}
+          initialColumns={columns}
+        />
       </div>
 
       {selectedTask ? (

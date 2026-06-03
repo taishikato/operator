@@ -43,6 +43,7 @@ test("ProjectRepository creates and reads an active Project with repository meta
     dailyTime: "09:00",
     timezone: "Asia/Tokyo",
     scheduledRunLimit: 1,
+    lastScheduledLocalDate: null,
   })
   assert.equal(persisted?.nextTaskNumber, 1)
   assert.equal(persisted?.removedAt, null)
@@ -148,6 +149,7 @@ test("ProjectRepository reactivates a removed Project for the same repository wi
     dailyTime: "10:30",
     timezone: "Asia/Tokyo",
     scheduledRunLimit: 2,
+    lastScheduledLocalDate: null,
   })
   assert.equal(await projects.allocateNextTaskNumber(project.id), 3)
 })
@@ -266,6 +268,53 @@ test("ProjectRepository removes Projects from active selection and scheduling wi
   const historical = await projects.getProjectById(project.id)
   assert.equal(historical?.repoPath, "/Users/example/operator")
   assert.equal(historical?.removedAt, removed.removedAt)
+})
+
+test("ProjectRepository records the last scheduled Project-local date that fired", async () => {
+  const projects = await createProjectRepositoryForTest()
+  const project = await projects.createProject(
+    createProjectInput({
+      schedule: {
+        enabled: true,
+        dailyTime: "09:00",
+        timezone: "Asia/Tokyo",
+        scheduledRunLimit: 1,
+      },
+    })
+  )
+
+  const updated = await projects.markScheduledLocalDateFired(
+    project.id,
+    "2026-06-03"
+  )
+
+  assert.equal(updated.schedule.lastScheduledLocalDate, "2026-06-03")
+  assert.equal(
+    (await projects.getActiveProjectByKey("OP"))?.schedule
+      .lastScheduledLocalDate,
+    "2026-06-03"
+  )
+})
+
+test("ProjectRepository updates Project schedule settings without clearing the last fired local date", async () => {
+  const projects = await createProjectRepositoryForTest()
+  const project = await projects.createProject(createProjectInput())
+  await projects.markScheduledLocalDateFired(project.id, "2026-06-03")
+
+  const updated = await projects.updateScheduleSettings(project.id, {
+    enabled: true,
+    dailyTime: "10:30",
+    timezone: "America/New_York",
+    scheduledRunLimit: 4,
+  })
+
+  assert.deepEqual(updated.schedule, {
+    enabled: true,
+    dailyTime: "10:30",
+    timezone: "America/New_York",
+    scheduledRunLimit: 4,
+    lastScheduledLocalDate: "2026-06-03",
+  })
 })
 
 function createProjectInput(
