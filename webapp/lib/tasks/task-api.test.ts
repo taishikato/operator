@@ -24,6 +24,8 @@ import {
   handleListTasksRequest,
   handleRunReadyTasksRequest,
   handleRunTaskNowRequest,
+  handlePrepareTaskPullRequestRequest,
+  handleCreateTaskPullRequestRequest,
   handleUpdateTaskBoardRequest,
   handleUpdateTaskRequest,
 } from "./task-api.ts"
@@ -31,6 +33,7 @@ import type {
   CursorRunAdapter,
   GitRunAdapter,
 } from "../runs/run-orchestration.ts"
+import type { TaskPrCommandAdapter } from "./task-pr-creation.ts"
 
 test("handleCreateTaskRequest returns schema apply requirement when databaseStatus is requires_explicit_apply", async () => {
   const databasePath = await createDatabaseForTest()
@@ -692,6 +695,207 @@ test("handleRunReadyTasksRequest accepts a confirmed custom manual batch count",
   ])
 })
 
+test("handlePrepareTaskPullRequestRequest previews a Review Task PR without pushing", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Manual PR",
+    bodyMarkdown: "Open a draft PR.",
+    acceptanceCriteriaMarkdown: "- Shows confirmation",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.setTaskBranchName(task.id, "operator/op-1-manual-pr")
+  await tasks.markTaskReview(task.id)
+
+  const command = new FakeTaskPrCommandAdapter({
+    "git rev-parse HEAD": "abc123\n",
+    "git remote get-url origin": "git@github.com:example/operator.git\n",
+  })
+  const response = await handlePrepareTaskPullRequestRequest(
+    new Request("http://test"),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+      taskDisplayId: "OP-1",
+      commandAdapter: command,
+    }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(body.draft, {
+    remote: "origin",
+    remoteUrl: "git@github.com:example/operator.git",
+    branchName: "operator/op-1-manual-pr",
+    baseBranch: "main",
+    commitSha: "abc123",
+    title: "OP-1: Manual PR",
+    body: [
+      "## Task",
+      "Manual PR",
+      "",
+      "## Body",
+      "Open a draft PR.",
+      "",
+      "## Acceptance criteria",
+      "- Shows confirmation",
+    ].join("\n"),
+    draft: true,
+  })
+  assert.deepEqual(
+    command.calls.map((call) => `${call.command} ${call.args.join(" ")}`),
+    ["git rev-parse HEAD", "git remote get-url origin"]
+  )
+})
+
+test("handlePrepareTaskPullRequestRequest rejects Tasks outside Review before running commands", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Manual PR",
+    bodyMarkdown: "Open a draft PR.",
+    acceptanceCriteriaMarkdown: "- Only Review Tasks can create PRs",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.setTaskBranchName(task.id, "operator/op-1-manual-pr")
+
+  const command = new FakeTaskPrCommandAdapter({})
+  const response = await handlePrepareTaskPullRequestRequest(
+    new Request("http://test"),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+      taskDisplayId: "OP-1",
+      commandAdapter: command,
+    }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "task_pr_unavailable")
+  assert.deepEqual(command.calls, [])
+})
+
+test("handleCreateTaskPullRequestRequest stores the PR URL and keeps the Task in Review", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Manual PR",
+    bodyMarkdown: "Open a draft PR.",
+    acceptanceCriteriaMarkdown: "- Shows confirmation",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.setTaskBranchName(task.id, "operator/op-1-manual-pr")
+  await tasks.markTaskReview(task.id)
+
+  const command = new FakeTaskPrCommandAdapter({
+    "git rev-parse HEAD": "abc123\n",
+    "git remote get-url origin": "git@github.com:example/operator.git\n",
+    "git push -u origin operator/op-1-manual-pr": "",
+    "gh pr create --draft --base main --head operator/op-1-manual-pr --title OP-1: Manual PR --body Confirmed body":
+      "https://github.com/example/operator/pull/1\n",
+  })
+  const response = await handleCreateTaskPullRequestRequest(
+    jsonRequest({
+      title: "OP-1: Manual PR",
+      body: "Confirmed body",
+      draft: true,
+    }),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+      taskDisplayId: "OP-1",
+      commandAdapter: command,
+    }
+  )
+  const body = await response.json()
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.equal(response.status, 200)
+  assert.equal(
+    body.task.pullRequestUrl,
+    "https://github.com/example/operator/pull/1"
+  )
+  assert.equal(body.task.status, "review")
+  assert.equal(
+    saved?.pullRequestUrl,
+    "https://github.com/example/operator/pull/1"
+  )
+  assert.equal(saved?.pullRequestError, null)
+  assert.equal(saved?.status, "review")
+  assert.deepEqual(
+    command.calls.map((call) => `${call.command} ${call.args.join(" ")}`),
+    [
+      "git rev-parse HEAD",
+      "git remote get-url origin",
+      "git push -u origin operator/op-1-manual-pr",
+      "gh pr create --draft --base main --head operator/op-1-manual-pr --title OP-1: Manual PR --body Confirmed body",
+    ]
+  )
+})
+
+test("handleCreateTaskPullRequestRequest records useful errors without moving the Task to Done", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Manual PR",
+    bodyMarkdown: "Open a draft PR.",
+    acceptanceCriteriaMarkdown: "- Records failures",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.setTaskBranchName(task.id, "operator/op-1-manual-pr")
+  await tasks.markTaskReview(task.id)
+
+  const command = new FakeTaskPrCommandAdapter({
+    "git rev-parse HEAD": "abc123\n",
+    "git remote get-url origin": "git@github.com:example/operator.git\n",
+    "git push -u origin operator/op-1-manual-pr": "",
+    "gh pr create --draft --base main --head operator/op-1-manual-pr --title OP-1: Manual PR --body Confirmed body":
+      new Error("gh auth failed"),
+  })
+  const response = await handleCreateTaskPullRequestRequest(
+    jsonRequest({
+      title: "OP-1: Manual PR",
+      body: "Confirmed body",
+      draft: true,
+    }),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+      taskDisplayId: "OP-1",
+      commandAdapter: command,
+    }
+  )
+  const body = await response.json()
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.equal(response.status, 502)
+  assert.equal(body.error.code, "pull_request_creation_failed")
+  assert.equal(saved?.status, "review")
+  assert.equal(saved?.pullRequestUrl, null)
+  assert.equal(saved?.pullRequestError, "gh auth failed")
+})
+
 test("handleRunTaskNowRequest returns 409 when the Task claim is already taken", async () => {
   const databasePath = await createDatabaseForTest()
   const projects = createProjectRepository({ databasePath })
@@ -907,6 +1111,14 @@ test("Task Run Ready API route exposes a POST endpoint", async () => {
   assert.equal(typeof runReadyRoute.POST, "function")
 })
 
+test("Task pull request API route exposes GET and POST endpoints", async () => {
+  const pullRequestRoute =
+    await import("../../app/api/projects/[projectKey]/tasks/[taskDisplayId]/pull-request/route.ts")
+
+  assert.equal(typeof pullRequestRoute.GET, "function")
+  assert.equal(typeof pullRequestRoute.POST, "function")
+})
+
 async function insertRunningRunForTest({
   databasePath,
   projectId,
@@ -1076,5 +1288,38 @@ class FakeCursorRunAdapter implements CursorRunAdapter {
   async run(input: { prompt: string }) {
     this.calls.push(input)
     return { adapterRunId: "fake-run" }
+  }
+}
+
+class FakeTaskPrCommandAdapter implements TaskPrCommandAdapter {
+  calls: Array<{ command: string; args: string[]; cwd: string }> = []
+  private readonly outputs: Record<string, string | Error>
+
+  constructor(outputs: Record<string, string | Error>) {
+    this.outputs = outputs
+  }
+
+  async run(input: { command: string; args: string[]; cwd: string }) {
+    this.calls.push(input)
+    const key = `${input.command} ${input.args.join(" ")}`
+    const stdout = this.outputs[key]
+
+    if (stdout === undefined) {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: `Unexpected command: ${key}`,
+      }
+    }
+
+    if (stdout instanceof Error) {
+      return {
+        exitCode: 1,
+        stdout: "",
+        stderr: stdout.message,
+      }
+    }
+
+    return { exitCode: 0, stdout, stderr: "" }
   }
 }

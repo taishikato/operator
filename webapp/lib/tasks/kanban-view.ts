@@ -9,6 +9,9 @@ export type KanbanTask = {
   acceptanceCriteriaMarkdown: string
   status: TaskStatus
   position: number
+  taskBranchName: string | null
+  pullRequestUrl: string | null
+  pullRequestError: string | null
   modelOverride: string | null
   reasoningLevelOverride: string | null
   latestRun?: LatestRunSummary | null

@@ -30,7 +30,10 @@ test("resolveTaskDrawer selects a Task by display ID from the URL query", () => 
   assert.equal(selected?.displayId, "OP-1")
   assert.equal(selected?.title, "Selected task")
   assert.equal(resolveTaskDrawer("OP-404", [task({ displayId: "OP-1" })]), null)
-  assert.equal(resolveTaskDrawer(undefined, [task({ displayId: "OP-1" })]), null)
+  assert.equal(
+    resolveTaskDrawer(undefined, [task({ displayId: "OP-1" })]),
+    null
+  )
 })
 
 test("attachLatestRunSummaries adds the latest Run summary to matching Tasks", () => {
@@ -63,6 +66,9 @@ function task(overrides: Partial<KanbanTask> = {}): KanbanTask {
     acceptanceCriteriaMarkdown: "- Acceptance criteria",
     status: "backlog",
     position: 1,
+    taskBranchName: null,
+    pullRequestUrl: null,
+    pullRequestError: null,
     modelOverride: null,
     reasoningLevelOverride: null,
     latestRun: null,

@@ -47,6 +47,8 @@ test("exportOperatorSchemaSql exports the Task persistence schema from Drizzle s
   assert.match(sql, /`status` text NOT NULL/i)
   assert.match(sql, /`position` integer NOT NULL/i)
   assert.match(sql, /`task_branch_name` text/i)
+  assert.match(sql, /`pull_request_url` text/i)
+  assert.match(sql, /`pull_request_error` text/i)
   assert.match(sql, /`blocked_reason` text/i)
   assert.match(sql, /`archived_at` text/i)
   assert.match(

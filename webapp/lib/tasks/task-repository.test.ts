@@ -34,6 +34,8 @@ test("TaskRepository creates a Backlog Task with a stable Project display ID", a
   )
   assert.equal(task.status, "backlog")
   assert.equal(task.position, 1)
+  assert.equal(task.pullRequestUrl, null)
+  assert.equal(task.pullRequestError, null)
   assert.equal(task.archivedAt, null)
 
   assert.deepEqual(
@@ -193,7 +195,10 @@ test("TaskRepository tryClaimTaskForRun claims only runnable Tasks once", async 
   })
 
   assert.equal(await tasks.tryClaimTaskForRun(task.id), true)
-  assert.equal((await tasks.getActiveTaskByDisplayId("OP-1"))?.status, "running")
+  assert.equal(
+    (await tasks.getActiveTaskByDisplayId("OP-1"))?.status,
+    "running"
+  )
   assert.equal(await tasks.tryClaimTaskForRun(task.id), false)
 })
 
@@ -216,6 +221,58 @@ test("TaskRepository board moves clear blocked reasons outside the Blocked colum
 
   assert.equal(saved?.status, "backlog")
   assert.equal(saved?.blockedReason, null)
+})
+
+test("TaskRepository records a created PR URL without moving a Review Task to Done", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Review task",
+    bodyMarkdown: "This task has changes ready for review.",
+    acceptanceCriteriaMarkdown: "- A PR can be linked",
+  })
+  await tasks.markTaskReview(task.id)
+
+  const updated = await tasks.recordTaskPullRequestCreated(
+    task.id,
+    "https://github.com/example/operator/pull/14"
+  )
+
+  assert.equal(updated.status, "review")
+  assert.equal(
+    updated.pullRequestUrl,
+    "https://github.com/example/operator/pull/14"
+  )
+  assert.equal(updated.pullRequestError, null)
+
+  const saved = await tasks.getActiveTaskByDisplayId(task.displayId)
+  assert.equal(saved?.status, "review")
+  assert.equal(
+    saved?.pullRequestUrl,
+    "https://github.com/example/operator/pull/14"
+  )
+})
+
+test("TaskRepository records a PR creation error without moving a Review Task to Done", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Review task",
+    bodyMarkdown: "This task has changes ready for review.",
+    acceptanceCriteriaMarkdown: "- A PR can be retried",
+  })
+  await tasks.markTaskReview(task.id)
+
+  const updated = await tasks.recordTaskPullRequestError(
+    task.id,
+    "gh auth failed"
+  )
+
+  assert.equal(updated.status, "review")
+  assert.equal(updated.pullRequestUrl, null)
+  assert.equal(updated.pullRequestError, "gh auth failed")
 })
 
 test("TaskRepository rolls back board updates when a later write fails", async () => {
@@ -245,11 +302,10 @@ END;
 `
   )
 
-  await assert.rejects(
-    () =>
-      tasks.updateTaskBoard(project.id, [
-        { status: "backlog", taskDisplayIds: ["OP-2", "OP-1"] },
-      ])
+  await assert.rejects(() =>
+    tasks.updateTaskBoard(project.id, [
+      { status: "backlog", taskDisplayIds: ["OP-2", "OP-1"] },
+    ])
   )
 
   assert.deepEqual(
