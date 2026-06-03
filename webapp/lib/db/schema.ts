@@ -63,6 +63,8 @@ export const tasks = sqliteTable(
     acceptanceCriteriaMarkdown: text("acceptance_criteria_markdown").notNull(),
     status: text("status").notNull(),
     position: integer("position").notNull(),
+    taskBranchName: text("task_branch_name"),
+    blockedReason: text("blocked_reason"),
     modelOverride: text("model_override"),
     reasoningLevelOverride: text("reasoning_level_override"),
     createdAt: text("created_at").notNull(),
@@ -70,16 +72,37 @@ export const tasks = sqliteTable(
     archivedAt: text("archived_at"),
   },
   (task) => [
-    uniqueIndex("tasks_project_number_unique").on(
-      task.projectId,
-      task.number
-    ),
+    uniqueIndex("tasks_project_number_unique").on(task.projectId, task.number),
     uniqueIndex("tasks_display_id_unique").on(task.displayId),
   ]
 )
+
+export const runs = sqliteTable("runs", {
+  id: text("id").notNull().primaryKey(),
+  projectId: text("project_id").notNull(),
+  taskId: text("task_id").notNull(),
+  taskDisplayId: text("task_display_id").notNull(),
+  status: text("status").notNull(),
+  blockedReason: text("blocked_reason"),
+  taskBranchName: text("task_branch_name").notNull(),
+  model: text("model").notNull(),
+  reasoningLevel: text("reasoning_level").notNull(),
+  baseBranch: text("base_branch").notNull(),
+  headBefore: text("head_before").notNull(),
+  headAfter: text("head_after"),
+  worktreeDirtyBefore: integer("worktree_dirty_before", {
+    mode: "boolean",
+  }).notNull(),
+  worktreeDirtyAfter: integer("worktree_dirty_after", { mode: "boolean" }),
+  adapterRunId: text("adapter_run_id"),
+  startedAt: text("started_at").notNull(),
+  finishedAt: text("finished_at"),
+  updatedAt: text("updated_at").notNull(),
+})
 
 export const operatorSchemaTables = [
   operatorMetadata,
   projects,
   tasks,
+  runs,
 ] as const

@@ -44,39 +44,80 @@ test("KanbanBoard shows server-refreshed Tasks when initial columns change", asy
   assert.equal(view.queryAllByText("OP-2").length, 2)
 })
 
-function boardColumns(input: { backlog: string[] }): KanbanColumn[] {
+test("KanbanBoard exposes Run Now for runnable Tasks only", async () => {
+  const { KanbanBoard } = await import("./kanban-board.tsx")
+  const view = render(
+    <KanbanBoard
+      projectKey="OP"
+      initialColumns={boardColumns({
+        backlog: ["OP-1"],
+        ready: ["OP-2"],
+        running: ["OP-3"],
+        review: ["OP-4"],
+        done: ["OP-5"],
+        blocked: ["OP-6"],
+      })}
+    />
+  )
+
+  assert.equal(view.queryByRole("button", { name: "Run OP-1" }) !== null, true)
+  assert.equal(view.queryByRole("button", { name: "Run OP-2" }) !== null, true)
+  assert.equal(view.queryByRole("button", { name: "Run OP-4" }) !== null, true)
+  assert.equal(view.queryByRole("button", { name: "Run OP-6" }) !== null, true)
+  assert.equal(view.queryByRole("button", { name: "Run OP-3" }), null)
+  assert.equal(view.queryByRole("button", { name: "Run OP-5" }), null)
+})
+
+function boardColumns(input: {
+  backlog?: string[]
+  ready?: string[]
+  running?: string[]
+  review?: string[]
+  done?: string[]
+  blocked?: string[]
+}): KanbanColumn[] {
   return [
     {
       status: "backlog",
       label: "Backlog",
-      tasks: input.backlog.map((displayId, index) =>
+      tasks: (input.backlog ?? []).map((displayId, index) =>
         task(displayId, "backlog", index + 1)
       ),
     },
     {
       status: "ready",
       label: "Ready",
-      tasks: [],
+      tasks: (input.ready ?? []).map((displayId, index) =>
+        task(displayId, "ready", index + 1)
+      ),
     },
     {
       status: "running",
       label: "Running",
-      tasks: [],
+      tasks: (input.running ?? []).map((displayId, index) =>
+        task(displayId, "running", index + 1)
+      ),
     },
     {
       status: "review",
       label: "Review",
-      tasks: [],
+      tasks: (input.review ?? []).map((displayId, index) =>
+        task(displayId, "review", index + 1)
+      ),
     },
     {
       status: "done",
       label: "Done",
-      tasks: [],
+      tasks: (input.done ?? []).map((displayId, index) =>
+        task(displayId, "done", index + 1)
+      ),
     },
     {
       status: "blocked",
       label: "Blocked",
-      tasks: [],
+      tasks: (input.blocked ?? []).map((displayId, index) =>
+        task(displayId, "blocked", index + 1)
+      ),
     },
   ]
 }

@@ -1,4 +1,5 @@
 import { connect } from "@tursodatabase/database"
+import { drizzle } from "drizzle-orm/tursodatabase/database"
 import assert from "node:assert/strict"
 import { mkdir, mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -8,17 +9,27 @@ import { test } from "node:test"
 import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { exportOperatorSchemaSql } from "../db/schema-export.ts"
+import { runs } from "../db/schema.ts"
 import {
   createProjectRepository,
   type CreateProjectInput,
 } from "../projects/project-repository.ts"
 import { createTaskRepository } from "./task-repository.ts"
 import {
+  ensureStaleRunsReconciled,
+  resetStaleRunReconciliationForTests,
+} from "../runs/run-orchestration.ts"
+import {
   handleCreateTaskRequest,
   handleListTasksRequest,
+  handleRunTaskNowRequest,
   handleUpdateTaskBoardRequest,
   handleUpdateTaskRequest,
 } from "./task-api.ts"
+import type {
+  CursorRunAdapter,
+  GitRunAdapter,
+} from "../runs/run-orchestration.ts"
 
 test("handleCreateTaskRequest returns schema apply requirement when databaseStatus is requires_explicit_apply", async () => {
   const databasePath = await createDatabaseForTest()
@@ -63,11 +74,14 @@ test("handleCreateTaskRequest creates a Project Task with display ID through the
   assert.equal(body.task.status, "backlog")
   assert.equal(body.task.title, "Create task API")
 
-  const listResponse = await handleListTasksRequest(new Request("http://test"), {
-    databasePath,
-    databaseStatus: "ready",
-    projectKey: "OP",
-  })
+  const listResponse = await handleListTasksRequest(
+    new Request("http://test"),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: "OP",
+    }
+  )
   const listBody = await listResponse.json()
 
   assert.equal(listResponse.status, 200)
@@ -119,11 +133,14 @@ test("handleUpdateTaskBoardRequest persists same-column ordering through the pub
     ]
   )
 
-  const listResponse = await handleListTasksRequest(new Request("http://test"), {
-    databasePath,
-    databaseStatus: "ready",
-    projectKey: project.key,
-  })
+  const listResponse = await handleListTasksRequest(
+    new Request("http://test"),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+    }
+  )
   const listBody = await listResponse.json()
 
   assert.deepEqual(
@@ -245,11 +262,14 @@ test("handleUpdateTaskBoardRequest rejects manual movement into Running", async 
   assert.equal(response.status, 400)
   assert.equal(body.error.code, "running_system_controlled")
 
-  const listResponse = await handleListTasksRequest(new Request("http://test"), {
-    databasePath,
-    databaseStatus: "ready",
-    projectKey: project.key,
-  })
+  const listResponse = await handleListTasksRequest(
+    new Request("http://test"),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+    }
+  )
   const listBody = await listResponse.json()
 
   assert.equal(listBody.tasks[0].status, "backlog")
@@ -355,11 +375,14 @@ test("handleUpdateTaskBoardRequest reuses Ready validation for board moves", asy
   assert.equal(response.status, 400)
   assert.equal(body.error.code, "ready_content_required")
 
-  const listResponse = await handleListTasksRequest(new Request("http://test"), {
-    databasePath,
-    databaseStatus: "ready",
-    projectKey: project.key,
-  })
+  const listResponse = await handleListTasksRequest(
+    new Request("http://test"),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+    }
+  )
   const listBody = await listResponse.json()
 
   assert.equal(listBody.tasks[0].status, "backlog")
@@ -540,6 +563,170 @@ test("handleUpdateTaskRequest validates only saved Task content when moving into
   }
 })
 
+test("handleRunTaskNowRequest runs a Task through fake adapters without requiring real Cursor credentials", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Run now API",
+    bodyMarkdown: "Run through the public API.",
+    acceptanceCriteriaMarkdown: "- Fake Cursor adapter is called",
+  })
+  const cursor = new FakeCursorRunAdapter()
+
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-1",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: cursor,
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(body.result.status, "review")
+  assert.equal(body.result.taskBranchName, "operator/op-1-run-now-api")
+  assert.equal(cursor.calls.length, 1)
+})
+
+test("handleRunTaskNowRequest returns 409 when the Task claim is already taken", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Concurrent run",
+    bodyMarkdown: "Only one run may claim the Task.",
+    acceptanceCriteriaMarkdown: "- Second request is rejected",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  assert.equal(await tasks.tryClaimTaskForRun(task.id), true)
+
+  const cursor = new FakeCursorRunAdapter()
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-1",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: cursor,
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "task_not_runnable")
+  assert.equal(cursor.calls.length, 0)
+})
+
+test("resolveTaskApiOptions reconciles stale runs once per database path", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Stale run",
+    bodyMarkdown: "Interrupted on startup.",
+    acceptanceCriteriaMarkdown: "- Reconciled once",
+  })
+  await tasks.moveTaskToStatus(task.id, "running")
+  await insertRunningRunForTest({
+    databasePath,
+    projectId: project.id,
+    taskId: task.id,
+    taskDisplayId: task.displayId,
+    startedAt: new Date(Date.now() - 60_000).toISOString(),
+  })
+  resetStaleRunReconciliationForTests()
+
+  await ensureStaleRunsReconciled(databasePath)
+  const firstSaved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  await ensureStaleRunsReconciled(databasePath)
+  const secondSaved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  assert.equal(firstSaved?.status, "blocked")
+  assert.equal(firstSaved?.blockedReason, "interrupted")
+  assert.deepEqual(secondSaved, firstSaved)
+})
+
+test("handleRunTaskNowRequest rejects a Running Task without mutating it", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Already running",
+    bodyMarkdown: "This Task is already running.",
+    acceptanceCriteriaMarkdown: "- Direct Run Now is rejected",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.markTaskRunning(task.id)
+
+  const cursor = new FakeCursorRunAdapter()
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-1",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: cursor,
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "task_not_runnable")
+  assert.equal(cursor.calls.length, 0)
+  assert.equal(saved?.status, "running")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(saved?.taskBranchName, null)
+})
+
+test("handleRunTaskNowRequest rejects a Done Task without mutating it", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Already done",
+    bodyMarkdown: "This Task is complete.",
+    acceptanceCriteriaMarkdown: "- Direct Run Now is rejected",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.moveTaskToStatus(task.id, "done")
+
+  const cursor = new FakeCursorRunAdapter()
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-1",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: cursor,
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "task_not_runnable")
+  assert.equal(cursor.calls.length, 0)
+  assert.equal(saved?.status, "done")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(saved?.taskBranchName, null)
+})
+
 test("handleListTasksRequest reports schema apply requirement before querying missing Task tables", async () => {
   const directory = await mkdtemp(join(tmpdir(), "operator-task-api-old-db-"))
   const paths = resolveAppDataPaths({
@@ -599,12 +786,60 @@ INSERT INTO projects (id, key) VALUES ('project_01', 'OP');
 })
 
 test("Task board API route exposes a PATCH endpoint", async () => {
-  const boardRoute = await import(
-    "../../app/api/projects/[projectKey]/tasks/board/route.ts"
-  )
+  const boardRoute =
+    await import("../../app/api/projects/[projectKey]/tasks/board/route.ts")
 
   assert.equal(typeof boardRoute.PATCH, "function")
 })
+
+test("Task Run Now API route exposes a POST endpoint", async () => {
+  const runRoute =
+    await import("../../app/api/projects/[projectKey]/tasks/[taskDisplayId]/run/route.ts")
+
+  assert.equal(typeof runRoute.POST, "function")
+})
+
+async function insertRunningRunForTest({
+  databasePath,
+  projectId,
+  taskId,
+  taskDisplayId,
+  startedAt,
+}: {
+  databasePath: string
+  projectId: string
+  taskId: string
+  taskDisplayId: string
+  startedAt: string
+}) {
+  const client = await connect(databasePath)
+
+  try {
+    const db = drizzle({ client, schema: { runs } })
+    await db.insert(runs).values({
+      id: "run_stale",
+      projectId,
+      taskId,
+      taskDisplayId,
+      status: "running",
+      blockedReason: null,
+      taskBranchName: "operator/op-1-stale-run",
+      model: "cursor/gpt-5",
+      reasoningLevel: "high",
+      baseBranch: "main",
+      headBefore: "a",
+      headAfter: null,
+      worktreeDirtyBefore: false,
+      worktreeDirtyAfter: null,
+      adapterRunId: null,
+      startedAt,
+      finishedAt: null,
+      updatedAt: startedAt,
+    })
+  } finally {
+    await client.close()
+  }
+}
 
 async function createDatabaseForTest() {
   const directory = await mkdtemp(join(tmpdir(), "operator-task-api-"))
@@ -678,5 +913,59 @@ function createProjectInput(
       scheduledRunLimit: 1,
     },
     ...overrides,
+  }
+}
+
+class FakeGitRunAdapter implements GitRunAdapter {
+  private headCalls = 0
+  private readonly cleanBefore: boolean
+  private readonly cleanAfter: boolean
+  private readonly headBefore: string
+  private readonly headAfter: string
+
+  constructor(
+    options: Partial<{
+      cleanBefore: boolean
+      cleanAfter: boolean
+      headBefore: string
+      headAfter: string
+    }> = {}
+  ) {
+    this.cleanBefore = options.cleanBefore ?? true
+    this.cleanAfter = options.cleanAfter ?? true
+    this.headBefore = options.headBefore ?? "before"
+    this.headAfter = options.headAfter ?? "after"
+  }
+
+  async repositoryExists() {
+    return true
+  }
+
+  async isGitRepository() {
+    return true
+  }
+
+  async getCurrentBranch() {
+    return "main"
+  }
+
+  async isWorktreeClean() {
+    return this.headCalls === 0 ? this.cleanBefore : this.cleanAfter
+  }
+
+  async getHeadSha() {
+    this.headCalls += 1
+    return this.headCalls === 1 ? this.headBefore : this.headAfter
+  }
+
+  async checkoutOrCreateBranch() {}
+}
+
+class FakeCursorRunAdapter implements CursorRunAdapter {
+  calls: Array<{ prompt: string }> = []
+
+  async run(input: { prompt: string }) {
+    this.calls.push(input)
+    return { adapterRunId: "fake-run" }
   }
 }

@@ -6,6 +6,7 @@ import {
   operatorMetadata,
   operatorSchemaTables,
   projects,
+  runs,
   tasks,
 } from "./schema.ts"
 import { getRequiredOperatorTableNames } from "./required-operator-tables.ts"
@@ -15,6 +16,7 @@ test("getRequiredOperatorTableNames derives table names from the Drizzle schema"
     getTableName(operatorMetadata),
     getTableName(projects),
     getTableName(tasks),
+    getTableName(runs),
   ])
 })
 

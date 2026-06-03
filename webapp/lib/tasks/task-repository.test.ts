@@ -182,6 +182,42 @@ test("TaskRepository exposes Ready Tasks in persisted run selection order", asyn
   )
 })
 
+test("TaskRepository tryClaimTaskForRun claims only runnable Tasks once", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Claimable Task",
+    bodyMarkdown: "Body",
+    acceptanceCriteriaMarkdown: "- Ready",
+  })
+
+  assert.equal(await tasks.tryClaimTaskForRun(task.id), true)
+  assert.equal((await tasks.getActiveTaskByDisplayId("OP-1"))?.status, "running")
+  assert.equal(await tasks.tryClaimTaskForRun(task.id), false)
+})
+
+test("TaskRepository board moves clear blocked reasons outside the Blocked column", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Blocked task",
+    bodyMarkdown: "Move this task back to backlog.",
+    acceptanceCriteriaMarkdown: "- Blocked reason is cleared",
+  })
+  await tasks.markTaskBlocked(task.id, "agent_error")
+
+  await tasks.updateTaskBoard(project.id, [
+    { status: "backlog", taskDisplayIds: ["OP-1"] },
+  ])
+
+  const saved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  assert.equal(saved?.status, "backlog")
+  assert.equal(saved?.blockedReason, null)
+})
+
 test("TaskRepository rolls back board updates when a later write fails", async () => {
   const { databasePath, projects, tasks } = await createRepositoriesForTest()
   const project = await projects.createProject(createProjectInput())

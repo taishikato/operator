@@ -4,6 +4,13 @@ import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { createProjectRepository } from "../projects/project-repository.ts"
 import {
+  canRunTaskNow,
+  createRunOrchestrator,
+  ensureStaleRunsReconciled,
+  type CursorRunAdapter,
+  type GitRunAdapter,
+} from "../runs/run-orchestration.ts"
+import {
   createTaskRepository,
   TaskBoardUpdateError,
   TaskValidationError,
@@ -57,12 +64,22 @@ export type UpdateTaskApiOptions = TaskApiOptions & {
   taskDisplayId: string
 }
 
+export type RunTaskApiOptions = UpdateTaskApiOptions & {
+  cursorApiKey?: string
+  cursorAdapter?: CursorRunAdapter
+  gitAdapter?: GitRunAdapter
+}
+
 export async function resolveTaskApiOptions({
   projectKey,
 }: {
   projectKey: string
 }): Promise<TaskApiOptions> {
   const result = await bootstrapLocalDatabase(resolveAppDataPaths({}))
+
+  if (result.status !== "requires_explicit_apply") {
+    await ensureStaleRunsReconciled(result.databasePath)
+  }
 
   return {
     databasePath: result.databasePath,
@@ -260,6 +277,59 @@ export async function handleUpdateTaskBoardRequest(
   }
 
   return Response.json({ tasks })
+}
+
+export async function handleRunTaskNowRequest(
+  _request: Request,
+  options: RunTaskApiOptions
+) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
+  const project = await loadProject(options)
+
+  if (!project) {
+    return validationError("project_not_found", "Project not found", {
+      status: 404,
+    })
+  }
+
+  const task = await createTaskRepository({
+    databasePath: options.databasePath,
+  }).getActiveTaskByDisplayId(options.taskDisplayId)
+
+  if (!task || task.projectId !== project.id) {
+    return validationError("task_not_found", "Task not found", { status: 404 })
+  }
+
+  if (!canRunTaskNow(task.status)) {
+    return validationError(
+      "task_not_runnable",
+      "Task status cannot be run now.",
+      { status: 409 }
+    )
+  }
+
+  const result = await createRunOrchestrator({
+    databasePath: options.databasePath,
+    cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
+    cursorAdapter: options.cursorAdapter,
+    gitAdapter: options.gitAdapter,
+  }).runTaskNow({
+    projectKey: options.projectKey,
+    taskDisplayId: options.taskDisplayId,
+  })
+
+  if (result.blockedReason === "task_not_runnable" && result.runId === null) {
+    return validationError(
+      "task_not_runnable",
+      "Task status cannot be run now.",
+      { status: 409 }
+    )
+  }
+
+  return Response.json({ result })
 }
 
 async function loadProject(options: TaskApiOptions) {
