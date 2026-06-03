@@ -832,6 +832,7 @@ async function insertRunningRunForTest({
       worktreeDirtyBefore: false,
       worktreeDirtyAfter: null,
       adapterRunId: null,
+      rawLogKey: "runs/run_stale.jsonl",
       startedAt,
       finishedAt: null,
       updatedAt: startedAt,

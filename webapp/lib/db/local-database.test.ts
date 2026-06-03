@@ -11,32 +11,13 @@ import {
   bootstrapLocalDatabase,
 } from "./local-database.ts"
 import { isAtlasAvailable } from "./schema-apply.ts"
+import { exportOperatorSchemaSql } from "./schema-export.ts"
 
 const schemaSql = `
 CREATE TABLE operator_metadata (
   key text PRIMARY KEY,
   value text NOT NULL,
   updated_at text NOT NULL
-);
-`
-
-const schemaSqlWithRequiredTables = `
-CREATE TABLE operator_metadata (
-  key text PRIMARY KEY,
-  value text NOT NULL,
-  updated_at text NOT NULL
-);
-CREATE TABLE projects (
-  id text PRIMARY KEY,
-  key text NOT NULL
-);
-CREATE TABLE tasks (
-  id text PRIMARY KEY,
-  project_id text NOT NULL
-);
-CREATE TABLE runs (
-  id text PRIMARY KEY,
-  task_id text NOT NULL
 );
 `
 
@@ -83,7 +64,7 @@ test("bootstrapLocalDatabase does not auto-apply schema for an initialized datab
   let applyCount = 0
 
   await bootstrapLocalDatabase(paths, {
-    exportSchemaSql: () => schemaSqlWithRequiredTables,
+    exportSchemaSql: exportOperatorSchemaSql,
     applySchema: async ({ databasePath, schemaSql }) => {
       applyCount += 1
       const client = await connect(databasePath)
@@ -191,6 +172,56 @@ VALUES ('schema_initialized', 'true', '2026-05-31T00:00:00.000Z');
 CREATE TABLE projects (
   id text PRIMARY KEY,
   key text NOT NULL
+);
+`)
+  } finally {
+    await client.close()
+  }
+
+  const result = await bootstrapLocalDatabase(paths, {
+    exportSchemaSql: () => {
+      throw new Error("schema export should be explicit for existing DBs")
+    },
+    applySchema: () => {
+      throw new Error("schema apply should be explicit for existing DBs")
+    },
+  })
+
+  assert.deepEqual(result, {
+    databasePath: paths.databasePath,
+    schemaApplied: false,
+    status: "requires_explicit_apply",
+  })
+})
+
+test("bootstrapLocalDatabase requires explicit apply for an initialized database missing a required run column", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "operator-db-bootstrap-"))
+  const paths = resolveAppDataPaths({
+    appDataRoot: join(directory, "app-data"),
+  })
+  await mkdir(paths.appDataDir, { recursive: true })
+
+  const client = await connect(paths.databasePath)
+  try {
+    await client.exec(`
+CREATE TABLE operator_metadata (
+  key text PRIMARY KEY,
+  value text NOT NULL,
+  updated_at text NOT NULL
+);
+INSERT INTO operator_metadata (key, value, updated_at)
+VALUES ('schema_initialized', 'true', '2026-05-31T00:00:00.000Z');
+CREATE TABLE projects (
+  id text PRIMARY KEY,
+  key text NOT NULL
+);
+CREATE TABLE tasks (
+  id text PRIMARY KEY,
+  project_id text NOT NULL
+);
+CREATE TABLE runs (
+  id text PRIMARY KEY,
+  task_id text NOT NULL
 );
 `)
   } finally {

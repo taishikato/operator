@@ -3,9 +3,12 @@ import { notFound } from "next/navigation"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskCreateForm } from "@/components/tasks/task-create-form"
 import { TaskDrawer } from "@/components/tasks/task-drawer"
+import { resolveAppDataPaths } from "@/lib/app-data/app-data"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
 import { createProjectRepository } from "@/lib/projects/project-repository"
+import { createRunRepository } from "@/lib/runs/run-repository"
 import {
+  attachLatestRunSummaries,
   createKanbanColumns,
   resolveTaskDrawer,
   type KanbanTask,
@@ -53,7 +56,7 @@ export default async function ProjectPage({
   const tasks = await createTaskRepository({
     databasePath,
   }).listActiveTasksForProject(project.id)
-  const kanbanTasks: KanbanTask[] = tasks.map((task) => ({
+  const kanbanTasksWithoutRuns: KanbanTask[] = tasks.map((task) => ({
     id: task.id,
     displayId: task.displayId,
     title: task.title,
@@ -63,7 +66,18 @@ export default async function ProjectPage({
     position: task.position,
     modelOverride: task.modelOverride,
     reasoningLevelOverride: task.reasoningLevelOverride,
+    latestRun: null,
   }))
+  const latestRunsByTaskId = await createRunRepository({
+    databasePath,
+    appDataPaths: resolveAppDataPaths({}),
+  }).listLatestRunSummariesForTasks(
+    kanbanTasksWithoutRuns.map((task) => task.id)
+  )
+  const kanbanTasks = attachLatestRunSummaries(
+    kanbanTasksWithoutRuns,
+    latestRunsByTaskId
+  )
   const columns = createKanbanColumns(kanbanTasks)
   const selectedTask = resolveTaskDrawer(selectedTaskDisplayId, kanbanTasks)
 

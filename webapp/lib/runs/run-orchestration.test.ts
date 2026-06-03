@@ -7,6 +7,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { test } from "node:test"
 
+import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { exportOperatorSchemaSql } from "../db/schema-export.ts"
 import { runs } from "../db/schema.ts"
 import {
@@ -24,6 +25,7 @@ import {
   type CursorRunAdapter,
   type GitRunAdapter,
 } from "./run-orchestration.ts"
+import { readRunLogLines } from "./raw-log.ts"
 
 test("canRunTaskNow exposes Run Now only for non-terminal non-Running Task statuses", () => {
   assert.deepEqual(
@@ -239,6 +241,83 @@ test("runTaskNow classifies HEAD delta and worktree state after the Cursor adapt
     assert.equal(result.status, item.expectedStatus, item.name)
     assert.equal(result.blockedReason, item.expectedBlockedReason, item.name)
   }
+})
+
+test("runTaskNow stores a relative raw log key and appends Operator and Cursor JSONL events", async () => {
+  const appDataPaths = resolveAppDataPaths({
+    appDataRoot: await mkdtemp(join(tmpdir(), "operator-run-log-")),
+  })
+  const { databasePath, task } = await createRunnableTaskForTest({
+    databasePath: appDataPaths.databasePath,
+  })
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    appDataPaths,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter({
+      cleanBefore: true,
+      cleanAfter: true,
+      headBefore: "a",
+      headAfter: "b",
+    }),
+    cursorAdapter: new FakeCursorRunAdapter([
+      { type: "cursor.stream", payload: { message: "hello" } },
+    ]),
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+  const run = await selectRunForTest(databasePath, result.runId!)
+  const lines = await readRunLogLines(appDataPaths, run.raw_log_key)
+
+  assert.equal(run.raw_log_key, `runs/${result.runId}.jsonl`)
+  assert.equal(run.raw_log_key.startsWith("/"), false)
+  assert.equal(lines.some((line) => line.source === "operator"), true)
+  assert.equal(lines.some((line) => line.source === "cursor"), true)
+  assert.deepEqual(
+    lines.map((line) => line.type),
+    [
+      "run.created",
+      "git.preflight.completed",
+      "cursor.stream",
+      "run.finished",
+    ]
+  )
+})
+
+test("runTaskNow ignores Cursor event log append failures when classifying a successful run", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter({
+      cleanBefore: true,
+      cleanAfter: true,
+      headBefore: "a",
+      headAfter: "b",
+    }),
+    cursorAdapter: new FakeCursorRunAdapter([
+      { type: "cursor.stream", payload: { sequence: BigInt(1) } },
+    ]),
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+  const saved = await createTaskRepository({
+    databasePath,
+  }).getActiveTaskByDisplayId(task.displayId)
+  const run = await selectRunForTest(databasePath, result.runId!)
+
+  assert.equal(result.status, "review")
+  assert.equal(result.blockedReason, null)
+  assert.equal(saved?.status, "review")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(run.status, "review")
+  assert.equal(run.blocked_reason, null)
 })
 
 test("runTaskNow rejects when the Task is no longer runnable at claim time", async () => {
@@ -586,11 +665,17 @@ test("runTaskNow records branch checkout failures as git_error without launching
 
 async function createRunnableTaskForTest(
   overrides: Partial<{
+    databasePath: string
     title: string
     status: "backlog" | "ready" | "blocked" | "review"
   }> = {}
 ) {
-  const databasePath = await createDatabaseForTest()
+  const databasePath = overrides.databasePath ?? (await createDatabaseForTest())
+
+  if (overrides.databasePath) {
+    await initializeDatabaseForTest(databasePath)
+  }
+
   const projects = createProjectRepository({ databasePath })
   const project = await projects.createProject(createProjectInput())
   const tasks = createTaskRepository({ databasePath })
@@ -611,6 +696,13 @@ async function createRunnableTaskForTest(
 async function createDatabaseForTest() {
   const directory = await mkdtemp(join(tmpdir(), "operator-runs-"))
   const databasePath = join(directory, "operator.db")
+
+  await initializeDatabaseForTest(databasePath)
+
+  return databasePath
+}
+
+async function initializeDatabaseForTest(databasePath: string) {
   const client = await connect(databasePath)
 
   try {
@@ -618,8 +710,6 @@ async function createDatabaseForTest() {
   } finally {
     await client.close()
   }
-
-  return databasePath
 }
 
 async function insertRunningRunForTest({
@@ -653,6 +743,7 @@ async function insertRunningRunForTest({
       worktreeDirtyBefore: false,
       worktreeDirtyAfter: null,
       adapterRunId: null,
+      rawLogKey: "runs/run_stale.jsonl",
       startedAt,
       finishedAt: null,
       updatedAt: startedAt,
@@ -674,6 +765,7 @@ async function selectRunForTest(databasePath: string, runId: string) {
         status: runs.status,
         blocked_reason: runs.blockedReason,
         head_after: runs.headAfter,
+        raw_log_key: runs.rawLogKey,
       })
       .from(runs)
       .where(eq(runs.id, runId))
@@ -682,6 +774,7 @@ async function selectRunForTest(databasePath: string, runId: string) {
       status: string
       blocked_reason: string | null
       head_after: string | null
+      raw_log_key: string
     }
   } finally {
     await client.close()
@@ -797,9 +890,28 @@ class FakeGitRunAdapter implements GitRunAdapter {
 
 class FakeCursorRunAdapter implements CursorRunAdapter {
   calls: Array<{ prompt: string; branchName: string; model: string }> = []
+  private events: Array<{ type: string; payload: Record<string, unknown> }>
 
-  async run(input: { prompt: string; branchName: string; model: string }) {
+  constructor(
+    events: Array<{ type: string; payload: Record<string, unknown> }> = []
+  ) {
+    this.events = events
+  }
+
+  async run(
+    input: {
+      prompt: string
+      branchName: string
+      model: string
+      onEvent?: (event: unknown) => Promise<void>
+    }
+  ) {
     this.calls.push(input)
+
+    for (const event of this.events) {
+      await input.onEvent?.(event)
+    }
+
     return { adapterRunId: `fake-${this.calls.length}` }
   }
 }

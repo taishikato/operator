@@ -201,60 +201,32 @@ export function createTaskRepository({
       input: UpdateTaskInstructionsInput
     ) {
       return withDb(databasePath, async (db) => {
-        const [task] = await db
-          .update(tasks)
-          .set({
+        return toTask(
+          await updateActiveTask(db, taskId, {
             title: input.title,
             bodyMarkdown: input.bodyMarkdown,
             acceptanceCriteriaMarkdown: input.acceptanceCriteriaMarkdown,
             modelOverride: input.modelOverride,
             reasoningLevelOverride: input.reasoningLevelOverride,
-            updatedAt: new Date().toISOString(),
           })
-          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-          .returning()
-
-        if (!task) {
-          throw new Error(`Active Task not found: ${taskId}`)
-        }
-
-        return toTask(task)
+        )
       })
     },
 
     async moveTaskToStatus(taskId: string, status: TaskStatus) {
       return withDb(databasePath, async (db) => {
-        const [existing] = await db
-          .select()
-          .from(tasks)
-          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-          .limit(1)
-
-        if (!existing) {
-          throw new Error(`Active Task not found: ${taskId}`)
-        }
-
-        const currentTask = toTask(existing)
+        const currentTask = toTask(await requireActiveTask(db, taskId))
         validateTaskStatusTransition(currentTask, status)
 
         const position =
           currentTask.status === status
             ? currentTask.position
             : await nextPositionForStatus(db, currentTask.projectId, status)
-        const [task] = await db
-          .update(tasks)
-          .set({
-            status,
-            position,
-            blockedReason: status === "blocked" ? currentTask.blockedReason : null,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-          .returning()
-
-        if (!task) {
-          throw new Error(`Active Task not found: ${taskId}`)
-        }
+        const task = await updateActiveTask(db, taskId, {
+          status,
+          position,
+          blockedReason: status === "blocked" ? currentTask.blockedReason : null,
+        })
 
         return toTask(task)
       })
@@ -372,18 +344,14 @@ export function createTaskRepository({
     async archiveTask(taskId: string) {
       return withDb(databasePath, async (db) => {
         const now = new Date().toISOString()
-        const [task] = await db
-          .update(tasks)
-          .set({
-            updatedAt: now,
+        const task = await updateActiveTask(
+          db,
+          taskId,
+          {
             archivedAt: now,
-          })
-          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-          .returning()
-
-        if (!task) {
-          throw new Error(`Active Task not found: ${taskId}`)
-        }
+          },
+          now
+        )
 
         return toTask(task)
       })
@@ -391,32 +359,15 @@ export function createTaskRepository({
 
     async setTaskBranchName(taskId: string, branchName: string) {
       return withDb(databasePath, async (db) => {
-        const [existing] = await db
-          .select()
-          .from(tasks)
-          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-          .limit(1)
-
-        if (!existing) {
-          throw new Error(`Active Task not found: ${taskId}`)
-        }
+        const existing = await requireActiveTask(db, taskId)
 
         if (existing.taskBranchName) {
           return existing.taskBranchName
         }
 
-        const [task] = await db
-          .update(tasks)
-          .set({
-            taskBranchName: branchName,
-            updatedAt: new Date().toISOString(),
-          })
-          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-          .returning()
-
-        if (!task) {
-          throw new Error(`Active Task not found: ${taskId}`)
-        }
+        const task = await updateActiveTask(db, taskId, {
+          taskBranchName: branchName,
+        })
 
         return task.taskBranchName ?? branchName
       })
@@ -486,35 +437,16 @@ async function moveSystemControlledTaskStatus(
   blockedReason: string | null
 ) {
   return withDb(databasePath, async (db) => {
-    const [existing] = await db
-      .select()
-      .from(tasks)
-      .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-      .limit(1)
-
-    if (!existing) {
-      throw new Error(`Active Task not found: ${taskId}`)
-    }
-
-    const currentTask = toTask(existing)
+    const currentTask = toTask(await requireActiveTask(db, taskId))
     const position =
       currentTask.status === status
         ? currentTask.position
         : await nextPositionForStatus(db, currentTask.projectId, status)
-    const [task] = await db
-      .update(tasks)
-      .set({
-        status,
-        position,
-        blockedReason,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
-      .returning()
-
-    if (!task) {
-      throw new Error(`Active Task not found: ${taskId}`)
-    }
+    const task = await updateActiveTask(db, taskId, {
+      status,
+      position,
+      blockedReason,
+    })
 
     return toTask(task)
   })
@@ -539,6 +471,42 @@ async function nextPositionForStatus(
     )
 
   return (row?.position ?? 0) + 1
+}
+
+async function requireActiveTask(db: TaskDb, taskId: string) {
+  const [task] = await db
+    .select()
+    .from(tasks)
+    .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+    .limit(1)
+
+  if (!task) {
+    throw new Error(`Active Task not found: ${taskId}`)
+  }
+
+  return task
+}
+
+async function updateActiveTask(
+  db: TaskDb,
+  taskId: string,
+  values: Partial<typeof tasks.$inferInsert>,
+  updatedAt = new Date().toISOString()
+) {
+  const [task] = await db
+    .update(tasks)
+    .set({
+      ...values,
+      updatedAt,
+    })
+    .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+    .returning()
+
+  if (!task) {
+    throw new Error(`Active Task not found: ${taskId}`)
+  }
+
+  return task
 }
 
 export function validateTaskStatusTransition(task: Task, status: TaskStatus) {

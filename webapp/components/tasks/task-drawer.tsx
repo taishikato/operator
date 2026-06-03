@@ -1,6 +1,14 @@
 "use client"
 
-import { CheckCircle2, Eye, Pencil, RotateCcw, Save, X } from "lucide-react"
+import {
+  CheckCircle2,
+  Eye,
+  FileText,
+  Pencil,
+  RotateCcw,
+  Save,
+  X,
+} from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useState } from "react"
 
@@ -23,6 +31,15 @@ type TaskDrawerTask = TaskInstructionFields & {
   displayId: string
   title: string
   status: TaskStatus
+  latestRun?: {
+    id: string
+    status: string
+    blockedReason: string | null
+    startedAt: string
+    finishedAt: string | null
+    updatedAt: string
+    rawLogPath: string
+  } | null
 }
 
 type TaskResponseBody =
@@ -147,6 +164,8 @@ export function TaskDrawer({
         </a>
       </div>
 
+      {task.latestRun ? <LatestRunSummary run={task.latestRun} /> : null}
+
       <section className="mt-5 grid gap-4 text-sm">
         <label className="grid gap-1.5">
           <span className="text-xs font-medium text-muted-foreground">
@@ -270,6 +289,46 @@ export function TaskDrawer({
         </div>
       </section>
     </aside>
+  )
+}
+
+function LatestRunSummary({
+  run,
+}: {
+  run: NonNullable<TaskDrawerTask["latestRun"]>
+}) {
+  return (
+    <section className="mt-5 rounded-md border bg-muted/20 p-3 text-sm">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-xs font-medium text-muted-foreground">
+            Latest run
+          </p>
+          <p className="mt-1 font-mono text-xs text-muted-foreground">
+            {run.id}
+          </p>
+        </div>
+        <a
+          href={run.rawLogPath}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border bg-background px-2.5 text-xs font-medium transition hover:bg-accent"
+        >
+          <FileText className="h-3.5 w-3.5" />
+          Raw log
+        </a>
+      </div>
+      <dl className="mt-3 grid grid-cols-2 gap-3">
+        <div>
+          <dt className="text-xs text-muted-foreground">Status</dt>
+          <dd className="mt-0.5 text-sm font-medium">{run.status}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-muted-foreground">Reason</dt>
+          <dd className="mt-0.5 truncate text-sm">
+            {run.blockedReason ?? "-"}
+          </dd>
+        </div>
+      </dl>
+    </section>
   )
 }
 
