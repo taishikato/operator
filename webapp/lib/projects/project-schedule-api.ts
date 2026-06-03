@@ -1,5 +1,10 @@
 import { z } from "zod"
 
+import {
+  parseJsonRequest,
+  schemaApplyRequiredError,
+  validationError,
+} from "../api/api-response.ts"
 import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { createProjectRepository } from "./project-repository.ts"
@@ -71,32 +76,4 @@ export async function handleUpdateProjectScheduleRequest(
   )
 
   return Response.json({ project: updatedProject })
-}
-
-async function parseJsonRequest(request: Request) {
-  try {
-    return { success: true as const, data: await request.json() }
-  } catch {
-    return { success: false as const }
-  }
-}
-
-function validationError(
-  code: string,
-  message: string,
-  {
-    status = 400,
-  }: {
-    status?: number
-  } = {}
-) {
-  return Response.json({ error: { code, message } }, { status })
-}
-
-function schemaApplyRequiredError() {
-  return validationError(
-    "schema_apply_required",
-    "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database.",
-    { status: 503 }
-  )
 }
