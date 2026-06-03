@@ -135,6 +135,106 @@ test("Project scheduler tick runs due Projects with the Project scheduled run li
   assert.deepEqual(markedDates, ["2026-06-03"])
 })
 
+test("Project scheduler tick leaves the local date unmarked when the Project batch is already running", async () => {
+  const markedDates: string[] = []
+  const scheduler = createProjectScheduler({
+    projects: {
+      async listSchedulableProjects() {
+        return [
+          scheduledProject({
+            dailyTime: "09:00",
+            timezone: "Asia/Tokyo",
+          }),
+        ]
+      },
+      async markScheduledLocalDateFired(_projectId, localDate) {
+        markedDates.push(localDate)
+      },
+    },
+    batches: {
+      async runReadyTaskBatch() {
+        return { status: "already_running", results: [] }
+      },
+    },
+  })
+
+  await scheduler.tick(new Date("2026-06-02T23:59:00.000Z"))
+  await scheduler.tick(new Date("2026-06-03T00:00:00.000Z"))
+
+  assert.deepEqual(markedDates, [])
+})
+
+test("Project scheduler tick leaves the local date unmarked when the Project batch stops before completing", async () => {
+  const markedDates: string[] = []
+  const scheduler = createProjectScheduler({
+    projects: {
+      async listSchedulableProjects() {
+        return [
+          scheduledProject({
+            dailyTime: "09:00",
+            timezone: "Asia/Tokyo",
+          }),
+        ]
+      },
+      async markScheduledLocalDateFired(_projectId, localDate) {
+        markedDates.push(localDate)
+      },
+    },
+    batches: {
+      async runReadyTaskBatch() {
+        return {
+          status: "stopped",
+          results: [
+            {
+              status: "blocked",
+              blockedReason: "timeout",
+              taskBranchName: "operator/op-1",
+              runId: "run_01",
+            },
+          ],
+        }
+      },
+    },
+  })
+
+  await scheduler.tick(new Date("2026-06-02T23:59:00.000Z"))
+  await scheduler.tick(new Date("2026-06-03T00:00:00.000Z"))
+
+  assert.deepEqual(markedDates, [])
+})
+
+test("Project scheduler tick leaves the local date unmarked when the Project batch throws", async () => {
+  const markedDates: string[] = []
+  const scheduler = createProjectScheduler({
+    projects: {
+      async listSchedulableProjects() {
+        return [
+          scheduledProject({
+            dailyTime: "09:00",
+            timezone: "Asia/Tokyo",
+          }),
+        ]
+      },
+      async markScheduledLocalDateFired(_projectId, localDate) {
+        markedDates.push(localDate)
+      },
+    },
+    batches: {
+      async runReadyTaskBatch() {
+        throw new Error("batch failed")
+      },
+    },
+  })
+
+  await scheduler.tick(new Date("2026-06-02T23:59:00.000Z"))
+  await assert.rejects(
+    scheduler.tick(new Date("2026-06-03T00:00:00.000Z")),
+    /batch failed/
+  )
+
+  assert.deepEqual(markedDates, [])
+})
+
 function scheduledProject(
   schedule: Partial<{
     enabled: boolean

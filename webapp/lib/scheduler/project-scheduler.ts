@@ -53,15 +53,18 @@ export function createProjectScheduler({
 
       await Promise.all(
         fires.map(async (fire) => {
-          await projects.markScheduledLocalDateFired(
-            fire.projectId,
-            fire.localDate
-          )
-          await batches.runReadyTaskBatch({
+          const result = await batches.runReadyTaskBatch({
             projectId: fire.projectId,
             projectKey: fire.projectKey,
             limit: fire.limit,
           })
+
+          if (result.status === "completed") {
+            await projects.markScheduledLocalDateFired(
+              fire.projectId,
+              fire.localDate
+            )
+          }
         })
       )
 
