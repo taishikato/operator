@@ -287,6 +287,39 @@ test("runTaskNow stores a relative raw log key and appends Operator and Cursor J
   )
 })
 
+test("runTaskNow ignores Cursor event log append failures when classifying a successful run", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter({
+      cleanBefore: true,
+      cleanAfter: true,
+      headBefore: "a",
+      headAfter: "b",
+    }),
+    cursorAdapter: new FakeCursorRunAdapter([
+      { type: "cursor.stream", payload: { sequence: BigInt(1) } },
+    ]),
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+  const saved = await createTaskRepository({
+    databasePath,
+  }).getActiveTaskByDisplayId(task.displayId)
+  const run = await selectRunForTest(databasePath, result.runId!)
+
+  assert.equal(result.status, "review")
+  assert.equal(result.blockedReason, null)
+  assert.equal(saved?.status, "review")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(run.status, "review")
+  assert.equal(run.blocked_reason, null)
+})
+
 test("runTaskNow rejects when the Task is no longer runnable at claim time", async () => {
   const { databasePath, task } = await createRunnableTaskForTest()
   const tasks = createTaskRepository({ databasePath })

@@ -603,11 +603,15 @@ async function appendCursorRunLogEvent(
   rawLogKey: string,
   event: unknown
 ) {
-  await appendRunLogEvent(paths, rawLogKey, {
-    source: "cursor",
-    type: cursorEventType(event),
-    payload: cursorEventPayload(event),
-  })
+  try {
+    await appendRunLogEvent(paths, rawLogKey, {
+      source: "cursor",
+      type: cursorEventType(event),
+      payload: cursorEventPayload(event),
+    })
+  } catch (error) {
+    void error
+  }
 }
 
 function cursorEventType(event: unknown) {
