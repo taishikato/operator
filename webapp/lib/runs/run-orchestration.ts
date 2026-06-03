@@ -189,6 +189,28 @@ export function buildCursorRunPrompt({
   ].join("\n")
 }
 
+const reconciledDatabasePaths = new Set<string>()
+
+export function resetStaleRunReconciliationForTests() {
+  reconciledDatabasePaths.clear()
+}
+
+export async function reconcileStaleRunsOnStartup(databasePath: string) {
+  return createRunOrchestrator({ databasePath }).reconcileInterruptedRuns({
+    interruptedBefore: new Date(),
+  })
+}
+
+export async function ensureStaleRunsReconciled(databasePath: string) {
+  if (reconciledDatabasePaths.has(databasePath)) {
+    return { interruptedRuns: 0 }
+  }
+
+  const result = await reconcileStaleRunsOnStartup(databasePath)
+  reconciledDatabasePaths.add(databasePath)
+  return result
+}
+
 export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
   return {
     async runTaskNow({
@@ -282,6 +304,10 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         return blockedWithoutRun("git_error", taskBranchName)
       }
 
+      if (!(await tasks.tryClaimTaskForRun(task.id))) {
+        return blockedWithoutRun("task_not_runnable", taskBranchName)
+      }
+
       const runId = await insertRun(options.databasePath, {
         projectId: project.id,
         taskId: task.id,
@@ -293,7 +319,6 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         headBefore,
         worktreeDirtyBefore: false,
       })
-      await tasks.markTaskRunning(task.id)
 
       try {
         const cursor = options.cursorAdapter ?? createCursorSdkRunAdapter()
@@ -316,8 +341,33 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
           }),
           project.defaults.runTimeoutSeconds
         )
-        const headAfter = await git.getHeadSha()
-        const cleanAfter = await git.isWorktreeClean()
+
+        let headAfter: string | null = null
+        let cleanAfter: boolean | null = null
+
+        try {
+          headAfter = await git.getHeadSha()
+          cleanAfter = await git.isWorktreeClean()
+        } catch (postRunGitError) {
+          void postRunGitError
+          await finishRun(options.databasePath, runId, {
+            status: "blocked",
+            blockedReason: "git_error",
+            headAfter,
+            worktreeDirtyAfter:
+              cleanAfter === null ? null : !cleanAfter,
+            adapterRunId: adapterResult.adapterRunId,
+          })
+          await tasks.markTaskBlocked(task.id, "git_error")
+
+          return {
+            status: "blocked",
+            blockedReason: "git_error",
+            taskBranchName,
+            runId,
+          }
+        }
+
         const classification = classifyRunResult({
           headBefore,
           headAfter,
@@ -501,7 +551,9 @@ async function markInterruptedRuns(
           blockedReason: "interrupted",
           updatedAt: now,
         })
-        .where(eq(taskRows.id, run.taskId))
+        .where(
+          and(eq(taskRows.id, run.taskId), eq(taskRows.status, "running"))
+        )
     }
 
     return staleRuns.length

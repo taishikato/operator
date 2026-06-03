@@ -1,5 +1,5 @@
 import { connect } from "@tursodatabase/database"
-import { and, asc, eq, isNull, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/tursodatabase/database"
 import { ulid } from "ulid"
 
@@ -15,6 +15,13 @@ export const TASK_STATUSES = [
 ] as const
 
 export type TaskStatus = (typeof TASK_STATUSES)[number]
+
+const RUNNABLE_TASK_STATUSES_FOR_RUN: TaskStatus[] = [
+  "backlog",
+  "ready",
+  "blocked",
+  "review",
+]
 
 export type Task = {
   id: string
@@ -410,6 +417,44 @@ export function createTaskRepository({
         }
 
         return task.taskBranchName ?? branchName
+      })
+    },
+
+    async tryClaimTaskForRun(taskId: string) {
+      return withDb(databasePath, async (db) => {
+        const [existing] = await db
+          .select()
+          .from(tasks)
+          .where(and(eq(tasks.id, taskId), isNull(tasks.archivedAt)))
+          .limit(1)
+
+        if (!existing) {
+          return false
+        }
+
+        const position = await nextPositionForStatus(
+          db,
+          existing.projectId,
+          "running"
+        )
+        const [claimed] = await db
+          .update(tasks)
+          .set({
+            status: "running",
+            position,
+            blockedReason: null,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(
+            and(
+              eq(tasks.id, taskId),
+              isNull(tasks.archivedAt),
+              inArray(tasks.status, RUNNABLE_TASK_STATUSES_FOR_RUN)
+            )
+          )
+          .returning()
+
+        return Boolean(claimed)
       })
     },
 

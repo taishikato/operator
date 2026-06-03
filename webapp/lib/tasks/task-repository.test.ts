@@ -182,6 +182,21 @@ test("TaskRepository exposes Ready Tasks in persisted run selection order", asyn
   )
 })
 
+test("TaskRepository tryClaimTaskForRun claims only runnable Tasks once", async () => {
+  const { projects, tasks } = await createRepositoriesForTest()
+  const project = await projects.createProject(createProjectInput())
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Claimable Task",
+    bodyMarkdown: "Body",
+    acceptanceCriteriaMarkdown: "- Ready",
+  })
+
+  assert.equal(await tasks.tryClaimTaskForRun(task.id), true)
+  assert.equal((await tasks.getActiveTaskByDisplayId("OP-1"))?.status, "running")
+  assert.equal(await tasks.tryClaimTaskForRun(task.id), false)
+})
+
 test("TaskRepository rolls back board updates when a later write fails", async () => {
   const { databasePath, projects, tasks } = await createRepositoriesForTest()
   const project = await projects.createProject(createProjectInput())

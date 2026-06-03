@@ -1,4 +1,5 @@
 import { connect } from "@tursodatabase/database"
+import { drizzle } from "drizzle-orm/tursodatabase/database"
 import assert from "node:assert/strict"
 import { mkdir, mkdtemp } from "node:fs/promises"
 import { tmpdir } from "node:os"
@@ -8,11 +9,16 @@ import { test } from "node:test"
 import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { exportOperatorSchemaSql } from "../db/schema-export.ts"
+import { runs } from "../db/schema.ts"
 import {
   createProjectRepository,
   type CreateProjectInput,
 } from "../projects/project-repository.ts"
 import { createTaskRepository } from "./task-repository.ts"
+import {
+  ensureStaleRunsReconciled,
+  resetStaleRunReconciliationForTests,
+} from "../runs/run-orchestration.ts"
 import {
   handleCreateTaskRequest,
   handleListTasksRequest,
@@ -585,6 +591,70 @@ test("handleRunTaskNowRequest runs a Task through fake adapters without requirin
   assert.equal(cursor.calls.length, 1)
 })
 
+test("handleRunTaskNowRequest returns 409 when the Task claim is already taken", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Concurrent run",
+    bodyMarkdown: "Only one run may claim the Task.",
+    acceptanceCriteriaMarkdown: "- Second request is rejected",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  assert.equal(await tasks.tryClaimTaskForRun(task.id), true)
+
+  const cursor = new FakeCursorRunAdapter()
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-1",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: cursor,
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "task_not_runnable")
+  assert.equal(cursor.calls.length, 0)
+})
+
+test("resolveTaskApiOptions reconciles stale runs once per database path", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.createTask({
+    projectId: project.id,
+    title: "Stale run",
+    bodyMarkdown: "Interrupted on startup.",
+    acceptanceCriteriaMarkdown: "- Reconciled once",
+  })
+  await tasks.moveTaskToStatus(task.id, "running")
+  await insertRunningRunForTest({
+    databasePath,
+    projectId: project.id,
+    taskId: task.id,
+    taskDisplayId: task.displayId,
+    startedAt: new Date(Date.now() - 60_000).toISOString(),
+  })
+  resetStaleRunReconciliationForTests()
+
+  await ensureStaleRunsReconciled(databasePath)
+  const firstSaved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  await ensureStaleRunsReconciled(databasePath)
+  const secondSaved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  assert.equal(firstSaved?.status, "blocked")
+  assert.equal(firstSaved?.blockedReason, "interrupted")
+  assert.deepEqual(secondSaved, firstSaved)
+})
+
 test("handleRunTaskNowRequest rejects a Running Task without mutating it", async () => {
   const databasePath = await createDatabaseForTest()
   const projects = createProjectRepository({ databasePath })
@@ -729,6 +799,48 @@ test("Task Run Now API route exposes a POST endpoint", async () => {
   assert.equal(typeof runRoute.POST, "function")
 })
 
+async function insertRunningRunForTest({
+  databasePath,
+  projectId,
+  taskId,
+  taskDisplayId,
+  startedAt,
+}: {
+  databasePath: string
+  projectId: string
+  taskId: string
+  taskDisplayId: string
+  startedAt: string
+}) {
+  const client = await connect(databasePath)
+
+  try {
+    const db = drizzle({ client, schema: { runs } })
+    await db.insert(runs).values({
+      id: "run_stale",
+      projectId,
+      taskId,
+      taskDisplayId,
+      status: "running",
+      blockedReason: null,
+      taskBranchName: "operator/op-1-stale-run",
+      model: "cursor/gpt-5",
+      reasoningLevel: "high",
+      baseBranch: "main",
+      headBefore: "a",
+      headAfter: null,
+      worktreeDirtyBefore: false,
+      worktreeDirtyAfter: null,
+      adapterRunId: null,
+      startedAt,
+      finishedAt: null,
+      updatedAt: startedAt,
+    })
+  } finally {
+    await client.close()
+  }
+}
+
 async function createDatabaseForTest() {
   const directory = await mkdtemp(join(tmpdir(), "operator-task-api-"))
   const databasePath = join(directory, "operator.db")
@@ -806,6 +918,24 @@ function createProjectInput(
 
 class FakeGitRunAdapter implements GitRunAdapter {
   private headCalls = 0
+  private readonly cleanBefore: boolean
+  private readonly cleanAfter: boolean
+  private readonly headBefore: string
+  private readonly headAfter: string
+
+  constructor(
+    options: Partial<{
+      cleanBefore: boolean
+      cleanAfter: boolean
+      headBefore: string
+      headAfter: string
+    }> = {}
+  ) {
+    this.cleanBefore = options.cleanBefore ?? true
+    this.cleanAfter = options.cleanAfter ?? true
+    this.headBefore = options.headBefore ?? "before"
+    this.headAfter = options.headAfter ?? "after"
+  }
 
   async repositoryExists() {
     return true
@@ -820,12 +950,12 @@ class FakeGitRunAdapter implements GitRunAdapter {
   }
 
   async isWorktreeClean() {
-    return true
+    return this.headCalls === 0 ? this.cleanBefore : this.cleanAfter
   }
 
   async getHeadSha() {
     this.headCalls += 1
-    return this.headCalls === 1 ? "before" : "after"
+    return this.headCalls === 1 ? this.headBefore : this.headAfter
   }
 
   async checkoutOrCreateBranch() {}

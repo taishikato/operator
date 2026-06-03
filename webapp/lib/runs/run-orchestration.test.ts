@@ -19,6 +19,8 @@ import {
   canRunTaskNow,
   classifyRunResult,
   createRunOrchestrator,
+  reconcileStaleRunsOnStartup,
+  resetStaleRunReconciliationForTests,
   type CursorRunAdapter,
   type GitRunAdapter,
 } from "./run-orchestration.ts"
@@ -239,6 +241,63 @@ test("runTaskNow classifies HEAD delta and worktree state after the Cursor adapt
   }
 })
 
+test("runTaskNow rejects when the Task is no longer runnable at claim time", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const tasks = createTaskRepository({ databasePath })
+  const cursor = new FakeCursorRunAdapter()
+
+  assert.equal(await tasks.tryClaimTaskForRun(task.id), true)
+
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter({
+      cleanBefore: true,
+      cleanAfter: true,
+      headBefore: "a",
+      headAfter: "b",
+    }),
+    cursorAdapter: cursor,
+  })
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+
+  assert.equal(result.status, "blocked")
+  assert.equal(result.blockedReason, "task_not_runnable")
+  assert.equal(result.runId, null)
+  assert.equal(cursor.calls.length, 0)
+  assert.equal(await countRunsForTask(databasePath, task.id), 0)
+})
+
+test("runTaskNow records post-run git observation failures as git_error", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FailingPostRunHeadGitRunAdapter(),
+    cursorAdapter: new FakeCursorRunAdapter(),
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+  const saved = await createTaskRepository({
+    databasePath,
+  }).getActiveTaskByDisplayId(task.displayId)
+  const run = await selectRunForTest(databasePath, result.runId!)
+
+  assert.equal(result.status, "blocked")
+  assert.equal(result.blockedReason, "git_error")
+  assert.equal(saved?.status, "blocked")
+  assert.equal(saved?.blockedReason, "git_error")
+  assert.equal(run.status, "blocked")
+  assert.equal(run.blocked_reason, "git_error")
+  assert.equal(run.head_after, null)
+})
+
 test("reconcileInterruptedRuns marks stale Running Tasks and Runs as interrupted", async () => {
   const { databasePath, task } = await createRunnableTaskForTest()
   const tasks = createTaskRepository({ databasePath })
@@ -268,6 +327,56 @@ test("reconcileInterruptedRuns marks stale Running Tasks and Runs as interrupted
   assert.equal(saved?.blockedReason, "interrupted")
   assert.equal(run.status, "blocked")
   assert.equal(run.blocked_reason, "interrupted")
+})
+
+test("reconcileInterruptedRuns leaves Tasks that already left Running unchanged", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const tasks = createTaskRepository({ databasePath })
+  await tasks.moveTaskToStatus(task.id, "review")
+  const runId = await insertRunningRunForTest({
+    databasePath,
+    taskId: task.id,
+    taskDisplayId: task.displayId,
+    startedAt: "2026-06-01T00:00:00.000Z",
+  })
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter(),
+    cursorAdapter: new FakeCursorRunAdapter(),
+  })
+
+  await orchestrator.reconcileInterruptedRuns({
+    interruptedBefore: new Date("2026-06-02T00:00:00.000Z"),
+  })
+  const saved = await tasks.getActiveTaskByDisplayId(task.displayId)
+  const run = await selectRunForTest(databasePath, runId)
+
+  assert.equal(saved?.status, "review")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(run.status, "blocked")
+  assert.equal(run.blocked_reason, "interrupted")
+})
+
+test("reconcileStaleRunsOnStartup marks in-flight runs as interrupted", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const tasks = createTaskRepository({ databasePath })
+  await tasks.setTaskBranchName(task.id, "operator/op-1-stale-run")
+  await tasks.moveTaskToStatus(task.id, "running")
+  await insertRunningRunForTest({
+    databasePath,
+    taskId: task.id,
+    taskDisplayId: task.displayId,
+    startedAt: new Date(Date.now() - 60_000).toISOString(),
+  })
+
+  resetStaleRunReconciliationForTests()
+  const result = await reconcileStaleRunsOnStartup(databasePath)
+  const saved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  assert.equal(result.interruptedRuns, 1)
+  assert.equal(saved?.status, "blocked")
+  assert.equal(saved?.blockedReason, "interrupted")
 })
 
 test("runTaskNow records adapter failures as agent_error instead of escaping the orchestration boundary", async () => {
@@ -472,14 +581,35 @@ async function selectRunForTest(databasePath: string, runId: string) {
   try {
     const db = drizzle({ client, schema: { runs } })
     const [run] = await db
-      .select({ status: runs.status, blocked_reason: runs.blockedReason })
+      .select({
+        status: runs.status,
+        blocked_reason: runs.blockedReason,
+        head_after: runs.headAfter,
+      })
       .from(runs)
       .where(eq(runs.id, runId))
 
     return run as {
       status: string
       blocked_reason: string | null
+      head_after: string | null
     }
+  } finally {
+    await client.close()
+  }
+}
+
+async function countRunsForTask(databasePath: string, taskId: string) {
+  const client = await connect(databasePath)
+
+  try {
+    const db = drizzle({ client, schema: { runs } })
+    const rows = await db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(eq(runs.taskId, taskId))
+
+    return rows.length
   } finally {
     await client.close()
   }
@@ -594,6 +724,20 @@ class FailingCheckoutGitRunAdapter extends FakeGitRunAdapter {
 class ThrowingWorktreeGitRunAdapter extends FakeGitRunAdapter {
   override async isWorktreeClean(): Promise<boolean> {
     throw new Error("git status failed")
+  }
+}
+
+class FailingPostRunHeadGitRunAdapter extends FakeGitRunAdapter {
+  private headShaCalls = 0
+
+  override async getHeadSha(): Promise<string> {
+    this.headShaCalls += 1
+
+    if (this.headShaCalls === 2) {
+      throw new Error("post-run head failed")
+    }
+
+    return this.headShaCalls === 1 ? "a" : "b"
   }
 }
 

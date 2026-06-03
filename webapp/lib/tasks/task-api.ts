@@ -6,6 +6,7 @@ import { createProjectRepository } from "../projects/project-repository.ts"
 import {
   canRunTaskNow,
   createRunOrchestrator,
+  ensureStaleRunsReconciled,
   type CursorRunAdapter,
   type GitRunAdapter,
 } from "../runs/run-orchestration.ts"
@@ -75,6 +76,10 @@ export async function resolveTaskApiOptions({
   projectKey: string
 }): Promise<TaskApiOptions> {
   const result = await bootstrapLocalDatabase(resolveAppDataPaths({}))
+
+  if (result.status !== "requires_explicit_apply") {
+    await ensureStaleRunsReconciled(result.databasePath)
+  }
 
   return {
     databasePath: result.databasePath,
@@ -315,6 +320,14 @@ export async function handleRunTaskNowRequest(
     projectKey: options.projectKey,
     taskDisplayId: options.taskDisplayId,
   })
+
+  if (result.blockedReason === "task_not_runnable" && result.runId === null) {
+    return validationError(
+      "task_not_runnable",
+      "Task status cannot be run now.",
+      { status: 409 }
+    )
+  }
 
   return Response.json({ result })
 }
