@@ -2,6 +2,7 @@ import assert from "node:assert/strict"
 import { test } from "node:test"
 
 import {
+  attachLatestRunSummaries,
   createKanbanColumns,
   resolveTaskDrawer,
   type KanbanTask,
@@ -32,6 +33,27 @@ test("resolveTaskDrawer selects a Task by display ID from the URL query", () => 
   assert.equal(resolveTaskDrawer(undefined, [task({ displayId: "OP-1" })]), null)
 })
 
+test("attachLatestRunSummaries adds the latest Run summary to matching Tasks", () => {
+  const tasks = [
+    task({ id: "task-1", displayId: "OP-1" }),
+    task({ id: "task-2", displayId: "OP-2" }),
+  ]
+  const withRuns = attachLatestRunSummaries(tasks, {
+    "task-1": {
+      id: "run_1",
+      status: "review",
+      blockedReason: null,
+      startedAt: "2026-06-01T00:00:00.000Z",
+      finishedAt: "2026-06-01T00:01:00.000Z",
+      updatedAt: "2026-06-01T00:01:00.000Z",
+      rawLogPath: "/runs/run_1",
+    },
+  })
+
+  assert.equal(withRuns[0]?.latestRun?.id, "run_1")
+  assert.equal(withRuns[1]?.latestRun, null)
+})
+
 function task(overrides: Partial<KanbanTask> = {}): KanbanTask {
   return {
     id: "task-id",
@@ -43,6 +65,7 @@ function task(overrides: Partial<KanbanTask> = {}): KanbanTask {
     position: 1,
     modelOverride: null,
     reasoningLevelOverride: null,
+    latestRun: null,
     ...overrides,
   }
 }

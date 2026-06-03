@@ -1,10 +1,15 @@
 import { connect } from "@tursodatabase/database"
 import { existsSync } from "node:fs"
 import { spawnSync } from "node:child_process"
+import { dirname } from "node:path"
 import { and, eq, isNull, lt, sql } from "drizzle-orm"
 import { drizzle } from "drizzle-orm/tursodatabase/database"
 import { ulid } from "ulid"
 
+import {
+  resolveAppDataPaths,
+  type AppDataPaths,
+} from "../app-data/app-data.ts"
 import { runs, tasks as taskRows } from "../db/schema.ts"
 import { createProjectRepository } from "../projects/project-repository.ts"
 import {
@@ -12,6 +17,10 @@ import {
   type Task,
   type TaskStatus,
 } from "../tasks/task-repository.ts"
+import {
+  appendRunLogEvent,
+  createRawRunLogKey,
+} from "./raw-log.ts"
 
 export type RunBlockedReason =
   | "dirty_worktree"
@@ -45,6 +54,7 @@ export type CursorRunAdapter = {
     repoPath: string
     timeoutSeconds: number
     abortSignal: AbortSignal
+    onEvent: (event: unknown) => Promise<void>
   }): Promise<{ adapterRunId?: string | null }>
 }
 
@@ -59,12 +69,15 @@ export type GitRunAdapter = {
 
 export type CreateRunOrchestratorOptions = {
   databasePath: string
+  appDataPaths?: AppDataPaths
   cursorApiKey?: string
   cursorAdapter?: CursorRunAdapter
   gitAdapter?: GitRunAdapter
 }
 
 type RunRecordInput = {
+  runId: string
+  rawLogKey: string
   projectId: string
   taskId: string
   taskDisplayId: string
@@ -82,6 +95,11 @@ type FinishRunInput = {
   headAfter: string | null
   worktreeDirtyAfter: boolean | null
   adapterRunId?: string | null
+}
+
+type CreatedRun = {
+  runId: string
+  rawLogKey: string
 }
 
 type RunDb = ReturnType<
@@ -214,6 +232,10 @@ export async function ensureStaleRunsReconciled(databasePath: string) {
 }
 
 export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
+  const appDataPaths =
+    options.appDataPaths ??
+    resolveAppDataPaths({ appDataRoot: dirname(options.databasePath) })
+
   return {
     async runTaskNow({
       projectKey,
@@ -311,7 +333,11 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         return blockedWithoutRun("task_not_runnable", taskBranchName)
       }
 
-      const runId = await insertRun(options.databasePath, {
+      const runId = ulid()
+      const rawLogKey = createRawRunLogKey(runId)
+      const run = await insertRun(options.databasePath, {
+        runId,
+        rawLogKey,
         projectId: project.id,
         taskId: task.id,
         taskDisplayId: task.displayId,
@@ -321,6 +347,16 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         baseBranch,
         headBefore,
         worktreeDirtyBefore: false,
+      })
+      await appendOperatorRunLog(appDataPaths, run, "run.created", {
+        projectKey: project.key,
+        taskDisplayId: task.displayId,
+        taskBranchName,
+      })
+      await appendOperatorRunLog(appDataPaths, run, "git.preflight.completed", {
+        baseBranch,
+        headBefore,
+        taskBranchName,
       })
 
       try {
@@ -348,6 +384,8 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
               repoPath: project.repoPath,
               timeoutSeconds: project.defaults.runTimeoutSeconds,
               abortSignal,
+              onEvent: (event) =>
+                appendCursorRunLogEvent(appDataPaths, run.rawLogKey, event),
             }),
           project.defaults.runTimeoutSeconds
         )
@@ -367,6 +405,10 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
             worktreeDirtyAfter:
               cleanAfter === null ? null : !cleanAfter,
             adapterRunId: adapterResult.adapterRunId,
+          })
+          await appendOperatorRunLog(appDataPaths, run, "run.finished", {
+            status: "blocked",
+            blockedReason: "git_error",
           })
           await tasks.markTaskBlocked(task.id, "git_error")
 
@@ -389,6 +431,12 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
           headAfter,
           worktreeDirtyAfter: !cleanAfter,
           adapterRunId: adapterResult.adapterRunId,
+        })
+        await appendOperatorRunLog(appDataPaths, run, "run.finished", {
+          status: classification.status,
+          blockedReason: classification.blockedReason,
+          headAfter,
+          worktreeDirtyAfter: !cleanAfter,
         })
 
         if (classification.status === "review") {
@@ -415,6 +463,10 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
           blockedReason,
           headAfter: null,
           worktreeDirtyAfter: null,
+        })
+        await appendOperatorRunLog(appDataPaths, run, "run.finished", {
+          status: "blocked",
+          blockedReason,
         })
         await tasks.markTaskBlocked(task.id, blockedReason)
 
@@ -478,12 +530,11 @@ function blockedWithoutRun(
 }
 
 async function insertRun(databasePath: string, input: RunRecordInput) {
-  const runId = ulid()
   const now = new Date().toISOString()
 
   await withRunDb(databasePath, async (db) => {
     await db.insert(runs).values({
-      id: runId,
+      id: input.runId,
       projectId: input.projectId,
       taskId: input.taskId,
       taskDisplayId: input.taskDisplayId,
@@ -498,13 +549,14 @@ async function insertRun(databasePath: string, input: RunRecordInput) {
       worktreeDirtyBefore: input.worktreeDirtyBefore,
       worktreeDirtyAfter: null,
       adapterRunId: null,
+      rawLogKey: input.rawLogKey,
       startedAt: now,
       finishedAt: null,
       updatedAt: now,
     })
   })
 
-  return runId
+  return { runId: input.runId, rawLogKey: input.rawLogKey }
 }
 
 async function finishRun(
@@ -528,6 +580,55 @@ async function finishRun(
       })
       .where(eq(runs.id, runId))
   })
+}
+
+async function appendOperatorRunLog(
+  paths: AppDataPaths,
+  run: CreatedRun,
+  type: string,
+  payload: Record<string, unknown>
+) {
+  await appendRunLogEvent(paths, run.rawLogKey, {
+    source: "operator",
+    type,
+    payload: {
+      runId: run.runId,
+      ...payload,
+    },
+  })
+}
+
+async function appendCursorRunLogEvent(
+  paths: AppDataPaths,
+  rawLogKey: string,
+  event: unknown
+) {
+  await appendRunLogEvent(paths, rawLogKey, {
+    source: "cursor",
+    type: cursorEventType(event),
+    payload: cursorEventPayload(event),
+  })
+}
+
+function cursorEventType(event: unknown) {
+  if (
+    event &&
+    typeof event === "object" &&
+    "type" in event &&
+    typeof event.type === "string"
+  ) {
+    return event.type
+  }
+
+  return "cursor.event"
+}
+
+function cursorEventPayload(event: unknown): Record<string, unknown> {
+  if (event && typeof event === "object" && !Array.isArray(event)) {
+    return event as Record<string, unknown>
+  }
+
+  return { event }
 }
 
 async function markInterruptedRuns(
@@ -701,6 +802,7 @@ async function runCursorSdkAgent(input: {
   prompt: string
   repoPath: string
   abortSignal: AbortSignal
+  onEvent: (event: unknown) => Promise<void>
 }) {
   const { Agent } = await importCursorSdk()
   const agent = await Agent.create({
@@ -715,8 +817,7 @@ async function runCursorSdkAgent(input: {
 
   try {
     for await (const event of run.stream()) {
-      void event
-      // Issue #10 only needs orchestration and final Git classification.
+      await input.onEvent(event)
     }
   } finally {
     removeAbortListener()

@@ -95,6 +95,7 @@ export const runs = sqliteTable("runs", {
   }).notNull(),
   worktreeDirtyAfter: integer("worktree_dirty_after", { mode: "boolean" }),
   adapterRunId: text("adapter_run_id"),
+  rawLogKey: text("raw_log_key").notNull(),
   startedAt: text("started_at").notNull(),
   finishedAt: text("finished_at"),
   updatedAt: text("updated_at").notNull(),

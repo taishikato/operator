@@ -73,6 +73,7 @@ test("exportOperatorSchemaSql exports the Run persistence schema from Drizzle sc
   assert.match(sql, /`worktree_dirty_before` integer NOT NULL/i)
   assert.match(sql, /`worktree_dirty_after` integer/i)
   assert.match(sql, /`adapter_run_id` text/i)
+  assert.match(sql, /`raw_log_key` text NOT NULL/i)
 })
 
 test("exportOperatorSchemaSql reports spawn failures without masking them", () => {

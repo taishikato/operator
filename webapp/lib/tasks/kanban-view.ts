@@ -1,3 +1,4 @@
+import type { LatestRunSummary } from "../runs/run-repository.ts"
 import type { TaskStatus } from "./task-repository.ts"
 
 export type KanbanTask = {
@@ -10,6 +11,7 @@ export type KanbanTask = {
   position: number
   modelOverride: string | null
   reasoningLevelOverride: string | null
+  latestRun?: LatestRunSummary | null
 }
 
 export type KanbanColumn = {
@@ -48,4 +50,14 @@ export function resolveTaskDrawer(
   }
 
   return tasks.find((task) => task.displayId === displayId) ?? null
+}
+
+export function attachLatestRunSummaries(
+  tasks: KanbanTask[],
+  latestRunsByTaskId: Record<string, LatestRunSummary>
+): KanbanTask[] {
+  return tasks.map((task) => ({
+    ...task,
+    latestRun: latestRunsByTaskId[task.id] ?? null,
+  }))
 }

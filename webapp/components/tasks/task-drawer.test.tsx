@@ -19,6 +19,15 @@ type DrawerTask = {
   status: TaskStatus
   modelOverride: string | null
   reasoningLevelOverride: string | null
+  latestRun: {
+    id: string
+    status: string
+    blockedReason: string | null
+    startedAt: string
+    finishedAt: string | null
+    updatedAt: string
+    rawLogPath: string
+  } | null
 }
 
 function createDrawerTask(
@@ -33,6 +42,7 @@ function createDrawerTask(
     status: "backlog",
     modelOverride: null,
     reasoningLevelOverride: null,
+    latestRun: null,
   }
 }
 
@@ -151,4 +161,31 @@ test("selected task drawer remount clears stale edit draft when task changes", a
     "Second task"
   )
   assert.throws(() => view.getByDisplayValue("Tampered title"))
+})
+
+test("task drawer shows latest run summary and raw log link", async () => {
+  const { TaskDrawer } = await import("./task-drawer.tsx")
+
+  const task = {
+    ...createDrawerTask("OP-1", "First task"),
+    latestRun: {
+      id: "run_123",
+      status: "blocked",
+      blockedReason: "agent_error",
+      startedAt: "2026-06-01T00:00:00.000Z",
+      finishedAt: "2026-06-01T00:01:00.000Z",
+      updatedAt: "2026-06-01T00:01:00.000Z",
+      rawLogPath: "/runs/run_123",
+    },
+  }
+
+  const view = render(<TaskDrawer projectKey="demo" task={task} />)
+
+  assert.match(view.getByText("Latest run").textContent ?? "", /Latest run/)
+  assert.match(view.getByText("blocked").textContent ?? "", /blocked/)
+  assert.match(view.getByText("agent_error").textContent ?? "", /agent_error/)
+  assert.equal(
+    view.getByRole("link", { name: "Raw log" }).getAttribute("href"),
+    "/runs/run_123"
+  )
 })
