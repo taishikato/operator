@@ -62,6 +62,34 @@ test("buildCursorRunPrompt includes Task context, constraints, checks, English c
   assert.match(prompt, /Do not push/)
 })
 
+test("runTaskNow rejects a non-runnable Task before persisting a branch", async () => {
+  const { databasePath, task } = await createRunnableTaskForTest()
+  const tasks = createTaskRepository({ databasePath })
+  await tasks.moveTaskToStatus(task.id, "done")
+  const cursor = new FakeCursorRunAdapter()
+  const orchestrator = createRunOrchestrator({
+    databasePath,
+    cursorApiKey: "test-cursor-key",
+    gitAdapter: new FakeGitRunAdapter(),
+    cursorAdapter: cursor,
+  })
+
+  const result = await orchestrator.runTaskNow({
+    projectKey: "OP",
+    taskDisplayId: task.displayId,
+  })
+  const saved = await tasks.getActiveTaskByDisplayId(task.displayId)
+
+  assert.equal(result.status, "blocked")
+  assert.equal(result.blockedReason, "task_not_runnable")
+  assert.equal(result.taskBranchName, "")
+  assert.equal(result.runId, null)
+  assert.equal(cursor.calls.length, 0)
+  assert.equal(saved?.status, "done")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(saved?.taskBranchName, null)
+})
+
 test("runTaskNow blocks a dirty working tree before launching the Cursor adapter", async () => {
   const { databasePath, task } = await createRunnableTaskForTest()
   const git = new FakeGitRunAdapter({

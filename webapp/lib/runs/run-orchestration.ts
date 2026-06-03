@@ -210,6 +210,13 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         return blockedWithoutRun("task_not_runnable", "")
       }
 
+      if (!canRunTaskNow(task.status)) {
+        return blockedWithoutRun(
+          "task_not_runnable",
+          task.taskBranchName ?? ""
+        )
+      }
+
       const generatedBranchName = generateTaskBranchName({
         projectKey: project.key,
         taskNumber: task.number,
@@ -219,11 +226,6 @@ export function createRunOrchestrator(options: CreateRunOrchestratorOptions) {
         task.id,
         generatedBranchName
       )
-
-      if (!canRunTaskNow(task.status)) {
-        await tasks.markTaskBlocked(task.id, "task_not_runnable")
-        return blockedWithoutRun("task_not_runnable", taskBranchName)
-      }
 
       if (!options.cursorApiKey) {
         await tasks.markTaskBlocked(task.id, "missing_cursor_api_key")

@@ -585,6 +585,78 @@ test("handleRunTaskNowRequest runs a Task through fake adapters without requirin
   assert.equal(cursor.calls.length, 1)
 })
 
+test("handleRunTaskNowRequest rejects a Running Task without mutating it", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Already running",
+    bodyMarkdown: "This Task is already running.",
+    acceptanceCriteriaMarkdown: "- Direct Run Now is rejected",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.markTaskRunning(task.id)
+
+  const cursor = new FakeCursorRunAdapter()
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-1",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: cursor,
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "task_not_runnable")
+  assert.equal(cursor.calls.length, 0)
+  assert.equal(saved?.status, "running")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(saved?.taskBranchName, null)
+})
+
+test("handleRunTaskNowRequest rejects a Done Task without mutating it", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  await createTaskThroughApi(databasePath, project.key, {
+    title: "Already done",
+    bodyMarkdown: "This Task is complete.",
+    acceptanceCriteriaMarkdown: "- Direct Run Now is rejected",
+  })
+  const tasks = createTaskRepository({ databasePath })
+  const task = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.ok(task)
+  await tasks.moveTaskToStatus(task.id, "done")
+
+  const cursor = new FakeCursorRunAdapter()
+  const response = await handleRunTaskNowRequest(new Request("http://test"), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    taskDisplayId: "OP-1",
+    cursorApiKey: "test-cursor-key",
+    cursorAdapter: cursor,
+    gitAdapter: new FakeGitRunAdapter(),
+  })
+  const body = await response.json()
+  const saved = await tasks.getActiveTaskByDisplayId("OP-1")
+
+  assert.equal(response.status, 409)
+  assert.equal(body.error.code, "task_not_runnable")
+  assert.equal(cursor.calls.length, 0)
+  assert.equal(saved?.status, "done")
+  assert.equal(saved?.blockedReason, null)
+  assert.equal(saved?.taskBranchName, null)
+})
+
 test("handleListTasksRequest reports schema apply requirement before querying missing Task tables", async () => {
   const directory = await mkdtemp(join(tmpdir(), "operator-task-api-old-db-"))
   const paths = resolveAppDataPaths({

@@ -4,6 +4,7 @@ import { resolveAppDataPaths } from "../app-data/app-data.ts"
 import { bootstrapLocalDatabase } from "../db/local-database.ts"
 import { createProjectRepository } from "../projects/project-repository.ts"
 import {
+  canRunTaskNow,
   createRunOrchestrator,
   type CursorRunAdapter,
   type GitRunAdapter,
@@ -279,6 +280,30 @@ export async function handleRunTaskNowRequest(
 ) {
   if (options.databaseStatus === "requires_explicit_apply") {
     return schemaApplyRequiredError()
+  }
+
+  const project = await loadProject(options)
+
+  if (!project) {
+    return validationError("project_not_found", "Project not found", {
+      status: 404,
+    })
+  }
+
+  const task = await createTaskRepository({
+    databasePath: options.databasePath,
+  }).getActiveTaskByDisplayId(options.taskDisplayId)
+
+  if (!task || task.projectId !== project.id) {
+    return validationError("task_not_found", "Task not found", { status: 404 })
+  }
+
+  if (!canRunTaskNow(task.status)) {
+    return validationError(
+      "task_not_runnable",
+      "Task status cannot be run now.",
+      { status: 409 }
+    )
   }
 
   const result = await createRunOrchestrator({
