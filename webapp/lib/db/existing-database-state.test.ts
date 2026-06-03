@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { test } from "node:test"
 
 import { readExistingDatabaseState } from "./existing-database-state.ts"
+import { exportOperatorSchemaSql } from "./schema-export.ts"
 
 test("readExistingDatabaseState reports missing marker and tables for a foreign database", async () => {
   const databasePath = await createDatabase(async (client) => {
@@ -15,6 +16,7 @@ test("readExistingDatabaseState reports missing marker and tables for a foreign 
   assert.deepEqual(await readExistingDatabaseState(databasePath), {
     hasInitializationMarker: false,
     hasRequiredOperatorTables: false,
+    hasRequiredOperatorColumns: false,
   })
 })
 
@@ -41,10 +43,30 @@ CREATE TABLE projects (
   assert.deepEqual(await readExistingDatabaseState(databasePath), {
     hasInitializationMarker: true,
     hasRequiredOperatorTables: false,
+    hasRequiredOperatorColumns: false,
   })
 })
 
 test("readExistingDatabaseState reports a fully initialized operator database", async () => {
+  const databasePath = await createDatabase(async (client) => {
+    await runSql(client, exportOperatorSchemaSql())
+    await runSql(
+      client,
+      `
+INSERT INTO operator_metadata (key, value, updated_at)
+VALUES ('schema_initialized', 'true', '2026-05-31T00:00:00.000Z');
+`
+    )
+  })
+
+  assert.deepEqual(await readExistingDatabaseState(databasePath), {
+    hasInitializationMarker: true,
+    hasRequiredOperatorTables: true,
+    hasRequiredOperatorColumns: true,
+  })
+})
+
+test("readExistingDatabaseState reports missing required columns for an initialized legacy database", async () => {
   const databasePath = await createDatabase(async (client) => {
     await runSql(
       client,
@@ -75,6 +97,7 @@ CREATE TABLE runs (
   assert.deepEqual(await readExistingDatabaseState(databasePath), {
     hasInitializationMarker: true,
     hasRequiredOperatorTables: true,
+    hasRequiredOperatorColumns: false,
   })
 })
 

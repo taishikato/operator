@@ -42,7 +42,8 @@ export async function bootstrapLocalDatabase(
 
     if (
       !existingState.hasInitializationMarker ||
-      !existingState.hasRequiredOperatorTables
+      !existingState.hasRequiredOperatorTables ||
+      !existingState.hasRequiredOperatorColumns
     ) {
       return {
         databasePath: paths.databasePath,
