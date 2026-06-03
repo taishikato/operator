@@ -46,9 +46,11 @@ const COLUMN_ID_PREFIX = "column:"
 
 export function KanbanBoard({
   projectKey,
+  scheduledRunLimit = 1,
   initialColumns,
 }: {
   projectKey: string
+  scheduledRunLimit?: number
   initialColumns: KanbanColumn[]
 }) {
   const router = useRouter()
@@ -56,6 +58,7 @@ export function KanbanBoard({
   const [lastServerColumns, setLastServerColumns] = useState(initialColumns)
   const [errorMessage, setErrorMessage] = useState("")
   const [isSaving, setIsSaving] = useState(false)
+  const [isRunningReadyBatch, setIsRunningReadyBatch] = useState(false)
   const [runningTaskIds, setRunningTaskIds] = useState<Set<string>>(new Set())
   const lastSyncedInitialColumns = useRef(initialColumns)
   const sensors = useSensors(
@@ -196,6 +199,50 @@ export function KanbanBoard({
     }
   }
 
+  async function runReadyTasks() {
+    const requestedCount = window.prompt(
+      "Ready Tasks to run",
+      String(scheduledRunLimit)
+    )
+
+    if (requestedCount === null) {
+      return
+    }
+
+    const count = Number(requestedCount)
+
+    if (!Number.isInteger(count) || count < 1) {
+      setErrorMessage("Enter a whole number of Ready Tasks to run.")
+      return
+    }
+
+    setIsRunningReadyBatch(true)
+    setErrorMessage("")
+
+    try {
+      const response = await fetch(
+        `/api/projects/${encodeURIComponent(projectKey)}/tasks/run-ready`,
+        {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ count }),
+        }
+      )
+      const body = (await response.json()) as BoardResponseBody
+
+      if (!response.ok) {
+        setErrorMessage(getBoardErrorMessage(body))
+        return
+      }
+
+      router.refresh()
+    } catch {
+      setErrorMessage("Could not reach the local Ready batch API.")
+    } finally {
+      setIsRunningReadyBatch(false)
+    }
+  }
+
   return (
     <div className="grid min-w-0 gap-3">
       {errorMessage ? (
@@ -218,6 +265,8 @@ export function KanbanBoard({
               column={column}
               projectKey={projectKey}
               runningTaskIds={runningTaskIds}
+              isRunningReadyBatch={isRunningReadyBatch}
+              onRunReadyTasks={runReadyTasks}
               onRunTask={runTaskNow}
             />
           ))}
@@ -231,11 +280,15 @@ function KanbanBoardColumn({
   column,
   projectKey,
   runningTaskIds,
+  isRunningReadyBatch,
+  onRunReadyTasks,
   onRunTask,
 }: {
   column: KanbanColumn
   projectKey: string
   runningTaskIds: Set<string>
+  isRunningReadyBatch: boolean
+  onRunReadyTasks: () => void
   onRunTask: (task: KanbanTask) => void
 }) {
   const { setNodeRef, isOver } = useDroppable({
@@ -253,9 +306,23 @@ function KanbanBoardColumn({
     >
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold">{column.label}</h2>
-        <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
-          {column.tasks.length}
-        </span>
+        <div className="flex items-center gap-1">
+          {column.status === "ready" ? (
+            <button
+              type="button"
+              aria-label="Run Ready Tasks"
+              title="Run Ready Tasks"
+              disabled={isRunningReadyBatch || column.tasks.length === 0}
+              className="inline-flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={onRunReadyTasks}
+            >
+              <Play className="h-3.5 w-3.5" />
+            </button>
+          ) : null}
+          <span className="rounded-full border px-2 py-0.5 text-xs text-muted-foreground">
+            {column.tasks.length}
+          </span>
+        </div>
       </div>
       <SortableContext
         items={column.tasks.map((task) => taskId(task.displayId))}

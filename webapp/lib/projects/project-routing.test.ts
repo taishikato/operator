@@ -56,6 +56,7 @@ function project(input: { key: string; createdAt: string }): Project {
       dailyTime: "09:00",
       timezone: "UTC",
       scheduledRunLimit: 1,
+      lastScheduledLocalDate: null,
     },
     nextTaskNumber: 1,
     createdAt: input.createdAt,

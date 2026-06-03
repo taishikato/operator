@@ -36,6 +36,7 @@ export const projects = sqliteTable(
     scheduleDailyTime: text("schedule_daily_time").notNull(),
     scheduleTimezone: text("schedule_timezone").notNull(),
     scheduledRunLimit: integer("scheduled_run_limit").notNull(),
+    lastScheduledLocalDate: text("last_scheduled_local_date"),
     nextTaskNumber: integer("next_task_number").notNull(),
     createdAt: text("created_at").notNull(),
     updatedAt: text("updated_at").notNull(),

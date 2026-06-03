@@ -11,6 +11,10 @@ import {
   type GitRunAdapter,
 } from "../runs/run-orchestration.ts"
 import {
+  createProjectBatchRunner,
+  type ProjectBatchResult,
+} from "../scheduler/project-batch-runner.ts"
+import {
   createTaskRepository,
   TaskBoardUpdateError,
   TaskValidationError,
@@ -49,6 +53,12 @@ const updateTaskBoardRequestSchema = z
   })
   .strict()
 
+const runReadyTasksRequestSchema = z
+  .object({
+    count: z.number().int().positive().max(100).optional(),
+  })
+  .strict()
+
 export type OperatorDatabaseStatus =
   | "initialized"
   | "ready"
@@ -68,6 +78,19 @@ export type RunTaskApiOptions = UpdateTaskApiOptions & {
   cursorApiKey?: string
   cursorAdapter?: CursorRunAdapter
   gitAdapter?: GitRunAdapter
+}
+
+export type RunReadyTasksApiOptions = TaskApiOptions & {
+  cursorApiKey?: string
+  cursorAdapter?: CursorRunAdapter
+  gitAdapter?: GitRunAdapter
+  batchRunner?: {
+    runReadyTaskBatch(input: {
+      projectId: string
+      projectKey: string
+      limit: number
+    }): Promise<ProjectBatchResult>
+  }
 }
 
 export async function resolveTaskApiOptions({
@@ -325,6 +348,62 @@ export async function handleRunTaskNowRequest(
     return validationError(
       "task_not_runnable",
       "Task status cannot be run now.",
+      { status: 409 }
+    )
+  }
+
+  return Response.json({ result })
+}
+
+export async function handleRunReadyTasksRequest(
+  request: Request,
+  options: RunReadyTasksApiOptions
+) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
+  const body = await parseJsonRequest(request)
+
+  if (!body.success) {
+    return validationError("invalid_request", "Invalid JSON request body")
+  }
+
+  const parsed = runReadyTasksRequestSchema.safeParse(body.data)
+
+  if (!parsed.success) {
+    return validationError("invalid_request", "Invalid Ready batch input")
+  }
+
+  const project = await loadProject(options)
+
+  if (!project) {
+    return validationError("project_not_found", "Project not found", {
+      status: 404,
+    })
+  }
+
+  const batchRunner =
+    options.batchRunner ??
+    createProjectBatchRunner({
+      tasks: createTaskRepository({ databasePath: options.databasePath }),
+      runs: createRunOrchestrator({
+        databasePath: options.databasePath,
+        cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
+        cursorAdapter: options.cursorAdapter,
+        gitAdapter: options.gitAdapter,
+      }),
+    })
+  const result = await batchRunner.runReadyTaskBatch({
+    projectId: project.id,
+    projectKey: project.key,
+    limit: parsed.data.count ?? project.schedule.scheduledRunLimit,
+  })
+
+  if (result.status === "already_running") {
+    return validationError(
+      "project_batch_already_running",
+      "A Ready batch is already running for this Project.",
       { status: 409 }
     )
   }

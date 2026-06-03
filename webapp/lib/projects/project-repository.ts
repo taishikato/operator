@@ -25,6 +25,7 @@ export type ProjectSchedule = {
   dailyTime: string
   timezone: string
   scheduledRunLimit: number
+  lastScheduledLocalDate: string | null
 }
 
 export type Project = {
@@ -47,8 +48,15 @@ export type CreateProjectInput = {
   repoPath: string
   repositoryMetadata: ProjectRepositoryMetadata
   defaults: ProjectDefaults
-  schedule: ProjectSchedule
+  schedule: Omit<ProjectSchedule, "lastScheduledLocalDate"> & {
+    lastScheduledLocalDate?: string | null
+  }
 }
+
+export type UpdateProjectScheduleInput = Omit<
+  ProjectSchedule,
+  "lastScheduledLocalDate"
+>
 
 export class ProjectRepositoryError extends Error {
   code: "duplicate_project_key" | "duplicate_repository_path"
@@ -149,6 +157,8 @@ export function createProjectRepository({
                 scheduleDailyTime: input.schedule.dailyTime,
                 scheduleTimezone: input.schedule.timezone,
                 scheduledRunLimit: input.schedule.scheduledRunLimit,
+                lastScheduledLocalDate:
+                  input.schedule.lastScheduledLocalDate ?? null,
                 updatedAt: now,
                 removedAt: null,
               })
@@ -201,6 +211,8 @@ export function createProjectRepository({
               scheduleDailyTime: input.schedule.dailyTime,
               scheduleTimezone: input.schedule.timezone,
               scheduledRunLimit: input.schedule.scheduledRunLimit,
+              lastScheduledLocalDate:
+                input.schedule.lastScheduledLocalDate ?? null,
               nextTaskNumber: 1,
               createdAt: now,
               updatedAt: now,
@@ -292,6 +304,53 @@ export function createProjectRepository({
           .set({
             updatedAt: now,
             removedAt: now,
+          })
+          .where(and(eq(projects.id, projectId), isNull(projects.removedAt)))
+          .returning()
+
+        if (!project) {
+          throw new Error(`Active Project not found: ${projectId}`)
+        }
+
+        return toProject(project)
+      })
+    },
+
+    async markScheduledLocalDateFired(
+      projectId: string,
+      localDate: string
+    ) {
+      return withDb(databasePath, async (db) => {
+        const [project] = await db
+          .update(projects)
+          .set({
+            lastScheduledLocalDate: localDate,
+            updatedAt: new Date().toISOString(),
+          })
+          .where(and(eq(projects.id, projectId), isNull(projects.removedAt)))
+          .returning()
+
+        if (!project) {
+          throw new Error(`Active Project not found: ${projectId}`)
+        }
+
+        return toProject(project)
+      })
+    },
+
+    async updateScheduleSettings(
+      projectId: string,
+      schedule: UpdateProjectScheduleInput
+    ) {
+      return withDb(databasePath, async (db) => {
+        const [project] = await db
+          .update(projects)
+          .set({
+            scheduleEnabled: schedule.enabled,
+            scheduleDailyTime: schedule.dailyTime,
+            scheduleTimezone: schedule.timezone,
+            scheduledRunLimit: schedule.scheduledRunLimit,
+            updatedAt: new Date().toISOString(),
           })
           .where(and(eq(projects.id, projectId), isNull(projects.removedAt)))
           .returning()
@@ -418,6 +477,7 @@ function toProject(row: typeof projects.$inferSelect): Project {
       dailyTime: row.scheduleDailyTime,
       timezone: row.scheduleTimezone,
       scheduledRunLimit: row.scheduledRunLimit,
+      lastScheduledLocalDate: row.lastScheduledLocalDate,
     },
     nextTaskNumber: row.nextTaskNumber,
     createdAt: row.createdAt,

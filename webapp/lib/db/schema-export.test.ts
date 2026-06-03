@@ -22,6 +22,7 @@ test("exportOperatorSchemaSql exports the Project persistence schema from Drizzl
   assert.match(sql, /`default_model` text NOT NULL/i)
   assert.match(sql, /`default_reasoning_level` text NOT NULL/i)
   assert.match(sql, /`schedule_enabled` integer NOT NULL/i)
+  assert.match(sql, /`last_scheduled_local_date` text/i)
   assert.match(sql, /`next_task_number` integer NOT NULL/i)
   assert.match(
     sql,

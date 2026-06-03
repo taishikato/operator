@@ -3,7 +3,7 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator"
 import assert from "node:assert/strict"
 import { afterEach, mock, test } from "node:test"
 
-import { cleanup, render } from "@testing-library/react"
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react"
 
 import type { KanbanColumn } from "@/lib/tasks/kanban-view.ts"
 import type { TaskStatus } from "@/lib/tasks/task-repository.ts"
@@ -66,6 +66,55 @@ test("KanbanBoard exposes Run Now for runnable Tasks only", async () => {
   assert.equal(view.queryByRole("button", { name: "Run OP-6" }) !== null, true)
   assert.equal(view.queryByRole("button", { name: "Run OP-3" }), null)
   assert.equal(view.queryByRole("button", { name: "Run OP-5" }), null)
+})
+
+test("KanbanBoard confirms Ready batch runs with the Project limit and submits a custom count", async () => {
+  const { KanbanBoard } = await import("./kanban-board.tsx")
+  const requests: Array<{ url: string; body: unknown }> = []
+  const originalFetch = globalThis.fetch
+  const originalPrompt = globalThis.prompt
+
+  globalThis.fetch = async (url, init) => {
+    requests.push({
+      url: String(url),
+      body: JSON.parse(String(init?.body)),
+    })
+
+    return new Response(
+      JSON.stringify({ result: { status: "completed", results: [] } }),
+      {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      }
+    )
+  }
+  globalThis.prompt = (_message?: string, defaultValue?: string) => {
+    assert.equal(defaultValue, "3")
+    return "4"
+  }
+
+  try {
+    const view = render(
+      <KanbanBoard
+        projectKey="OP"
+        scheduledRunLimit={3}
+        initialColumns={boardColumns({ ready: ["OP-1", "OP-2"] })}
+      />
+    )
+
+    fireEvent.click(view.getByRole("button", { name: "Run Ready Tasks" }))
+
+    await waitFor(() => assert.equal(requests.length, 1))
+    assert.deepEqual(requests, [
+      {
+        url: "/api/projects/OP/tasks/run-ready",
+        body: { count: 4 },
+      },
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+    globalThis.prompt = originalPrompt
+  }
 })
 
 function boardColumns(input: {

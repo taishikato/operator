@@ -22,6 +22,7 @@ import {
 import {
   handleCreateTaskRequest,
   handleListTasksRequest,
+  handleRunReadyTasksRequest,
   handleRunTaskNowRequest,
   handleUpdateTaskBoardRequest,
   handleUpdateTaskRequest,
@@ -591,6 +592,73 @@ test("handleRunTaskNowRequest runs a Task through fake adapters without requirin
   assert.equal(cursor.calls.length, 1)
 })
 
+test("handleRunReadyTasksRequest defaults the manual batch count to the Project scheduled run limit", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(
+    createProjectInput({
+      schedule: {
+        enabled: false,
+        dailyTime: "09:00",
+        timezone: "Asia/Tokyo",
+        scheduledRunLimit: 2,
+      },
+    })
+  )
+  const calls: unknown[] = []
+
+  const response = await handleRunReadyTasksRequest(jsonRequest({}), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    batchRunner: {
+      async runReadyTaskBatch(input) {
+        calls.push(input)
+        return { status: "completed", results: [] }
+      },
+    },
+  })
+  const body = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.equal(body.result.status, "completed")
+  assert.deepEqual(calls, [
+    {
+      projectId: project.id,
+      projectKey: project.key,
+      limit: 2,
+    },
+  ])
+})
+
+test("handleRunReadyTasksRequest accepts a confirmed custom manual batch count", async () => {
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+  const calls: unknown[] = []
+
+  const response = await handleRunReadyTasksRequest(jsonRequest({ count: 4 }), {
+    databasePath,
+    databaseStatus: "ready",
+    projectKey: project.key,
+    batchRunner: {
+      async runReadyTaskBatch(input) {
+        calls.push(input)
+        return { status: "completed", results: [] }
+      },
+    },
+  })
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(calls, [
+    {
+      projectId: project.id,
+      projectKey: project.key,
+      limit: 4,
+    },
+  ])
+})
+
 test("handleRunTaskNowRequest returns 409 when the Task claim is already taken", async () => {
   const databasePath = await createDatabaseForTest()
   const projects = createProjectRepository({ databasePath })
@@ -797,6 +865,13 @@ test("Task Run Now API route exposes a POST endpoint", async () => {
     await import("../../app/api/projects/[projectKey]/tasks/[taskDisplayId]/run/route.ts")
 
   assert.equal(typeof runRoute.POST, "function")
+})
+
+test("Task Run Ready API route exposes a POST endpoint", async () => {
+  const runReadyRoute =
+    await import("../../app/api/projects/[projectKey]/tasks/run-ready/route.ts")
+
+  assert.equal(typeof runReadyRoute.POST, "function")
 })
 
 async function insertRunningRunForTest({

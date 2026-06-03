@@ -90,7 +90,11 @@ export default async function ProjectPage({
           <TaskCreateForm projectKey={project.key} />
         </aside>
 
-        <KanbanBoard projectKey={project.key} initialColumns={columns} />
+        <KanbanBoard
+          projectKey={project.key}
+          scheduledRunLimit={project.schedule.scheduledRunLimit}
+          initialColumns={columns}
+        />
       </div>
 
       {selectedTask ? (
