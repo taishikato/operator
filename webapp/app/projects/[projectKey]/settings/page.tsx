@@ -17,6 +17,43 @@ export default async function ProjectSettingsPage({
 }) {
   const { projectKey } = await params
   const { databasePath, databaseStatus } = await resolveAddProjectApiOptions()
+
+  if (databaseStatus === "requires_explicit_apply") {
+    return (
+      <main className="min-h-svh bg-background">
+        <header className="border-b px-4 py-4 sm:px-6 lg:px-8">
+          <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase text-muted-foreground">
+                Project {projectKey}
+              </p>
+              <h1 className="truncate text-xl font-semibold tracking-normal">
+                Settings
+              </h1>
+            </div>
+            <a
+              href={`/projects/${encodeURIComponent(projectKey)}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm font-medium transition hover:bg-muted"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to board
+            </a>
+          </div>
+        </header>
+
+        <section className="mx-auto max-w-5xl px-4 py-5 sm:px-6 lg:px-8">
+          <div
+            role="alert"
+            className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100"
+          >
+            Operator database schema is out of date. Run the explicit database
+            apply command or reset the local Operator database.
+          </div>
+        </section>
+      </main>
+    )
+  }
+
   const project = await createProjectRepository({
     databasePath,
   }).getActiveProjectByKey(projectKey)
@@ -53,32 +90,22 @@ export default async function ProjectSettingsPage({
       </header>
 
       <section className="mx-auto max-w-5xl px-4 py-5 sm:px-6 lg:px-8">
-        {databaseStatus === "requires_explicit_apply" ? (
-          <div
-            role="alert"
-            className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100"
-          >
-            Operator database schema is out of date. Run the explicit database
-            apply command or reset the local Operator database.
-          </div>
-        ) : (
-          <ProjectSettingsPanel
-            projectKey={project.key}
-            project={{
-              defaults: project.defaults,
-              schedule: {
-                enabled: project.schedule.enabled,
-                dailyTime: project.schedule.dailyTime,
-                timezone: project.schedule.timezone,
-                scheduledRunLimit: project.schedule.scheduledRunLimit,
-              },
-            }}
-            appStatus={getAppOperationalStatus({
-              appDataDir: appDataPaths.appDataDir,
-              version: packageJson.version,
-            })}
-          />
-        )}
+        <ProjectSettingsPanel
+          projectKey={project.key}
+          project={{
+            defaults: project.defaults,
+            schedule: {
+              enabled: project.schedule.enabled,
+              dailyTime: project.schedule.dailyTime,
+              timezone: project.schedule.timezone,
+              scheduledRunLimit: project.schedule.scheduledRunLimit,
+            },
+          }}
+          appStatus={getAppOperationalStatus({
+            appDataDir: appDataPaths.appDataDir,
+            version: packageJson.version,
+          })}
+        />
       </section>
     </main>
   )

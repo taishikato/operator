@@ -159,6 +159,26 @@ test("ProjectSettingsForm reports validation failure with a toast", async () => 
   }
 })
 
+test("ProjectSettingsForm mirrors the server run timeout range in the number input", async () => {
+  const component = await import("./project-settings-form.tsx").catch(() => null)
+
+  assert.ok(component)
+
+  const view = render(
+    <component.ProjectSettingsForm
+      projectKey="OP"
+      project={createProjectSettings()}
+    />
+  )
+
+  const runTimeoutInput = view.getByLabelText(
+    "Run timeout seconds"
+  ) as HTMLInputElement
+
+  assert.equal(runTimeoutInput.min, "60")
+  assert.equal(runTimeoutInput.max, "86400")
+})
+
 function createProjectSettings() {
   return {
     defaults: {

@@ -13,7 +13,8 @@ export async function PATCH(
     projectKey: string
   }
 
-  return handleUpdateProjectSettingsRequest(request, {
-    ...(await resolveProjectSettingsApiOptions({ projectKey })),
-  })
+  return handleUpdateProjectSettingsRequest(
+    request,
+    await resolveProjectSettingsApiOptions({ projectKey })
+  )
 }

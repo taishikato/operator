@@ -5,8 +5,10 @@ import {
   schemaApplyRequiredError,
   validationError,
 } from "../api/api-response.ts"
-import { resolveAppDataPaths } from "../app-data/app-data.ts"
-import { bootstrapLocalDatabase } from "../db/local-database.ts"
+import {
+  type LocalDatabaseOptions,
+  resolveLocalDatabaseOptions,
+} from "../db/local-database-options.ts"
 import { createProjectRepository } from "./project-repository.ts"
 
 const reasoningLevels = ["low", "medium", "high"] as const
@@ -26,9 +28,7 @@ const updateProjectSettingsRequestSchema = z
   })
   .strict()
 
-export type ProjectSettingsApiOptions = {
-  databasePath: string
-  databaseStatus: "initialized" | "ready" | "requires_explicit_apply"
+export type ProjectSettingsApiOptions = LocalDatabaseOptions & {
   projectKey: string
 }
 
@@ -37,11 +37,10 @@ export async function resolveProjectSettingsApiOptions({
 }: {
   projectKey: string
 }): Promise<ProjectSettingsApiOptions> {
-  const result = await bootstrapLocalDatabase(resolveAppDataPaths({}))
+  const databaseOptions = await resolveLocalDatabaseOptions()
 
   return {
-    databasePath: result.databasePath,
-    databaseStatus: result.status,
+    ...databaseOptions,
     projectKey,
   }
 }

@@ -8,8 +8,15 @@ import { mock } from "node:test"
 
 GlobalRegistrator.register()
 
+let databaseStatus: "ready" | "requires_explicit_apply" = "ready"
+let shouldProjectLookupThrow = false
+let projectLookupCount = 0
+
 afterEach(() => {
   cleanup()
+  databaseStatus = "ready"
+  shouldProjectLookupThrow = false
+  projectLookupCount = 0
 })
 
 mock.module("next/navigation", {
@@ -46,7 +53,7 @@ mock.module("@/lib/projects/add-project-api", {
   namedExports: {
     resolveAddProjectApiOptions: async () => ({
       databasePath: "/tmp/operator-test.db",
-      databaseStatus: "ready",
+      databaseStatus,
     }),
   },
 })
@@ -54,7 +61,15 @@ mock.module("@/lib/projects/add-project-api", {
 mock.module("@/lib/projects/project-repository", {
   namedExports: {
     createProjectRepository: () => ({
-      getActiveProjectByKey: async () => createProject(),
+      getActiveProjectByKey: async () => {
+        projectLookupCount += 1
+
+        if (shouldProjectLookupThrow) {
+          throw new Error("project lookup should not run")
+        }
+
+        return createProject()
+      },
     }),
   },
 })
@@ -83,6 +98,31 @@ test("Project settings page renders Project and App settings at the settings rou
   assert.ok(view.getByRole("tab", { name: "Project" }))
   assert.ok(view.getByRole("tab", { name: "App" }))
   assert.ok(view.getByLabelText("Default model"))
+  assert.equal(
+    view.getByRole("link", { name: "Back to board" }).getAttribute("href"),
+    "/projects/OP"
+  )
+})
+
+test("Project settings page shows the schema warning before querying Project data", async () => {
+  databaseStatus = "requires_explicit_apply"
+  shouldProjectLookupThrow = true
+  const page = await import("./page.tsx").catch(() => null)
+
+  assert.ok(page)
+
+  const element = await page.default({
+    params: Promise.resolve({ projectKey: "OP" }),
+  })
+  const view = render(element)
+
+  assert.equal(projectLookupCount, 0)
+  assert.ok(view.getByRole("alert"))
+  assert.ok(
+    view.getByText(
+      "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database."
+    )
+  )
   assert.equal(
     view.getByRole("link", { name: "Back to board" }).getAttribute("href"),
     "/projects/OP"

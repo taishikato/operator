@@ -33,6 +33,13 @@ Provide dedicated settings pages for Project configuration and App operational s
 - Added App operational status for app data directory, Cursor API key configured/missing, Operator version, and theme controls.
 - Added Sonner `Toaster` wiring and save success / validation failure toasts.
 - Added Settings navigation from the Project board header.
+- Addressed post-PR code review feedback:
+  - Project/App tab switches now preserve unsaved Project settings drafts.
+  - Settings tabs now expose tabpanel ARIA wiring and arrow-key navigation.
+  - Run timeout input now mirrors the server-side `max(86400)` constraint.
+  - Project settings text/number inputs no longer use duplicate input handlers.
+  - Local database option resolution is shared between add-project and settings APIs.
+  - Settings page now shows the schema apply warning before querying Project data.
 - Intentionally excluded App-level default model/reasoning editing, PR creation UI, and CLI start/db apply polish.
 
 ## Verification

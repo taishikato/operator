@@ -4,8 +4,9 @@ import {
   parseJsonRequest,
   validationError,
 } from "../api/api-response.ts"
-import { resolveAppDataPaths } from "../app-data/app-data.ts"
-import { bootstrapLocalDatabase } from "../db/local-database.ts"
+import {
+  resolveLocalDatabaseOptions,
+} from "../db/local-database-options.ts"
 import {
   detectProjectRepository,
   ProjectRepositoryDetectionError,
@@ -38,9 +39,7 @@ type AddProjectApiOptions = {
 }
 
 export async function resolveAddProjectApiOptions(): Promise<AddProjectApiOptions> {
-  const result = await bootstrapLocalDatabase(resolveAppDataPaths({}))
-
-  return { databasePath: result.databasePath, databaseStatus: result.status }
+  return resolveLocalDatabaseOptions()
 }
 
 export async function handleDetectProjectRequest(

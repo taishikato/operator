@@ -2,7 +2,7 @@
 
 import { Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
-import { useState } from "react"
+import { type KeyboardEvent, useRef, useState } from "react"
 
 import {
   ProjectSettingsForm,
@@ -23,6 +23,30 @@ export function ProjectSettingsPanel({
   appStatus: AppOperationalStatus
 }) {
   const [activeTab, setActiveTab] = useState<SettingsTab>("project")
+  const projectTabRef = useRef<HTMLButtonElement>(null)
+  const appTabRef = useRef<HTMLButtonElement>(null)
+
+  function selectTab(nextTab: SettingsTab) {
+    setActiveTab(nextTab)
+    if (nextTab === "project") {
+      projectTabRef.current?.focus()
+      return
+    }
+    appTabRef.current?.focus()
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    if (event.key === "ArrowRight" || event.key === "End") {
+      event.preventDefault()
+      selectTab("app")
+      return
+    }
+
+    if (event.key === "ArrowLeft" || event.key === "Home") {
+      event.preventDefault()
+      selectTab("project")
+    }
+  }
 
   return (
     <div className="grid gap-4">
@@ -32,10 +56,15 @@ export function ProjectSettingsPanel({
         className="inline-flex w-fit rounded-md border bg-muted/25 p-0.5"
       >
         <button
+          ref={projectTabRef}
+          id="project-tab"
           type="button"
           role="tab"
+          aria-controls="project-settings-tab"
           aria-selected={activeTab === "project"}
-          onClick={() => setActiveTab("project")}
+          tabIndex={activeTab === "project" ? 0 : -1}
+          onClick={() => selectTab("project")}
+          onKeyDown={handleTabKeyDown}
           className={`h-8 rounded px-3 text-sm font-medium transition ${
             activeTab === "project"
               ? "bg-background shadow-sm"
@@ -45,10 +74,15 @@ export function ProjectSettingsPanel({
           Project
         </button>
         <button
+          ref={appTabRef}
+          id="app-tab"
           type="button"
           role="tab"
+          aria-controls="app-settings-tab"
           aria-selected={activeTab === "app"}
-          onClick={() => setActiveTab("app")}
+          tabIndex={activeTab === "app" ? 0 : -1}
+          onClick={() => selectTab("app")}
+          onKeyDown={handleTabKeyDown}
           className={`h-8 rounded px-3 text-sm font-medium transition ${
             activeTab === "app"
               ? "bg-background shadow-sm"
@@ -59,11 +93,22 @@ export function ProjectSettingsPanel({
         </button>
       </div>
 
-      {activeTab === "project" ? (
+      <div
+        id="project-settings-tab"
+        role="tabpanel"
+        aria-labelledby="project-tab"
+        hidden={activeTab !== "project"}
+      >
         <ProjectSettingsForm projectKey={projectKey} project={project} />
-      ) : (
+      </div>
+      <div
+        id="app-settings-tab"
+        role="tabpanel"
+        aria-labelledby="app-tab"
+        hidden={activeTab !== "app"}
+      >
         <AppSettingsStatus appStatus={appStatus} />
-      )}
+      </div>
     </div>
   )
 }

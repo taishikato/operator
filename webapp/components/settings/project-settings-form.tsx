@@ -98,13 +98,8 @@ export function ProjectSettingsForm({
           </span>
           <input
             value={draft.defaultModel}
-            onChange={(event) =>
-              updateDraft({ defaultModel: event.target.value })
-            }
             onInput={(event) =>
-              updateDraft({
-                defaultModel: (event.currentTarget as HTMLInputElement).value,
-              })
+              updateDraft({ defaultModel: event.currentTarget.value })
             }
             disabled={isSaving}
             className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -135,14 +130,8 @@ export function ProjectSettingsForm({
           </span>
           <input
             value={draft.scheduleDailyTime}
-            onChange={(event) =>
-              updateDraft({ scheduleDailyTime: event.target.value })
-            }
             onInput={(event) =>
-              updateDraft({
-                scheduleDailyTime: (event.currentTarget as HTMLInputElement)
-                  .value,
-              })
+              updateDraft({ scheduleDailyTime: event.currentTarget.value })
             }
             disabled={isSaving}
             className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -155,14 +144,8 @@ export function ProjectSettingsForm({
           </span>
           <input
             value={draft.scheduleTimezone}
-            onChange={(event) =>
-              updateDraft({ scheduleTimezone: event.target.value })
-            }
             onInput={(event) =>
-              updateDraft({
-                scheduleTimezone: (event.currentTarget as HTMLInputElement)
-                  .value,
-              })
+              updateDraft({ scheduleTimezone: event.currentTarget.value })
             }
             disabled={isSaving}
             className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -178,14 +161,8 @@ export function ProjectSettingsForm({
             min={1}
             max={100}
             value={draft.scheduledRunLimit}
-            onChange={(event) =>
-              updateDraft({ scheduledRunLimit: event.target.value })
-            }
             onInput={(event) =>
-              updateDraft({
-                scheduledRunLimit: (event.currentTarget as HTMLInputElement)
-                  .value,
-              })
+              updateDraft({ scheduledRunLimit: event.currentTarget.value })
             }
             disabled={isSaving}
             className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
@@ -199,15 +176,10 @@ export function ProjectSettingsForm({
           <input
             type="number"
             min={60}
+            max={86400}
             value={draft.runTimeoutSeconds}
-            onChange={(event) =>
-              updateDraft({ runTimeoutSeconds: event.target.value })
-            }
             onInput={(event) =>
-              updateDraft({
-                runTimeoutSeconds: (event.currentTarget as HTMLInputElement)
-                  .value,
-              })
+              updateDraft({ runTimeoutSeconds: event.currentTarget.value })
             }
             disabled={isSaving}
             className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
