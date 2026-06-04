@@ -11,13 +11,7 @@ export async function loadInitialProjectRoute(
 }
 
 export function selectInitialProjectRoute(_projects: Project[]) {
-  if (_projects.length === 0) {
-    return null
-  }
+  void _projects
 
-  const latestProject = _projects.toSorted((left, right) =>
-    left.createdAt.localeCompare(right.createdAt)
-  ).at(-1)
-
-  return `/projects/${latestProject?.key}`
+  return null
 }

@@ -103,6 +103,7 @@ test("Project settings page renders Project and App settings at the settings rou
     view.getByRole("link", { name: "Back to board" }).getAttribute("href"),
     "/projects/OP"
   )
+  assert.equal(view.getByRole("link", { name: "Projects" }).getAttribute("href"), "/")
 })
 
 test("Project settings page shows the schema warning before querying Project data", async () => {
@@ -128,6 +129,7 @@ test("Project settings page shows the schema warning before querying Project dat
     view.getByRole("link", { name: "Back to board" }).getAttribute("href"),
     "/projects/OP"
   )
+  assert.equal(view.getByRole("link", { name: "Projects" }).getAttribute("href"), "/")
 })
 
 function createProject() {

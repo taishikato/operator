@@ -11,17 +11,17 @@ test("selectInitialProjectRoute returns null when there are no active Projects",
   assert.equal(selectInitialProjectRoute([]), null)
 })
 
-test("selectInitialProjectRoute chooses the most recently created active Project", () => {
+test("selectInitialProjectRoute does not redirect when active Projects exist", () => {
   assert.equal(
     selectInitialProjectRoute([
       project({ key: "OLD", createdAt: "2026-01-01T00:00:00.000Z" }),
       project({ key: "NEW", createdAt: "2026-02-01T00:00:00.000Z" }),
     ]),
-    "/projects/NEW"
+    null
   )
 })
 
-test("loadInitialProjectRoute reads active Projects from the supplied source", async () => {
+test("loadInitialProjectRoute does not redirect after reading active Projects", async () => {
   const route = await loadInitialProjectRoute({
     listActiveProjects: async () => [
       project({ key: "FIRST", createdAt: "2026-01-01T00:00:00.000Z" }),
@@ -29,7 +29,7 @@ test("loadInitialProjectRoute reads active Projects from the supplied source", a
     ],
   })
 
-  assert.equal(route, "/projects/LAST")
+  assert.equal(route, null)
 })
 
 function project(input: { key: string; createdAt: string }): Project {
