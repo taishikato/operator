@@ -260,7 +260,11 @@ export function KanbanBoard({
         </div>
       ) : null}
 
-      <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
+      <DndContext
+        id={`kanban-board-${projectKey}`}
+        sensors={sensors}
+        onDragEnd={handleDragEnd}
+      >
         <section
           aria-busy={isSaving}
           className="-mx-4 flex items-start gap-4 overflow-x-auto px-4 pb-4 sm:-mx-6 sm:px-6 lg:-mx-8 lg:px-8 [scrollbar-width:thin]"
