@@ -23,7 +23,7 @@ test("handleUpdateProjectSettingsRequest persists Project defaults, schedule set
 
   const response = await api.handleUpdateProjectSettingsRequest(
     jsonRequest({
-      defaultModel: "cursor/gpt-5.1",
+      defaultModel: "gpt-5.5",
       defaultReasoningLevel: "medium",
       scheduleEnabled: true,
       scheduleDailyTime: "10:30",
@@ -41,7 +41,7 @@ test("handleUpdateProjectSettingsRequest persists Project defaults, schedule set
 
   assert.equal(response.status, 200)
   assert.deepEqual(body.project.defaults, {
-    model: "cursor/gpt-5.1",
+    model: "gpt-5.5",
     reasoningLevel: "medium",
     runTimeoutSeconds: 1800,
   })
@@ -90,7 +90,7 @@ test("handleUpdateProjectSettingsRequest returns validation errors without corru
     },
   })
   assert.deepEqual(persisted?.defaults, {
-    model: "cursor/gpt-5",
+    model: "gpt-5.5",
     reasoningLevel: "high",
     runTimeoutSeconds: 3600,
   })
@@ -133,7 +133,7 @@ function createProjectInput(
       instructionFiles: ["AGENTS.md"],
     },
     defaults: {
-      model: "cursor/gpt-5",
+      model: "gpt-5.5",
       reasoningLevel: "high",
       runTimeoutSeconds: 3600,
     },
@@ -146,6 +146,41 @@ function createProjectInput(
     ...overrides,
   }
 }
+
+test("handleUpdateProjectSettingsRequest accepts Composer only with default reasoning", async () => {
+  const api = await import("./project-settings-api.ts").catch(() => null)
+
+  assert.ok(api)
+
+  const databasePath = await createDatabaseForTest()
+  const projects = createProjectRepository({ databasePath })
+  const project = await projects.createProject(createProjectInput())
+
+  const response = await api.handleUpdateProjectSettingsRequest(
+    jsonRequest({
+      defaultModel: "composer-2.5",
+      defaultReasoningLevel: "default",
+      scheduleEnabled: false,
+      scheduleDailyTime: "09:00",
+      scheduleTimezone: "UTC",
+      scheduledRunLimit: 1,
+      runTimeoutSeconds: 3600,
+    }),
+    {
+      databasePath,
+      databaseStatus: "ready",
+      projectKey: project.key,
+    }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 200)
+  assert.deepEqual(body.project.defaults, {
+    model: "composer-2.5",
+    reasoningLevel: "default",
+    runTimeoutSeconds: 3600,
+  })
+})
 
 function jsonRequest(body: unknown) {
   return new Request("http://test", {

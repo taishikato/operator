@@ -9,14 +9,20 @@ import {
   type LocalDatabaseOptions,
   resolveLocalDatabaseOptions,
 } from "../db/local-database-options.ts"
+import {
+  cursorModelOptions,
+  cursorModelSupportsReasoning,
+  cursorReasoningLevels,
+  nonReasoningCursorReasoningLevel,
+} from "../cursor-models.ts"
 import { createProjectRepository } from "./project-repository.ts"
 
-const reasoningLevels = ["low", "medium", "high"] as const
+const cursorModels = cursorModelOptions.map((option) => option.value)
 
 const updateProjectSettingsRequestSchema = z
   .object({
-    defaultModel: z.string().trim().min(1).max(120),
-    defaultReasoningLevel: z.enum(reasoningLevels),
+    defaultModel: z.enum(cursorModels),
+    defaultReasoningLevel: z.enum(cursorReasoningLevels),
     scheduleEnabled: z.boolean(),
     scheduleDailyTime: z
       .string()
@@ -27,6 +33,15 @@ const updateProjectSettingsRequestSchema = z
     runTimeoutSeconds: z.number().int().min(60).max(86_400),
   })
   .strict()
+  .refine(
+    (data) =>
+      cursorModelSupportsReasoning(data.defaultModel)
+        ? data.defaultReasoningLevel !== nonReasoningCursorReasoningLevel
+        : data.defaultReasoningLevel === nonReasoningCursorReasoningLevel,
+    {
+      path: ["defaultReasoningLevel"],
+    }
+  )
 
 export type ProjectSettingsApiOptions = LocalDatabaseOptions & {
   projectKey: string
@@ -68,7 +83,9 @@ export async function handleUpdateProjectSettingsRequest(
     )
   }
 
-  const projects = createProjectRepository({ databasePath: options.databasePath })
+  const projects = createProjectRepository({
+    databasePath: options.databasePath,
+  })
   const project = await projects.getActiveProjectByKey(options.projectKey)
 
   if (!project) {

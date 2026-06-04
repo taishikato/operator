@@ -2,7 +2,12 @@
 
 import { Monitor, Moon, Sun } from "lucide-react"
 import { useTheme } from "next-themes"
-import { type KeyboardEvent, useRef, useState } from "react"
+import {
+  type KeyboardEvent,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react"
 
 import {
   ProjectSettingsForm,
@@ -12,6 +17,10 @@ import { Button } from "@/components/ui/button"
 import type { AppOperationalStatus } from "@/lib/settings/app-operational-status"
 
 type SettingsTab = "project" | "app"
+
+const subscribeToMountedState = () => () => {}
+const getMountedState = () => true
+const getServerMountedState = () => false
 
 export function ProjectSettingsPanel({
   projectKey,
@@ -145,6 +154,11 @@ function StatusItem({ label, value }: { label: string; value: string }) {
 
 function ThemeControls() {
   const { theme, setTheme } = useTheme()
+  const isMounted = useSyncExternalStore(
+    subscribeToMountedState,
+    getMountedState,
+    getServerMountedState
+  )
 
   return (
     <section className="grid gap-2">
@@ -152,7 +166,7 @@ function ThemeControls() {
       <div className="flex flex-wrap gap-2">
         <Button
           type="button"
-          variant={theme === "system" ? "default" : "outline"}
+          variant={isMounted && theme === "system" ? "default" : "outline"}
           onClick={() => setTheme("system")}
           title="Use system theme"
         >
@@ -161,7 +175,7 @@ function ThemeControls() {
         </Button>
         <Button
           type="button"
-          variant={theme === "light" ? "default" : "outline"}
+          variant={isMounted && theme === "light" ? "default" : "outline"}
           onClick={() => setTheme("light")}
           title="Use light theme"
         >
@@ -170,7 +184,7 @@ function ThemeControls() {
         </Button>
         <Button
           type="button"
-          variant={theme === "dark" ? "default" : "outline"}
+          variant={isMounted && theme === "dark" ? "default" : "outline"}
           onClick={() => setTheme("dark")}
           title="Use dark theme"
         >

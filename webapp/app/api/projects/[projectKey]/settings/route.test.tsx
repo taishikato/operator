@@ -27,7 +27,7 @@ mock.module("../../../../../lib/projects/project-settings-api.ts", {
       return Response.json({
         project: {
           defaults: {
-            model: "cursor/gpt-5.1",
+            model: "gpt-5.5",
             reasoningLevel: "medium",
             runTimeoutSeconds: 1800,
           },
@@ -44,7 +44,7 @@ test("Project settings route delegates updates for the route Project key", async
 
   const response = await route.PATCH(
     jsonRequest({
-      defaultModel: "cursor/gpt-5.1",
+      defaultModel: "gpt-5.5",
       defaultReasoningLevel: "medium",
       scheduleEnabled: true,
       scheduleDailyTime: "10:30",
@@ -59,7 +59,7 @@ test("Project settings route delegates updates for the route Project key", async
   const body = await response.json()
 
   assert.equal(response.status, 200)
-  assert.equal(body.project.defaults.model, "cursor/gpt-5.1")
+  assert.equal(body.project.defaults.model, "gpt-5.5")
   assert.equal(calls.length, 1)
   assert.equal(calls[0]?.projectKey, "OP")
 })
