@@ -58,7 +58,6 @@ export default async function Page() {
 function ProjectHomeHeader({ description }: { description?: string }) {
   return (
     <header className="flex min-w-0 flex-col gap-1">
-      <p className="text-sm font-medium text-muted-foreground">Operator</p>
       <h1 className="text-xl font-semibold tracking-normal">Projects</h1>
       {description ? (
         <p className="max-w-3xl text-sm text-muted-foreground">
@@ -78,9 +77,6 @@ function ProjectList({ projects }: { projects: Project[] }) {
           className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4 shadow-sm"
         >
           <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground uppercase">
-              Project {project.key}
-            </p>
             <h2 className="truncate text-lg font-semibold tracking-normal">
               {project.displayName}
             </h2>

@@ -1,4 +1,4 @@
-import { FolderKanban, Plus, Settings } from "lucide-react"
+import { Plus, Settings } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
@@ -126,13 +126,6 @@ function ProjectHeader({
     <header className="border-b px-4 py-4 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <Link
-            href="/"
-            className="mb-1 inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground transition hover:text-foreground"
-          >
-            <FolderKanban className="h-3.5 w-3.5" />
-            Projects
-          </Link>
           <p className="text-xs font-medium text-muted-foreground uppercase">
             Project {project.key}
           </p>

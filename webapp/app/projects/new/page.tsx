@@ -11,7 +11,6 @@ export default async function NewProjectPage() {
     <main className="min-h-svh bg-background px-4 py-6 sm:px-6 lg:px-8">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-5">
         <header className="flex min-w-0 flex-col gap-1 border-b pb-4">
-          <p className="text-sm font-medium text-muted-foreground">Operator</p>
           <h1 className="text-xl font-semibold tracking-normal">
             Add Project
           </h1>

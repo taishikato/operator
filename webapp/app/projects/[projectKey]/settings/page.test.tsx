@@ -127,10 +127,7 @@ function assertSettingsNavigation(view: ReturnType<typeof render>) {
     view.getByRole("link", { name: "Back to board" }).getAttribute("href"),
     "/projects/OP"
   )
-  assert.equal(
-    view.getByRole("link", { name: "Projects" }).getAttribute("href"),
-    "/"
-  )
+  assert.equal(view.queryByRole("link", { name: "Projects" }), null)
 }
 
 function createProject() {

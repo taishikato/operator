@@ -77,14 +77,12 @@ test("root route renders Project home when active Projects exist", async () => {
     view.getByRole("link", { name: "Add Project" }).getAttribute("href"),
     "/projects/new"
   )
-  assert.ok(view.getByText("Operator"))
-  assert.ok(view.getByText("Project OP"))
   assert.ok(view.getByText("/Users/example/operator"))
   assert.ok(view.getByText("Schedule off"))
   assert.ok(view.getByRole("heading", { name: "Operator App" }))
   assert.ok(view.getByRole("heading", { name: "Webapp" }))
-  assert.ok(view.getByText("Project WEB"))
   assert.ok(view.getByText("Schedule on"))
+  assert.equal(view.queryByText(/^Project /), null)
   assert.equal(
     view.getByRole("link", { name: "Open Operator App" }).getAttribute("href"),
     "/projects/OP"

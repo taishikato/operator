@@ -10,11 +10,11 @@ test("Project page links to Project settings", async () => {
   assert.match(source, />\s*Settings\s*</)
 })
 
-test("Project page links back to Projects and Add Project", async () => {
+test("Project page links to Add Project without a local Projects backlink", async () => {
   const source = await readSiblingPageSource(import.meta.url)
 
-  assert.match(source, /href="\/"/)
-  assert.match(source, />\s*Projects\s*</)
+  assert.doesNotMatch(source, /FolderKanban/)
+  assert.doesNotMatch(source, />\s*Projects\s*</)
   assert.match(source, /href="\/projects\/new"/)
   assert.match(source, />\s*Add Project\s*</)
 })
