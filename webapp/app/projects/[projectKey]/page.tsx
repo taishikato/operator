@@ -8,6 +8,7 @@ import { resolveAppDataPaths } from "@/lib/app-data/app-data"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
 import { createProjectRepository } from "@/lib/projects/project-repository"
 import { createRunRepository } from "@/lib/runs/run-repository"
+import { shouldStartSchedulerFromWebRequest } from "@/lib/cli/operator-runtime-env"
 import { ensureProjectSchedulerRuntimeStarted } from "@/lib/scheduler/project-scheduler-runtime"
 import {
   attachLatestRunSummaries,
@@ -55,7 +56,9 @@ export default async function ProjectPage({
     )
   }
 
-  ensureProjectSchedulerRuntimeStarted({ databasePath })
+  if (shouldStartSchedulerFromWebRequest()) {
+    ensureProjectSchedulerRuntimeStarted({ databasePath })
+  }
 
   const tasks = await createTaskRepository({
     databasePath,
