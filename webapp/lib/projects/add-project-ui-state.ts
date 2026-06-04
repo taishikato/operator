@@ -71,8 +71,20 @@ export function applyProjectKeyChange(
 ): AddProjectFormState {
   return {
     ...state,
-    key: key.toUpperCase(),
+    key: key.toLowerCase(),
   }
+}
+
+export function canSubmitAddProjectForm(
+  state: AddProjectFormState,
+  isSaving: boolean
+) {
+  return (
+    !isSaving &&
+    state.repoPath.trim().length > 0 &&
+    state.key.trim().length > 0 &&
+    state.displayName.trim().length > 0
+  )
 }
 
 export function applyDetectProjectError(

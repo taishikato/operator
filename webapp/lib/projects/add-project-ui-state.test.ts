@@ -7,6 +7,7 @@ import {
   applyDetectProjectSuccess,
   applyProjectKeyChange,
   applyRepositoryPathChange,
+  canSubmitAddProjectForm,
   createInitialAddProjectFormState,
 } from "./add-project-ui-state.ts"
 
@@ -50,7 +51,7 @@ test("applyDetectProjectError shows validation errors without clearing entered f
     {
       ...createInitialAddProjectFormState(),
       repoPath: "/Users/example/not-a-repo",
-      key: "CUSTOM",
+      key: "custom",
       displayName: "Custom Project",
     },
     {
@@ -62,7 +63,7 @@ test("applyDetectProjectError shows validation errors without clearing entered f
   )
 
   assert.equal(state.repoPath, "/Users/example/not-a-repo")
-  assert.equal(state.key, "CUSTOM")
+  assert.equal(state.key, "custom")
   assert.equal(state.displayName, "Custom Project")
   assert.equal(state.errorMessage, "Path is not a Git repository")
 })
@@ -89,7 +90,8 @@ test("applyCreateProjectError keeps detected metadata and editable key visible",
     {
       error: {
         code: "invalid_project_key",
-        message: "Project key must be 1-6 uppercase letters or numbers.",
+        message:
+          "Project key must be 1-32 lowercase letters, numbers, or hyphens.",
       },
     }
   )
@@ -99,7 +101,7 @@ test("applyCreateProjectError keeps detected metadata and editable key visible",
   assert.equal(state.repositoryPreview?.path, "/Users/example/operator")
   assert.equal(
     state.errorMessage,
-    "Project key must be 1-6 uppercase letters or numbers."
+    "Project key must be 1-32 lowercase letters, numbers, or hyphens."
   )
 })
 
@@ -129,8 +131,24 @@ test("applyRepositoryPathChange clears detected metadata when the path changes",
   assert.equal(state.errorMessage, null)
 })
 
-test("applyProjectKeyChange stores manually entered Project keys in uppercase", () => {
+test("applyProjectKeyChange stores manually entered Project keys in lowercase", () => {
   const state = applyProjectKeyChange(createInitialAddProjectFormState(), "op1")
 
-  assert.equal(state.key, "OP1")
+  assert.equal(state.key, "op1")
+})
+
+test("canSubmitAddProjectForm does not require a detected repository preview", () => {
+  assert.equal(
+    canSubmitAddProjectForm(
+      {
+        ...createInitialAddProjectFormState(),
+        repoPath: "/Users/example/skills",
+        key: "skills",
+        displayName: "skills",
+        repositoryPreview: null,
+      },
+      false
+    ),
+    true
+  )
 })

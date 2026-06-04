@@ -1,27 +1,19 @@
 "use client"
 
-import {
-  FolderOpen,
-  GitBranch,
-  GitFork,
-  PackageCheck,
-  Save,
-  Search,
-} from "lucide-react"
+import { FolderOpen, Save } from "lucide-react"
 import { useRouter } from "next/navigation"
-import type { FormEvent, ReactNode } from "react"
+import type { FormEvent } from "react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
 import {
   applyCreateProjectError,
   applyDetectProjectError,
-  applyDetectProjectSuccess,
   applyProjectKeyChange,
   applyRepositoryPathChange,
+  canSubmitAddProjectForm,
   createInitialAddProjectFormState,
   type AddProjectApiErrorBody,
-  type DetectProjectSuccessBody,
 } from "@/lib/projects/add-project-ui-state"
 
 type CreateProjectSuccessBody = {
@@ -33,40 +25,8 @@ type CreateProjectSuccessBody = {
 export function AddProjectForm() {
   const router = useRouter()
   const [state, setState] = useState(createInitialAddProjectFormState)
-  const [isDetecting, setIsDetecting] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [isBrowsing, setIsBrowsing] = useState(false)
-
-  async function detectProject() {
-    setIsDetecting(true)
-
-    try {
-      const response = await fetch("/api/projects/detect", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ repoPath: state.repoPath }),
-      })
-      const body = (await response.json()) as
-        | DetectProjectSuccessBody
-        | AddProjectApiErrorBody
-
-      setState((current) =>
-        response.ok
-          ? applyDetectProjectSuccess(
-              { ...current, repoPath: state.repoPath },
-              body as DetectProjectSuccessBody
-            )
-          : applyDetectProjectError(current, body as AddProjectApiErrorBody)
-      )
-    } catch {
-      setState((current) => ({
-        ...current,
-        errorMessage: "Could not reach the local Project detection API.",
-      }))
-    } finally {
-      setIsDetecting(false)
-    }
-  }
 
   async function browseProjectPath() {
     setIsBrowsing(true)
@@ -134,7 +94,7 @@ export function AddProjectForm() {
   return (
     <form
       onSubmit={saveProject}
-      className="grid w-full gap-5 lg:grid-cols-[minmax(0,1fr)_360px]"
+      className="w-full max-w-3xl"
     >
       <section className="min-w-0 rounded-lg border bg-card p-5 shadow-sm">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
@@ -173,15 +133,6 @@ export function AddProjectForm() {
                   <FolderOpen data-icon="inline-start" />
                   Browse
                 </Button>
-                <Button
-                  type="button"
-                  onClick={detectProject}
-                  disabled={isDetecting || state.repoPath.trim().length === 0}
-                  title="Detect repository"
-                >
-                  <Search data-icon="inline-start" />
-                  Detect
-                </Button>
               </div>
             </div>
           </label>
@@ -196,9 +147,9 @@ export function AddProjectForm() {
                     applyProjectKeyChange(current, event.target.value)
                   )
                 }
-                className="h-9 rounded-md border bg-background px-3 font-mono text-sm uppercase transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
-                placeholder="OP"
-                maxLength={6}
+                className="h-9 rounded-md border bg-background px-3 font-mono text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40"
+                placeholder="operator"
+                maxLength={32}
               />
             </label>
             <label className="grid gap-1.5">
@@ -229,12 +180,7 @@ export function AddProjectForm() {
           <div className="flex justify-end">
             <Button
               type="submit"
-              disabled={
-                isSaving ||
-                !state.repositoryPreview ||
-                state.key.trim().length === 0 ||
-                state.displayName.trim().length === 0
-              }
+              disabled={!canSubmitAddProjectForm(state, isSaving)}
               title="Save Project"
             >
               <Save data-icon="inline-start" />
@@ -243,91 +189,6 @@ export function AddProjectForm() {
           </div>
         </div>
       </section>
-
-      <RepositoryPreview state={state} />
     </form>
-  )
-}
-
-function RepositoryPreview({
-  state,
-}: {
-  state: ReturnType<typeof createInitialAddProjectFormState>
-}) {
-  if (!state.repositoryPreview) {
-    return (
-      <aside className="rounded-lg border bg-muted/35 p-5 text-sm text-muted-foreground">
-        Repository metadata appears here after detection.
-      </aside>
-    )
-  }
-
-  const repository = state.repositoryPreview
-
-  return (
-    <aside className="rounded-lg border bg-card p-5 shadow-sm">
-      <h2 className="text-sm font-semibold">Detected metadata</h2>
-      <dl className="mt-4 grid gap-3 text-sm">
-        <PreviewRow label="Repository" value={repository.name} />
-        <PreviewRow label="Path" value={repository.path} mono />
-        <PreviewRow
-          label="Default branch"
-          value={repository.defaultBranch ?? "Not detected"}
-          icon={<GitBranch />}
-        />
-        <PreviewRow
-          label="GitHub"
-          value={repository.githubSlug ?? "Not detected"}
-          icon={<GitFork />}
-        />
-        <PreviewRow
-          label="Packages"
-          value={
-            repository.packageManagers.length > 0
-              ? repository.packageManagers.join(", ")
-              : "None detected"
-          }
-          icon={<PackageCheck />}
-        />
-        <PreviewRow
-          label="Instructions"
-          value={
-            repository.instructionFiles.length > 0
-              ? repository.instructionFiles.join(", ")
-              : "None detected"
-          }
-        />
-      </dl>
-    </aside>
-  )
-}
-
-function PreviewRow({
-  icon,
-  label,
-  mono = false,
-  value,
-}: {
-  icon?: ReactNode
-  label: string
-  mono?: boolean
-  value: string
-}) {
-  return (
-    <div className="min-w-0">
-      <dt className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-        {icon ? <span className="[&_svg]:size-3.5">{icon}</span> : null}
-        {label}
-      </dt>
-      <dd
-        className={
-          mono
-            ? "mt-0.5 font-mono text-xs break-all"
-            : "mt-0.5 text-sm break-words"
-        }
-      >
-        {value}
-      </dd>
-    </div>
   )
 }

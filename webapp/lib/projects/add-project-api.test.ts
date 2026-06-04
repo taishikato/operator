@@ -28,19 +28,20 @@ test("detect Project API returns repository metadata and a suggested key without
   )
   const body = await response.json()
   const repositoryRoot = await realpath(repoPath)
+  const repositoryName = repositoryRoot.split("/").at(-1) ?? ""
 
   assert.equal(response.status, 200)
   assert.deepEqual(body, {
     repository: {
       path: repositoryRoot,
-      name: repositoryRoot.split("/").at(-1),
+      name: repositoryName,
       defaultBranch: "main",
       remoteUrl: null,
       githubSlug: null,
       packageManagers: ["npm"],
       instructionFiles: [],
     },
-    suggestedKey: "OPERAT",
+    suggestedKey: repositoryName.toLowerCase(),
   })
 
   const projects = createProjectRepository({ databasePath })
@@ -55,7 +56,7 @@ test("create Project API persists a Project from a valid repository path and key
   const response = await handleCreateProjectRequest(
     jsonRequest({
       repoPath,
-      key: "OP",
+      key: "op",
       displayName: "Operator",
     }),
     { databasePath }
@@ -63,7 +64,7 @@ test("create Project API persists a Project from a valid repository path and key
   const body = await response.json()
 
   assert.equal(response.status, 201)
-  assert.equal(body.project.key, "OP")
+  assert.equal(body.project.key, "op")
   assert.equal(body.project.displayName, "Operator")
   assert.equal(body.project.repoPath, repositoryRoot)
   assert.deepEqual(body.project.repositoryMetadata, {
@@ -86,10 +87,31 @@ test("create Project API persists a Project from a valid repository path and key
     scheduledRunLimit: 1,
     lastScheduledLocalDate: null,
   })
-  assert.equal(body.route.projectPath, "/projects/OP")
+  assert.equal(body.route.projectPath, "/projects/op")
 
   const projects = createProjectRepository({ databasePath })
   assert.equal((await projects.listActiveProjects()).length, 1)
+})
+
+test("create Project API persists lowercase Project keys", async () => {
+  const databasePath = await createProjectDatabaseForTest()
+  const repoPath = await createGitRepositoryForTest(
+    "operator-lowercase-key-repo-"
+  )
+
+  const response = await handleCreateProjectRequest(
+    jsonRequest({
+      repoPath,
+      key: "skills",
+      displayName: "skills",
+    }),
+    { databasePath }
+  )
+  const body = await response.json()
+
+  assert.equal(response.status, 201)
+  assert.equal(body.project.key, "skills")
+  assert.equal(body.route.projectPath, "/projects/skills")
 })
 
 test("create Project API returns a structured validation error for a non-Git path", async () => {
@@ -99,7 +121,7 @@ test("create Project API returns a structured validation error for a non-Git pat
   const response = await handleCreateProjectRequest(
     jsonRequest({
       repoPath,
-      key: "OP",
+      key: "op",
       displayName: "Operator",
     }),
     { databasePath }
@@ -201,12 +223,14 @@ test("create Project API returns a structured validation error for an invalid Pr
   assert.deepEqual(body, {
     error: {
       code: "invalid_project_key",
-      message: "Project key must be 1-6 uppercase letters or numbers.",
+      message:
+        "Project key must be 1-32 lowercase letters, numbers, or hyphens.",
       issues: [
         {
           path: ["key"],
           code: "invalid_project_key",
-          message: "Project key must be 1-6 uppercase letters or numbers.",
+          message:
+            "Project key must be 1-32 lowercase letters, numbers, or hyphens.",
         },
       ],
     },
@@ -225,7 +249,7 @@ test("create Project API returns a structured validation error for a blank displ
   const response = await handleCreateProjectRequest(
     jsonRequest({
       repoPath,
-      key: "OP",
+      key: "op",
       displayName: "   ",
     }),
     { databasePath }
@@ -264,12 +288,14 @@ test("create Project API prioritizes invalid Project key errors over other inval
   assert.deepEqual(body, {
     error: {
       code: "invalid_project_key",
-      message: "Project key must be 1-6 uppercase letters or numbers.",
+      message:
+        "Project key must be 1-32 lowercase letters, numbers, or hyphens.",
       issues: [
         {
           path: ["key"],
           code: "invalid_project_key",
-          message: "Project key must be 1-6 uppercase letters or numbers.",
+          message:
+            "Project key must be 1-32 lowercase letters, numbers, or hyphens.",
         },
       ],
     },
@@ -279,12 +305,12 @@ test("create Project API prioritizes invalid Project key errors over other inval
   assert.deepEqual(await projects.listActiveProjects(), [])
 })
 
-test("create Project API rejects Project keys outside uppercase alphanumeric length bounds", async () => {
+test("create Project API rejects Project keys outside lowercase URL-safe bounds", async () => {
   const databasePath = await createProjectDatabaseForTest()
   const repoPath = await createGitRepositoryForTest(
     "operator-key-boundary-repo-"
   )
-  const invalidKeys = ["op", "OPERATOR"]
+  const invalidKeys = ["OP", "bad key", "operator_"]
 
   for (const key of invalidKeys) {
     const response = await handleCreateProjectRequest(
@@ -301,12 +327,14 @@ test("create Project API rejects Project keys outside uppercase alphanumeric len
     assert.deepEqual(body, {
       error: {
         code: "invalid_project_key",
-        message: "Project key must be 1-6 uppercase letters or numbers.",
+        message:
+          "Project key must be 1-32 lowercase letters, numbers, or hyphens.",
         issues: [
           {
             path: ["key"],
             code: "invalid_project_key",
-            message: "Project key must be 1-6 uppercase letters or numbers.",
+            message:
+              "Project key must be 1-32 lowercase letters, numbers, or hyphens.",
           },
         ],
       },
@@ -327,7 +355,7 @@ test("create Project API returns a structured validation error for a duplicate a
   await handleCreateProjectRequest(
     jsonRequest({
       repoPath: firstRepoPath,
-      key: "OP",
+      key: "op",
       displayName: "Operator",
     }),
     { databasePath }
@@ -336,7 +364,7 @@ test("create Project API returns a structured validation error for a duplicate a
   const response = await handleCreateProjectRequest(
     jsonRequest({
       repoPath: secondRepoPath,
-      key: "OP",
+      key: "op",
       displayName: "Other",
     }),
     { databasePath }
@@ -347,12 +375,12 @@ test("create Project API returns a structured validation error for a duplicate a
   assert.deepEqual(body, {
     error: {
       code: "duplicate_project_key",
-      message: "Active Project key already exists: OP",
+      message: "Active Project key already exists: op",
       issues: [
         {
           path: ["key"],
           code: "duplicate_project_key",
-          message: "Active Project key already exists: OP",
+          message: "Active Project key already exists: op",
         },
       ],
     },
@@ -366,7 +394,7 @@ test("create Project API returns a structured validation error for a duplicate a
   await handleCreateProjectRequest(
     jsonRequest({
       repoPath,
-      key: "OP",
+      key: "op",
       displayName: "Operator",
     }),
     { databasePath }
@@ -375,7 +403,7 @@ test("create Project API returns a structured validation error for a duplicate a
   const response = await handleCreateProjectRequest(
     jsonRequest({
       repoPath,
-      key: "OTHER",
+      key: "other",
       displayName: "Other",
     }),
     { databasePath }
@@ -409,7 +437,7 @@ test("create Project API does not require Cursor credentials", async () => {
     const response = await handleCreateProjectRequest(
       jsonRequest({
         repoPath,
-        key: "OP",
+        key: "op",
         displayName: "Operator",
       }),
       { databasePath }
@@ -434,7 +462,7 @@ test("detect and create Project APIs do not write files inside the managed repos
   await handleCreateProjectRequest(
     jsonRequest({
       repoPath,
-      key: "OP",
+      key: "op",
       displayName: "Operator",
     }),
     { databasePath }

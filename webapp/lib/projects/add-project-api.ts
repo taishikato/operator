@@ -21,14 +21,17 @@ const detectProjectRequestSchema = z.object({
 })
 
 const PROJECT_KEY_ERROR_MESSAGE =
-  "Project key must be 1-6 uppercase letters or numbers."
+  "Project key must be 1-32 lowercase letters, numbers, or hyphens."
 
 const createProjectRequestSchema = z.object({
   repoPath: z.string().trim().min(1),
   key: z
     .string()
     .trim()
-    .regex(/^[A-Z0-9]{1,6}$/, PROJECT_KEY_ERROR_MESSAGE),
+    .regex(
+      /^[a-z0-9](?:[a-z0-9-]{0,30}[a-z0-9])?$/,
+      PROJECT_KEY_ERROR_MESSAGE
+    ),
   displayName: z.string().trim().min(1),
 })
 

@@ -3,13 +3,13 @@ import { test } from "node:test"
 
 import { suggestProjectKey } from "./project-key.ts"
 
-test("suggestProjectKey normalizes repository names into short uppercase keys", () => {
-  assert.equal(suggestProjectKey("operator-web_app"), "OPERAT")
-  assert.equal(suggestProjectKey("@scope/api.server"), "SCOPEA")
+test("suggestProjectKey normalizes repository names into short lowercase keys", () => {
+  assert.equal(suggestProjectKey("operator-web_app"), "operator-web-app")
+  assert.equal(suggestProjectKey("@scope/api.server"), "scope-api-server")
 })
 
 test("suggestProjectKey avoids invalid output for empty and symbolic repository names", () => {
-  assert.equal(suggestProjectKey(""), "PROJ")
-  assert.equal(suggestProjectKey("...---___"), "PROJ")
-  assert.equal(suggestProjectKey("!!!agent-core???"), "AGENTC")
+  assert.equal(suggestProjectKey(""), "project")
+  assert.equal(suggestProjectKey("...---___"), "project")
+  assert.equal(suggestProjectKey("!!!agent-core???"), "agent-core")
 })

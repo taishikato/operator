@@ -57,7 +57,7 @@ CURSOR_API_KEY=your_cursor_api_key pnpm operator start
 
 1. Start Operator and open `http://127.0.0.1:3927`.
 2. Add a Project by selecting or entering the path to a separate local Git repository.
-3. Confirm the detected repository metadata and Project key.
+3. Choose a lowercase Project key and display name.
 4. Create a Task in Backlog with a title, body, and acceptance criteria.
 5. Optionally set a Task model or reasoning override.
 6. Move the Task to Ready.
