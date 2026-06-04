@@ -95,7 +95,7 @@ export default async function ProjectPage({
     <main className="min-h-svh bg-background">
       <ProjectHeader project={project} />
 
-      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
+      <div className="px-4 py-5 sm:px-6 lg:px-8">
         <KanbanBoard
           projectKey={project.key}
           scheduledRunLimit={project.schedule.scheduledRunLimit}
@@ -128,7 +128,7 @@ function ProjectHeader({
 }) {
   return (
     <header className="border-b px-4 py-4 sm:px-6 lg:px-8">
-      <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-medium text-muted-foreground uppercase">
             Project {project.key}
