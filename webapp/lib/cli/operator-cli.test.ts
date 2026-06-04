@@ -6,6 +6,7 @@ import {
   runOperatorCli,
   type OperatorCliDependencies,
 } from "./operator-cli.ts"
+import { shouldStartSchedulerFromWebRequest } from "./operator-runtime-env.ts"
 
 test("operator start defaults to 127.0.0.1:3927 and prints the local URL", async () => {
   const events: string[] = []
@@ -16,9 +17,6 @@ test("operator start defaults to 127.0.0.1:3927 and prints the local URL", async
       reconcileStaleRuns: async () => {
         events.push("reconcile")
         return { interruptedRuns: 0 }
-      },
-      startScheduler: () => {
-        events.push("scheduler")
       },
       startServer: async ({ host, port }) => {
         events.push(`server:${host}:${port}`)
@@ -41,10 +39,25 @@ test("operator start defaults to 127.0.0.1:3927 and prints the local URL", async
   assert.equal(result.exitCode, 0)
   assert.deepEqual(events, [
     "reconcile",
-    "scheduler",
     "server:127.0.0.1:3927",
     "stdout:Operator is running at http://127.0.0.1:3927\n",
   ])
+})
+
+test("operator start does not start the scheduler in the CLI parent process", async () => {
+  const events: string[] = []
+
+  const result = await runOperatorCli(
+    ["start"],
+    makeDependencies(events, {
+      startScheduler: () => {
+        events.push("parent-scheduler")
+      },
+    })
+  )
+
+  assert.equal(result.exitCode, 0)
+  assert(!events.includes("parent-scheduler"))
 })
 
 test("operator start reports a clear error when the default port is already in use", async () => {
@@ -65,6 +78,77 @@ test("operator start reports a clear error when the default port is already in u
   assert.equal(result.exitCode, 1)
   assert.deepEqual(events, [
     "stderr:Port 3927 is already in use on 127.0.0.1. Stop the other process and run operator start again.\n",
+  ])
+})
+
+test("operator start checks the default port before database side effects", async () => {
+  const events: string[] = []
+  const portError = Object.assign(new Error("listen EADDRINUSE"), {
+    code: "EADDRINUSE",
+  })
+
+  const result = await runOperatorCli(
+    ["start"],
+    makeDependencies(events, {
+      ensureStartPortAvailable: async ({ host, port }) => {
+        events.push(`port:${host}:${port}`)
+        throw portError
+      },
+      bootstrapDatabase: async () => {
+        events.push("bootstrap")
+        return {
+          databasePath: "/tmp/operator.db",
+          schemaApplied: true,
+          status: "initialized",
+        }
+      },
+      reconcileStaleRuns: async () => {
+        events.push("reconcile")
+        return { interruptedRuns: 0 }
+      },
+      startServer: async () => {
+        events.push("server")
+        return { url: "http://127.0.0.1:3927" }
+      },
+    })
+  )
+
+  assert.equal(result.exitCode, 1)
+  assert.deepEqual(events, [
+    "port:127.0.0.1:3927",
+    "stderr:Port 3927 is already in use on 127.0.0.1. Stop the other process and run operator start again.\n",
+  ])
+})
+
+test("operator start stops before reconciliation when the database requires explicit apply", async () => {
+  const events: string[] = []
+
+  const result = await runOperatorCli(
+    ["start"],
+    makeDependencies(events, {
+      bootstrapDatabase: async () => {
+        events.push("bootstrap")
+        return {
+          databasePath: "/tmp/operator.db",
+          schemaApplied: false,
+          status: "requires_explicit_apply",
+        }
+      },
+      reconcileStaleRuns: async () => {
+        events.push("reconcile")
+        return { interruptedRuns: 0 }
+      },
+      startServer: async () => {
+        events.push("server")
+        return { url: "http://127.0.0.1:3927" }
+      },
+    })
+  )
+
+  assert.equal(result.exitCode, 1)
+  assert.deepEqual(events, [
+    "bootstrap",
+    "stderr:Operator database schema is out of date. Run operator db apply before operator start.\n",
   ])
 })
 
@@ -119,15 +203,21 @@ test("operator db apply runs the explicit schema apply path and reports the data
 })
 
 test("startNextProductionServer owns next start on the requested host and port", async () => {
-  const spawned: Array<{ command: string; args: string[] }> = []
+  const spawned: Array<{
+    args: string[]
+    command: string
+    cwd?: string
+    env?: Record<string, string>
+  }> = []
 
   const result = await startNextProductionServer({
     host: "127.0.0.1",
     port: 3927,
+    databasePath: "/tmp/operator.db",
     ensurePortAvailable: async () => undefined,
-    runProcess: async ({ command, args }) => {
-      spawned.push({ command, args })
-      return { exitCode: 0 }
+    waitForServerReady: async () => undefined,
+    runProcess: async ({ command, args, cwd, env }) => {
+      spawned.push({ command, args, cwd, env })
     },
   })
 
@@ -136,8 +226,35 @@ test("startNextProductionServer owns next start on the requested host and port",
     {
       command: "pnpm",
       args: ["exec", "next", "start", "-H", "127.0.0.1", "-p", "3927"],
+      env: {
+        OPERATOR_CLI_MANAGED_START: "1",
+        OPERATOR_DATABASE_PATH: "/tmp/operator.db",
+      },
+      cwd: process.cwd(),
     },
   ])
+})
+
+test("startNextProductionServer waits until next is listening before reporting success", async () => {
+  const events: string[] = []
+
+  const result = await startNextProductionServer({
+    host: "127.0.0.1",
+    port: 3927,
+    databasePath: "/tmp/operator.db",
+    ensurePortAvailable: async () => {
+      events.push("port")
+    },
+    runProcess: async () => {
+      events.push("spawn")
+    },
+    waitForServerReady: async ({ url }) => {
+      events.push(`ready:${url}`)
+    },
+  })
+
+  assert.equal(result.url, "http://127.0.0.1:3927")
+  assert.deepEqual(events, ["port", "spawn", "ready:http://127.0.0.1:3927"])
 })
 
 test("startNextProductionServer checks port availability before spawning next", async () => {
@@ -148,6 +265,7 @@ test("startNextProductionServer checks port availability before spawning next", 
     startNextProductionServer({
       host: "127.0.0.1",
       port: 3927,
+      databasePath: "/tmp/operator.db",
       ensurePortAvailable: async () => {
         throw portError
       },
@@ -160,6 +278,47 @@ test("startNextProductionServer checks port availability before spawning next", 
   assert.deepEqual(spawned, [])
 })
 
+test("startNextProductionServer reports child process startup errors", async () => {
+  const spawnError = Object.assign(new Error("spawn pnpm ENOENT"), {
+    code: "ENOENT",
+  })
+
+  await assert.rejects(
+    startNextProductionServer({
+      host: "127.0.0.1",
+      port: 3927,
+      databasePath: "/tmp/operator.db",
+      ensurePortAvailable: async () => undefined,
+      runProcess: async () => ({
+        exited: Promise.reject(spawnError),
+      }),
+    }),
+    spawnError
+  )
+})
+
+test("operator start only accepts --open after the start command", async () => {
+  const events: string[] = []
+
+  const result = await runOperatorCli(
+    ["--open", "start"],
+    makeDependencies(events)
+  )
+
+  assert.equal(result.exitCode, 1)
+  assert.deepEqual(events, [
+    "stderr:Usage: operator start [--open] | operator db apply\n",
+  ])
+})
+
+test("web requests skip scheduler startup during CLI-managed startup", () => {
+  assert.equal(
+    shouldStartSchedulerFromWebRequest({ OPERATOR_CLI_MANAGED_START: "1" }),
+    false
+  )
+  assert.equal(shouldStartSchedulerFromWebRequest({}), true)
+})
+
 function makeDependencies(
   events: string[],
   overrides: Partial<OperatorCliDependencies> = {}
@@ -170,6 +329,7 @@ function makeDependencies(
       schemaApplied: true,
       status: "initialized",
     }),
+    ensureStartPortAvailable: async () => undefined,
     reconcileStaleRuns: async () => ({ interruptedRuns: 0 }),
     startScheduler: () => undefined,
     startServer: async ({ host, port }) => ({
