@@ -28,6 +28,13 @@ import {
   validateTaskStatusTransition,
   type Task,
 } from "./task-repository.ts"
+import {
+  canCreateTaskPullRequest,
+  createTaskPullRequest,
+  createLocalTaskPrCommandAdapter,
+  prepareTaskPullRequestDraft,
+  type TaskPrCommandAdapter,
+} from "./task-pr-creation.ts"
 
 const createTaskRequestSchema = z.object({
   title: z.string().trim().min(1),
@@ -65,6 +72,14 @@ const runReadyTasksRequestSchema = z
   })
   .strict()
 
+const createTaskPullRequestRequestSchema = z
+  .object({
+    title: z.string().trim().min(1),
+    body: z.string(),
+    draft: z.literal(true),
+  })
+  .strict()
+
 export type OperatorDatabaseStatus =
   | "initialized"
   | "ready"
@@ -84,6 +99,10 @@ export type RunTaskApiOptions = UpdateTaskApiOptions & {
   cursorApiKey?: string
   cursorAdapter?: CursorRunAdapter
   gitAdapter?: GitRunAdapter
+}
+
+export type TaskPullRequestApiOptions = UpdateTaskApiOptions & {
+  commandAdapter?: TaskPrCommandAdapter
 }
 
 export type RunReadyTasksApiOptions = TaskApiOptions & {
@@ -347,18 +366,16 @@ export async function handleRunTaskNowRequest(
     return projectTaskAlreadyRunningError()
   }
 
-  const lockedResult = await runWithProjectExecutionLock(
-    project.id,
-    async () =>
-      createRunOrchestrator({
-        databasePath: options.databasePath,
-        cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
-        cursorAdapter: options.cursorAdapter,
-        gitAdapter: options.gitAdapter,
-      }).runTaskNow({
-        projectKey: options.projectKey,
-        taskDisplayId: options.taskDisplayId,
-      })
+  const lockedResult = await runWithProjectExecutionLock(project.id, async () =>
+    createRunOrchestrator({
+      databasePath: options.databasePath,
+      cursorApiKey: options.cursorApiKey ?? process.env.CURSOR_API_KEY,
+      cursorAdapter: options.cursorAdapter,
+      gitAdapter: options.gitAdapter,
+    }).runTaskNow({
+      projectKey: options.projectKey,
+      taskDisplayId: options.taskDisplayId,
+    })
   )
 
   if (lockedResult.status === "already_running") {
@@ -376,6 +393,124 @@ export async function handleRunTaskNowRequest(
   }
 
   return Response.json({ result })
+}
+
+export async function handlePrepareTaskPullRequestRequest(
+  _request: Request,
+  options: TaskPullRequestApiOptions
+) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
+  const project = await loadProject(options)
+
+  if (!project) {
+    return validationError("project_not_found", "Project not found", {
+      status: 404,
+    })
+  }
+
+  const taskRepository = createTaskRepository({
+    databasePath: options.databasePath,
+  })
+  const task = await taskRepository.getActiveTaskByDisplayId(
+    options.taskDisplayId
+  )
+
+  if (!task || task.projectId !== project.id) {
+    return validationError("task_not_found", "Task not found", { status: 404 })
+  }
+
+  if (!canCreateTaskPullRequest(task)) {
+    return taskPullRequestUnavailableError()
+  }
+
+  let draft: Awaited<ReturnType<typeof prepareTaskPullRequestDraft>>
+
+  try {
+    draft = await prepareTaskPullRequestDraft({
+      command: options.commandAdapter ?? createLocalTaskPrCommandAdapter(),
+      project,
+      task,
+    })
+  } catch (error) {
+    return validationError(
+      "pull_request_prepare_failed",
+      pullRequestErrorMessage(error),
+      { status: 502 }
+    )
+  }
+
+  return Response.json({ draft })
+}
+
+export async function handleCreateTaskPullRequestRequest(
+  request: Request,
+  options: TaskPullRequestApiOptions
+) {
+  if (options.databaseStatus === "requires_explicit_apply") {
+    return schemaApplyRequiredError()
+  }
+
+  const body = await parseJsonRequest(request)
+
+  if (!body.success) {
+    return validationError("invalid_request", "Invalid JSON request body")
+  }
+
+  const parsed = createTaskPullRequestRequestSchema.safeParse(body.data)
+
+  if (!parsed.success) {
+    return validationError("invalid_request", "Invalid Task pull request input")
+  }
+
+  const project = await loadProject(options)
+
+  if (!project) {
+    return validationError("project_not_found", "Project not found", {
+      status: 404,
+    })
+  }
+
+  const taskRepository = createTaskRepository({
+    databasePath: options.databasePath,
+  })
+  const task = await taskRepository.getActiveTaskByDisplayId(
+    options.taskDisplayId
+  )
+
+  if (!task || task.projectId !== project.id) {
+    return validationError("task_not_found", "Task not found", { status: 404 })
+  }
+
+  if (!canCreateTaskPullRequest(task)) {
+    return taskPullRequestUnavailableError()
+  }
+
+  let result: Awaited<ReturnType<typeof createTaskPullRequest>>
+
+  try {
+    result = await createTaskPullRequest({
+      command: options.commandAdapter ?? createLocalTaskPrCommandAdapter(),
+      project,
+      task,
+      confirmation: parsed.data,
+    })
+  } catch (error) {
+    const message = pullRequestErrorMessage(error)
+    await taskRepository.recordTaskPullRequestError(task.id, message)
+    return validationError("pull_request_creation_failed", message, {
+      status: 502,
+    })
+  }
+
+  const updatedTask = await taskRepository.recordTaskPullRequestCreated(
+    task.id,
+    result.pullRequestUrl
+  )
+
+  return Response.json({ task: updatedTask })
 }
 
 export async function handleRunReadyTasksRequest(
@@ -448,6 +583,14 @@ function projectTaskAlreadyRunningError() {
   )
 }
 
+function taskPullRequestUnavailableError() {
+  return validationError(
+    "task_pr_unavailable",
+    "A pull request can only be created for Review Tasks with a branch and no existing pull request.",
+    { status: 409 }
+  )
+}
+
 function buildTaskInstructionUpdate(
   task: Task,
   data: z.infer<typeof updateTaskRequestSchema>
@@ -475,4 +618,10 @@ function normalizeNullableOverride(value: string | null) {
   }
 
   return value
+}
+
+function pullRequestErrorMessage(error: unknown) {
+  return error instanceof Error && error.message.trim().length > 0
+    ? error.message
+    : "Pull request creation failed."
 }

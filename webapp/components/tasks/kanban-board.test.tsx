@@ -68,6 +68,25 @@ test("KanbanBoard exposes Run Now for runnable Tasks only", async () => {
   assert.equal(view.queryByRole("button", { name: "Run OP-5" }), null)
 })
 
+test("KanbanBoard shows a PR badge link for Tasks with a pull request URL", async () => {
+  const { KanbanBoard } = await import("./kanban-board.tsx")
+  const view = render(
+    <KanbanBoard
+      projectKey="OP"
+      initialColumns={boardColumns({
+        review: ["OP-1"],
+      })}
+    />
+  )
+
+  const link = view.getByRole("link", { name: "PR" })
+
+  assert.equal(
+    link.getAttribute("href"),
+    "https://github.com/example/operator/pull/1"
+  )
+})
+
 test("KanbanBoard confirms Ready batch runs with the Project limit and submits a custom count", async () => {
   const { KanbanBoard } = await import("./kanban-board.tsx")
   const requests: Array<{ url: string; body: unknown }> = []
@@ -228,6 +247,13 @@ function task(displayId: string, status: TaskStatus, position: number) {
     acceptanceCriteriaMarkdown: "",
     status,
     position,
+    taskBranchName:
+      status === "review" ? `operator/${displayId.toLowerCase()}` : null,
+    pullRequestUrl:
+      displayId === "OP-1" && status === "review"
+        ? "https://github.com/example/operator/pull/1"
+        : null,
+    pullRequestError: null,
     modelOverride: null,
     reasoningLevelOverride: null,
   }

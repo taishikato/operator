@@ -123,6 +123,9 @@ function task(
     acceptanceCriteriaMarkdown: "",
     status,
     position,
+    taskBranchName: null,
+    pullRequestUrl: null,
+    pullRequestError: null,
     modelOverride: null,
     reasoningLevelOverride: null,
   }

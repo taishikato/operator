@@ -68,6 +68,9 @@ export default async function ProjectPage({
     acceptanceCriteriaMarkdown: task.acceptanceCriteriaMarkdown,
     status: task.status,
     position: task.position,
+    taskBranchName: task.taskBranchName,
+    pullRequestUrl: task.pullRequestUrl,
+    pullRequestError: task.pullRequestError,
     modelOverride: task.modelOverride,
     reasoningLevelOverride: task.reasoningLevelOverride,
     latestRun: null,
@@ -128,7 +131,7 @@ function ProjectHeader({
     <header className="border-b px-4 py-4 sm:px-6 lg:px-8">
       <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium uppercase text-muted-foreground">
+          <p className="text-xs font-medium text-muted-foreground uppercase">
             Project {project.key}
           </p>
           <h1 className="truncate text-xl font-semibold tracking-normal">

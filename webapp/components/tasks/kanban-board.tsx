@@ -16,7 +16,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
-import { GripVertical, Play } from "lucide-react"
+import { GitPullRequest, GripVertical, Play } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useEffect, useRef, useState } from "react"
 
@@ -440,6 +440,18 @@ function KanbanTaskCard({
           </button>
         </div>
       </div>
+      {task.pullRequestUrl ? (
+        <div className="mt-2 flex">
+          <a
+            href={task.pullRequestUrl}
+            className="inline-flex h-6 items-center gap-1 rounded-md border bg-muted/25 px-2 text-xs font-medium text-muted-foreground transition hover:bg-muted hover:text-foreground"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <GitPullRequest className="h-3.5 w-3.5" />
+            PR
+          </a>
+        </div>
+      ) : null}
     </div>
   )
 }

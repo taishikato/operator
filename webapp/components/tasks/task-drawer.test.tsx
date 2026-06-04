@@ -17,6 +17,9 @@ type DrawerTask = {
   bodyMarkdown: string
   acceptanceCriteriaMarkdown: string
   status: TaskStatus
+  taskBranchName: string | null
+  pullRequestUrl: string | null
+  pullRequestError: string | null
   modelOverride: string | null
   reasoningLevelOverride: string | null
   latestRun: {
@@ -30,16 +33,16 @@ type DrawerTask = {
   } | null
 }
 
-function createDrawerTask(
-  displayId: string,
-  title: string
-): DrawerTask {
+function createDrawerTask(displayId: string, title: string): DrawerTask {
   return {
     displayId,
     title,
     bodyMarkdown: `${title} body`,
     acceptanceCriteriaMarkdown: "",
     status: "backlog",
+    taskBranchName: null,
+    pullRequestUrl: null,
+    pullRequestError: null,
     modelOverride: null,
     reasoningLevelOverride: null,
     latestRun: null,
@@ -88,8 +91,9 @@ test("Save stays disabled while Ready move is in flight", async () => {
 
     const saveButtonWhileBusy = view.getByRole("button", { name: "Save" })
     const readyButtonWhileBusy = view.getByRole("button", { name: "Ready" })
-    const titleInputWhileBusy =
-      view.getByDisplayValue("First task") as HTMLInputElement
+    const titleInputWhileBusy = view.getByDisplayValue(
+      "First task"
+    ) as HTMLInputElement
 
     assert.equal((readyButtonWhileBusy as HTMLButtonElement).disabled, true)
     assert.equal((saveButtonWhileBusy as HTMLButtonElement).disabled, true)
@@ -121,8 +125,9 @@ test("Save stays disabled while Ready move is in flight", async () => {
 
     const saveButtonAfterReady = view.getByRole("button", { name: "Save" })
     const readyButtonAfterReady = view.getByRole("button", { name: "Ready" })
-    const titleInputAfterReady =
-      view.getByDisplayValue("First task") as HTMLInputElement
+    const titleInputAfterReady = view.getByDisplayValue(
+      "First task"
+    ) as HTMLInputElement
 
     assert.equal((readyButtonAfterReady as HTMLButtonElement).disabled, true)
     assert.equal((saveButtonAfterReady as HTMLButtonElement).disabled, true)
@@ -188,4 +193,99 @@ test("task drawer shows latest run summary and raw log link", async () => {
     view.getByRole("link", { name: "Raw log" }).getAttribute("href"),
     "/runs/run_123"
   )
+})
+
+test("task drawer previews PR confirmation details before creating a draft PR", async () => {
+  const { TaskDrawer } = await import("./task-drawer.tsx")
+
+  const task = {
+    ...createDrawerTask("OP-1", "First task"),
+    status: "review" as TaskStatus,
+    taskBranchName: "operator/op-1-first-task",
+  }
+  const requests: Array<{ url: string; method: string; body: unknown }> = []
+  const originalFetch = globalThis.fetch
+
+  globalThis.fetch = (async (url, init) => {
+    requests.push({
+      url: String(url),
+      method: init?.method ?? "GET",
+      body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
+    })
+
+    if (init?.method === "POST") {
+      return new Response(
+        JSON.stringify({
+          task: {
+            ...task,
+            pullRequestUrl: "https://github.com/example/operator/pull/1",
+          },
+        }),
+        { status: 200 }
+      )
+    }
+
+    return new Response(
+      JSON.stringify({
+        draft: {
+          remote: "origin",
+          remoteUrl: "git@github.com:example/operator.git",
+          branchName: "operator/op-1-first-task",
+          baseBranch: "main",
+          commitSha: "abc123",
+          title: "OP-1: First task",
+          body: "Confirmed body",
+          draft: true,
+        },
+      }),
+      { status: 200 }
+    )
+  }) as typeof fetch
+
+  try {
+    const view = render(<TaskDrawer projectKey="demo" task={task} />)
+
+    fireEvent.click(view.getByRole("button", { name: "Create PR" }))
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    assert.match(view.getByText("origin").textContent ?? "", /origin/)
+    assert.match(
+      view.getByText("operator/op-1-first-task").textContent ?? "",
+      /operator\/op-1-first-task/
+    )
+    assert.match(view.getByText("abc123").textContent ?? "", /abc123/)
+    assert.equal(
+      (view.getByDisplayValue("OP-1: First task") as HTMLInputElement).value,
+      "OP-1: First task"
+    )
+    assert.equal(
+      (view.getByDisplayValue("Confirmed body") as HTMLTextAreaElement).value,
+      "Confirmed body"
+    )
+    assert.match(view.getByText("Draft").textContent ?? "", /Draft/)
+
+    fireEvent.click(view.getByRole("button", { name: "Create draft PR" }))
+
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    assert.deepEqual(requests, [
+      {
+        url: "/api/projects/demo/tasks/OP-1/pull-request",
+        method: "GET",
+        body: undefined,
+      },
+      {
+        url: "/api/projects/demo/tasks/OP-1/pull-request",
+        method: "POST",
+        body: {
+          title: "OP-1: First task",
+          body: "Confirmed body",
+          draft: true,
+        },
+      },
+    ])
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })

@@ -34,6 +34,8 @@ export type Task = {
   status: TaskStatus
   position: number
   taskBranchName: string | null
+  pullRequestUrl: string | null
+  pullRequestError: string | null
   blockedReason: string | null
   modelOverride: string | null
   reasoningLevelOverride: string | null
@@ -114,7 +116,9 @@ export function createTaskRepository({
             nextTaskNumber: sql`${projects.nextTaskNumber} + 1`,
             updatedAt: new Date().toISOString(),
           })
-          .where(and(eq(projects.id, input.projectId), isNull(projects.removedAt)))
+          .where(
+            and(eq(projects.id, input.projectId), isNull(projects.removedAt))
+          )
           .returning({
             key: projects.key,
             nextTaskNumber: projects.nextTaskNumber,
@@ -126,7 +130,11 @@ export function createTaskRepository({
 
         const number = project.nextTaskNumber - 1
         const status: TaskStatus = "backlog"
-        const position = await nextPositionForStatus(db, input.projectId, status)
+        const position = await nextPositionForStatus(
+          db,
+          input.projectId,
+          status
+        )
         const now = new Date().toISOString()
         const [task] = await db
           .insert(tasks)
@@ -141,6 +149,8 @@ export function createTaskRepository({
             status,
             position,
             taskBranchName: null,
+            pullRequestUrl: null,
+            pullRequestError: null,
             blockedReason: null,
             modelOverride: null,
             reasoningLevelOverride: null,
@@ -243,7 +253,8 @@ export function createTaskRepository({
         const task = await updateActiveTask(db, taskId, {
           status,
           position,
-          blockedReason: status === "blocked" ? currentTask.blockedReason : null,
+          blockedReason:
+            status === "blocked" ? currentTask.blockedReason : null,
         })
 
         return toTask(task)
@@ -259,7 +270,9 @@ export function createTaskRepository({
           const activeRows = await tx
             .select()
             .from(tasks)
-            .where(and(eq(tasks.projectId, projectId), isNull(tasks.archivedAt)))
+            .where(
+              and(eq(tasks.projectId, projectId), isNull(tasks.archivedAt))
+            )
 
           const tasksByDisplayId = new Map(
             activeRows.map((task) => [task.displayId, toTask(task)])
@@ -430,11 +443,21 @@ export function createTaskRepository({
     },
 
     async markTaskRunning(taskId: string) {
-      return moveSystemControlledTaskStatus(databasePath, taskId, "running", null)
+      return moveSystemControlledTaskStatus(
+        databasePath,
+        taskId,
+        "running",
+        null
+      )
     },
 
     async markTaskReview(taskId: string) {
-      return moveSystemControlledTaskStatus(databasePath, taskId, "review", null)
+      return moveSystemControlledTaskStatus(
+        databasePath,
+        taskId,
+        "review",
+        null
+      )
     },
 
     async markTaskBlocked(taskId: string, blockedReason: string) {
@@ -444,6 +467,33 @@ export function createTaskRepository({
         "blocked",
         blockedReason
       )
+    },
+
+    async recordTaskPullRequestCreated(taskId: string, pullRequestUrl: string) {
+      return withDb(databasePath, async (db) => {
+        return toTask(
+          await updateActiveTask(db, taskId, {
+            pullRequestUrl,
+            pullRequestError: null,
+          })
+        )
+      })
+    },
+
+    async recordTaskPullRequestError(taskId: string, pullRequestError: string) {
+      return withDb(databasePath, async (db) => {
+        const existing = await requireActiveTask(db, taskId)
+
+        if (existing.pullRequestUrl !== null) {
+          return toTask(existing)
+        }
+
+        return toTask(
+          await updateActiveTask(db, taskId, {
+            pullRequestError,
+          })
+        )
+      })
     },
   }
 }
@@ -580,6 +630,8 @@ function toTask(row: typeof tasks.$inferSelect): Task {
     status: row.status,
     position: row.position,
     taskBranchName: row.taskBranchName,
+    pullRequestUrl: row.pullRequestUrl,
+    pullRequestError: row.pullRequestError,
     blockedReason: row.blockedReason,
     modelOverride: row.modelOverride,
     reasoningLevelOverride: row.reasoningLevelOverride,

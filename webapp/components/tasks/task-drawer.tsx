@@ -4,6 +4,7 @@ import {
   CheckCircle2,
   Eye,
   FileText,
+  GitPullRequest,
   Pencil,
   RotateCcw,
   Save,
@@ -22,15 +23,16 @@ import {
   type TaskEditState,
   type TaskInstructionFields,
 } from "@/lib/tasks/task-editing-state"
-import {
-  getTaskDrawerActionState,
-} from "@/lib/tasks/task-drawer-actions"
+import { getTaskDrawerActionState } from "@/lib/tasks/task-drawer-actions"
 import type { TaskStatus } from "@/lib/tasks/task-repository"
 
 type TaskDrawerTask = TaskInstructionFields & {
   displayId: string
   title: string
   status: TaskStatus
+  taskBranchName: string | null
+  pullRequestUrl: string | null
+  pullRequestError: string | null
   latestRun?: {
     id: string
     status: string
@@ -46,7 +48,30 @@ type TaskResponseBody =
   | {
       task: TaskInstructionFields & {
         status: TaskStatus
+        pullRequestUrl?: string | null
+        pullRequestError?: string | null
       }
+    }
+  | {
+      error?: {
+        message?: string
+      }
+    }
+
+type TaskPullRequestDraft = {
+  remote: string
+  remoteUrl: string
+  branchName: string
+  baseBranch: string
+  commitSha: string
+  title: string
+  body: string
+  draft: true
+}
+
+type TaskPullRequestDraftResponseBody =
+  | {
+      draft: TaskPullRequestDraft
     }
   | {
       error?: {
@@ -70,13 +95,23 @@ export function TaskDrawer({
   const [errorMessage, setErrorMessage] = useState("")
   const [isSaving, setIsSaving] = useState(false)
   const [isMovingReady, setIsMovingReady] = useState(false)
+  const [isCreatingPullRequest, setIsCreatingPullRequest] = useState(false)
+  const [pullRequestDraft, setPullRequestDraft] =
+    useState<TaskPullRequestDraft | null>(null)
+  const [pullRequestTitle, setPullRequestTitle] = useState("")
+  const [pullRequestBody, setPullRequestBody] = useState("")
   const hasChanges = hasUnsavedTaskEditChanges(editState)
   const actionState = getTaskDrawerActionState({
     hasChanges,
     isSaving,
     isMovingReady,
+    isCreatingPullRequest,
     taskStatus: task.status,
+    taskBranchName: task.taskBranchName,
+    pullRequestUrl: task.pullRequestUrl,
+    pullRequestTitle: pullRequestDraft ? pullRequestTitle : null,
   })
+  const pullRequestCreateDisabled = actionState.createPullRequestDisabled
 
   function updateDraft(patch: Partial<TaskInstructionFields>) {
     setEditState((current) => updateTaskEditDraft(current, patch))
@@ -87,18 +122,10 @@ export function TaskDrawer({
     setErrorMessage("")
 
     try {
-      const response = await patchTask(getTaskEditSavePayload(editState))
-      const body = (await response.json()) as TaskResponseBody
-
-      if (response.ok && "task" in body) {
-        setEditState(
-          createTaskEditState(toInstructionFields(body.task))
-        )
-        router.refresh()
-        return
-      }
-
-      setErrorMessage(getErrorMessage(body, "Could not save the Task."))
+      await patchTaskAndRefresh(
+        getTaskEditSavePayload(editState),
+        "Could not save the Task."
+      )
     } catch {
       setErrorMessage("Could not reach the local Task API.")
     } finally {
@@ -111,23 +138,89 @@ export function TaskDrawer({
     setErrorMessage("")
 
     try {
-      const response = await patchTask({ status: "ready" })
-      const body = (await response.json()) as TaskResponseBody
-
-      if (response.ok && "task" in body) {
-        setEditState(
-          createTaskEditState(toInstructionFields(body.task))
-        )
-        router.refresh()
-        return
-      }
-
-      setErrorMessage(getErrorMessage(body, "Could not move the Task."))
+      await patchTaskAndRefresh({ status: "ready" }, "Could not move the Task.")
     } catch {
       setErrorMessage("Could not reach the local Task API.")
     } finally {
       setIsMovingReady(false)
     }
+  }
+
+  async function preparePullRequest() {
+    setIsCreatingPullRequest(true)
+    setErrorMessage("")
+
+    try {
+      const response = await fetch(pullRequestApiPath(), { method: "GET" })
+      const body = (await response.json()) as TaskPullRequestDraftResponseBody
+
+      if (response.ok && "draft" in body) {
+        setPullRequestDraft(body.draft)
+        setPullRequestTitle(body.draft.title)
+        setPullRequestBody(body.draft.body)
+        return
+      }
+
+      setErrorMessage(
+        getErrorMessage(body, "Could not prepare the pull request.")
+      )
+    } catch {
+      setErrorMessage("Could not reach the local pull request API.")
+    } finally {
+      setIsCreatingPullRequest(false)
+    }
+  }
+
+  async function createPullRequest() {
+    if (!pullRequestDraft) {
+      return
+    }
+
+    setIsCreatingPullRequest(true)
+    setErrorMessage("")
+
+    try {
+      const response = await fetch(pullRequestApiPath(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          title: pullRequestTitle,
+          body: pullRequestBody,
+          draft: true,
+        }),
+      })
+      const body = (await response.json()) as TaskResponseBody
+
+      if (response.ok && "task" in body) {
+        setPullRequestDraft(null)
+        router.refresh()
+        return
+      }
+
+      setErrorMessage(
+        getErrorMessage(body, "Could not create the pull request.")
+      )
+    } catch {
+      setErrorMessage("Could not reach the local pull request API.")
+    } finally {
+      setIsCreatingPullRequest(false)
+    }
+  }
+
+  async function patchTaskAndRefresh(
+    payload: Record<string, unknown>,
+    fallbackErrorMessage: string
+  ) {
+    const response = await patchTask(payload)
+    const body = (await response.json()) as TaskResponseBody
+
+    if (response.ok && "task" in body) {
+      setEditState(createTaskEditState(toInstructionFields(body.task)))
+      router.refresh()
+      return
+    }
+
+    setErrorMessage(getErrorMessage(body, fallbackErrorMessage))
   }
 
   function patchTask(payload: Record<string, unknown>) {
@@ -141,6 +234,10 @@ export function TaskDrawer({
     )
   }
 
+  function pullRequestApiPath() {
+    return `/api/projects/${encodeURIComponent(projectKey)}/tasks/${encodeURIComponent(task.displayId)}/pull-request`
+  }
+
   return (
     <aside className="fixed inset-y-0 right-0 z-20 w-full max-w-xl overflow-y-auto border-l bg-background p-5 shadow-xl">
       <div className="flex items-start justify-between gap-4">
@@ -151,7 +248,7 @@ export function TaskDrawer({
           <h2 className="mt-1 text-lg font-semibold tracking-normal break-words">
             {editState.saved.title || "Untitled Task"}
           </h2>
-          <p className="mt-1 text-xs capitalize text-muted-foreground">
+          <p className="mt-1 text-xs text-muted-foreground capitalize">
             {task.status}
           </p>
         </div>
@@ -165,6 +262,34 @@ export function TaskDrawer({
       </div>
 
       {task.latestRun ? <LatestRunSummary run={task.latestRun} /> : null}
+
+      {task.pullRequestUrl ? (
+        <section className="mt-5 rounded-md border bg-muted/20 p-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-muted-foreground">
+                Pull request
+              </p>
+              <a
+                href={task.pullRequestUrl}
+                className="mt-1 block truncate font-mono text-xs underline underline-offset-2"
+              >
+                {task.pullRequestUrl}
+              </a>
+            </div>
+            <GitPullRequest className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </div>
+        </section>
+      ) : null}
+
+      {task.pullRequestError ? (
+        <div
+          role="alert"
+          className="mt-5 rounded-md border border-destructive/35 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+        >
+          {task.pullRequestError}
+        </div>
+      ) : null}
 
       <section className="mt-5 grid gap-4 text-sm">
         <label className="grid gap-1.5">
@@ -251,6 +376,20 @@ export function TaskDrawer({
           </div>
         ) : null}
 
+        {pullRequestDraft ? (
+          <PullRequestConfirmation
+            draft={pullRequestDraft}
+            title={pullRequestTitle}
+            body={pullRequestBody}
+            disabled={isCreatingPullRequest}
+            createDisabled={pullRequestCreateDisabled}
+            onTitleChange={setPullRequestTitle}
+            onBodyChange={setPullRequestBody}
+            onCancel={() => setPullRequestDraft(null)}
+            onCreate={createPullRequest}
+          />
+        ) : null}
+
         <div className="flex flex-wrap items-center justify-between gap-2 border-t pt-4">
           <Button
             type="button"
@@ -264,6 +403,18 @@ export function TaskDrawer({
           </Button>
 
           <div className="flex flex-wrap items-center gap-2">
+            {actionState.createPullRequestVisible ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={preparePullRequest}
+                disabled={actionState.createPullRequestDisabled}
+                title={actionState.createPullRequestTitle}
+              >
+                <GitPullRequest data-icon="inline-start" />
+                Create PR
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -289,6 +440,98 @@ export function TaskDrawer({
         </div>
       </section>
     </aside>
+  )
+}
+
+function PullRequestConfirmation({
+  draft,
+  title,
+  body,
+  disabled,
+  createDisabled,
+  onTitleChange,
+  onBodyChange,
+  onCancel,
+  onCreate,
+}: {
+  draft: TaskPullRequestDraft
+  title: string
+  body: string
+  disabled: boolean
+  createDisabled: boolean
+  onTitleChange: (title: string) => void
+  onBodyChange: (body: string) => void
+  onCancel: () => void
+  onCreate: () => void
+}) {
+  return (
+    <section className="rounded-md border bg-muted/20 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-sm font-semibold">Pull request</h3>
+        <span className="rounded-md border bg-background px-2 py-0.5 text-xs font-medium">
+          Draft
+        </span>
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs">
+        <ConfirmationRow label="Remote" value={draft.remote} />
+        <ConfirmationRow label="Remote URL" value={draft.remoteUrl} />
+        <ConfirmationRow label="Branch" value={draft.branchName} />
+        <ConfirmationRow label="Base" value={draft.baseBranch} />
+        <ConfirmationRow label="Commit" value={draft.commitSha} />
+      </dl>
+      <label className="mt-3 grid gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">
+          PR title
+        </span>
+        <input
+          value={title}
+          onChange={(event) => onTitleChange(event.target.value)}
+          disabled={disabled}
+          className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </label>
+      <label className="mt-3 grid gap-1.5">
+        <span className="text-xs font-medium text-muted-foreground">
+          PR body
+        </span>
+        <textarea
+          value={body}
+          onChange={(event) => onBodyChange(event.target.value)}
+          disabled={disabled}
+          className="min-h-28 resize-y rounded-md border bg-background px-3 py-2 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
+        />
+      </label>
+      <div className="mt-3 flex justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onCancel}
+          disabled={disabled}
+        >
+          Cancel
+        </Button>
+        <Button
+          type="button"
+          onClick={onCreate}
+          disabled={createDisabled}
+          title={
+            title.trim().length === 0 ? "Enter a pull request title" : undefined
+          }
+        >
+          <GitPullRequest data-icon="inline-start" />
+          Create draft PR
+        </Button>
+      </div>
+    </section>
+  )
+}
+
+function ConfirmationRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[90px_minmax(0,1fr)] gap-2">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="min-w-0 font-mono break-words">{value}</dd>
+    </div>
   )
 }
 
@@ -396,7 +639,8 @@ function MarkdownEditor({
 }
 
 function MarkdownPreview({ markdown }: { markdown: string }) {
-  const lines = markdown.trim().length > 0 ? markdown.split("\n") : ["No content."]
+  const lines =
+    markdown.trim().length > 0 ? markdown.split("\n") : ["No content."]
 
   return (
     <div className="min-h-32 rounded-md border bg-muted/25 px-3 py-2 text-sm">
@@ -446,7 +690,9 @@ function MarkdownPreview({ markdown }: { markdown: string }) {
   )
 }
 
-function toInstructionFields(task: TaskInstructionFields): TaskInstructionFields {
+function toInstructionFields(
+  task: TaskInstructionFields
+): TaskInstructionFields {
   return {
     title: task.title,
     bodyMarkdown: task.bodyMarkdown,
@@ -456,9 +702,18 @@ function toInstructionFields(task: TaskInstructionFields): TaskInstructionFields
   }
 }
 
-function getErrorMessage(
-  body: TaskResponseBody,
-  fallback: string
-) {
-  return "error" in body ? body.error?.message ?? fallback : fallback
+function getErrorMessage(body: unknown, fallback: string) {
+  if (
+    body &&
+    typeof body === "object" &&
+    "error" in body &&
+    body.error &&
+    typeof body.error === "object" &&
+    "message" in body.error &&
+    typeof body.error.message === "string"
+  ) {
+    return body.error.message
+  }
+
+  return fallback
 }

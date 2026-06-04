@@ -65,6 +65,8 @@ export const tasks = sqliteTable(
     status: text("status").notNull(),
     position: integer("position").notNull(),
     taskBranchName: text("task_branch_name"),
+    pullRequestUrl: text("pull_request_url"),
+    pullRequestError: text("pull_request_error"),
     blockedReason: text("blocked_reason"),
     modelOverride: text("model_override"),
     reasoningLevelOverride: text("reasoning_level_override"),
