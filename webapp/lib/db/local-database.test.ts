@@ -6,6 +6,7 @@ import { join } from "node:path"
 import { test } from "node:test"
 
 import { resolveAppDataPaths } from "../app-data/app-data.ts"
+import { readExistingDatabaseState } from "./existing-database-state.ts"
 import {
   applyLocalDatabaseSchema,
   bootstrapLocalDatabase,
@@ -297,14 +298,14 @@ CREATE TABLE explicit_apply_probe (id text PRIMARY KEY);
   })
   assert.deepEqual(applyCalls, [
     {
-      autoApprove: false,
+      autoApprove: true,
       databasePath: paths.databasePath,
       schemaSql: explicitSchemaSql,
     },
   ])
 })
 
-test("applyLocalDatabaseSchema default path does not auto-approve Atlas plans for existing databases", async (t) => {
+test("applyLocalDatabaseSchema default path applies Atlas plans non-interactively for old Operator databases", async (t) => {
   if (!isAtlasAvailable()) {
     t.skip("Atlas CLI is not installed")
     return
@@ -326,28 +327,71 @@ CREATE TABLE operator_metadata (
 );
 INSERT INTO operator_metadata (key, value, updated_at)
 VALUES ('schema_initialized', 'true', '2026-05-31T00:00:00.000Z');
-CREATE TABLE user_projects (id text PRIMARY KEY, name text NOT NULL);
-INSERT INTO user_projects (id, name) VALUES ('project_01', 'Operator');
+CREATE TABLE projects (
+  id text PRIMARY KEY,
+  key text NOT NULL,
+  display_name text NOT NULL,
+  repo_path text NOT NULL,
+  repository_name text NOT NULL,
+  repository_package_managers_json text NOT NULL,
+  repository_instruction_files_json text NOT NULL,
+  default_model text NOT NULL,
+  default_reasoning_level text NOT NULL,
+  run_timeout_seconds integer NOT NULL,
+  schedule_enabled integer NOT NULL,
+  schedule_daily_time text NOT NULL,
+  schedule_timezone text NOT NULL,
+  scheduled_run_limit integer NOT NULL,
+  next_task_number integer NOT NULL,
+  created_at text NOT NULL,
+  updated_at text NOT NULL
+);
+CREATE TABLE tasks (
+  id text PRIMARY KEY,
+  project_id text NOT NULL,
+  number integer NOT NULL,
+  display_id text NOT NULL,
+  title text NOT NULL,
+  body_markdown text NOT NULL,
+  acceptance_criteria_markdown text NOT NULL,
+  status text NOT NULL,
+  position integer NOT NULL,
+  created_at text NOT NULL,
+  updated_at text NOT NULL
+);
+CREATE TABLE runs (
+  id text PRIMARY KEY,
+  project_id text NOT NULL,
+  task_id text NOT NULL,
+  task_display_id text NOT NULL,
+  status text NOT NULL,
+  task_branch_name text NOT NULL,
+  model text NOT NULL,
+  reasoning_level text NOT NULL,
+  base_branch text NOT NULL,
+  head_before text NOT NULL,
+  worktree_dirty_before integer NOT NULL,
+  started_at text NOT NULL,
+  updated_at text NOT NULL
+);
 `)
   } finally {
     await client.close()
   }
 
-  await assert.rejects(() => applyLocalDatabaseSchema(paths), {
-    message: /atlas schema apply failed:/,
+  const result = await applyLocalDatabaseSchema(paths)
+
+  assert.deepEqual(result, {
+    databasePath: paths.databasePath,
+    schemaApplied: true,
+    status: "applied",
   })
 
-  const verifyClient = await connect(paths.databasePath)
-  try {
-    const row = await verifyClient.get(
-      "SELECT name FROM user_projects WHERE id = ?",
-      "project_01"
-    )
-
-    assert.deepEqual(row, { name: "Operator" })
-  } finally {
-    await verifyClient.close()
-  }
+  assert.deepEqual(await readExistingDatabaseState(paths.databasePath), {
+    hasInitializationMarker: true,
+    hasRequiredOperatorColumns: true,
+    hasRequiredOperatorTables: true,
+  })
 })
 
 test("bootstrapLocalDatabase default path initializes through Drizzle export and Atlas apply", async (t) => {

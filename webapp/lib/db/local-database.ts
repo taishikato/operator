@@ -73,7 +73,7 @@ export async function applyLocalDatabaseSchema(
   options: BootstrapLocalDatabaseOptions = defaultSchemaOptions
 ): Promise<ApplyLocalDatabaseSchemaResult> {
   await ensureAppData(paths)
-  await applySchemaAndMarkInitialized(paths, options, { autoApprove: false })
+  await applySchemaAndMarkInitialized(paths, options, { autoApprove: true })
 
   return {
     databasePath: paths.databasePath,

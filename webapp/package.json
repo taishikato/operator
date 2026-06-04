@@ -7,6 +7,7 @@
     "operator": "./bin/operator.js"
   },
   "scripts": {
+    "operator": "node --experimental-strip-types ./bin/operator.js",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
