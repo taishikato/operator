@@ -86,37 +86,19 @@ mock.module("@/lib/app-data/app-data", {
 })
 
 test("Project settings page renders Project and App settings at the settings route", async () => {
-  const page = await import("./page.tsx").catch(() => null)
-
-  assert.ok(page)
-
-  const element = await page.default({
-    params: Promise.resolve({ projectKey: "OP" }),
-  })
-  const view = render(element)
+  const view = await renderSettingsPage()
 
   assert.ok(view.getByRole("heading", { name: "Settings" }))
   assert.ok(view.getByRole("tab", { name: "Project" }))
   assert.ok(view.getByRole("tab", { name: "App" }))
   assert.ok(view.getByLabelText("Default model"))
-  assert.equal(
-    view.getByRole("link", { name: "Back to board" }).getAttribute("href"),
-    "/projects/OP"
-  )
-  assert.equal(view.getByRole("link", { name: "Projects" }).getAttribute("href"), "/")
+  assertSettingsNavigation(view)
 })
 
 test("Project settings page shows the schema warning before querying Project data", async () => {
   databaseStatus = "requires_explicit_apply"
   shouldProjectLookupThrow = true
-  const page = await import("./page.tsx").catch(() => null)
-
-  assert.ok(page)
-
-  const element = await page.default({
-    params: Promise.resolve({ projectKey: "OP" }),
-  })
-  const view = render(element)
+  const view = await renderSettingsPage()
 
   assert.equal(projectLookupCount, 0)
   assert.ok(view.getByRole("alert"))
@@ -125,12 +107,31 @@ test("Project settings page shows the schema warning before querying Project dat
       "Operator database schema is out of date. Run the explicit database apply command or reset the local Operator database."
     )
   )
+  assertSettingsNavigation(view)
+})
+
+async function renderSettingsPage() {
+  const page = await import("./page.tsx").catch(() => null)
+
+  assert.ok(page)
+
+  const element = await page.default({
+    params: Promise.resolve({ projectKey: "OP" }),
+  })
+
+  return render(element)
+}
+
+function assertSettingsNavigation(view: ReturnType<typeof render>) {
   assert.equal(
     view.getByRole("link", { name: "Back to board" }).getAttribute("href"),
     "/projects/OP"
   )
-  assert.equal(view.getByRole("link", { name: "Projects" }).getAttribute("href"), "/")
-})
+  assert.equal(
+    view.getByRole("link", { name: "Projects" }).getAttribute("href"),
+    "/"
+  )
+}
 
 function createProject() {
   return {
