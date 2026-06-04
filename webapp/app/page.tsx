@@ -1,4 +1,3 @@
-import { Plus } from "lucide-react"
 import Link from "next/link"
 
 import { AddProjectForm } from "@/components/projects/add-project-form"
@@ -39,13 +38,6 @@ export default async function Page() {
           <>
             <div className="flex flex-wrap items-start justify-between gap-3 border-b pb-4">
               <ProjectHomeHeader description="Choose a local Git repository workspace." />
-              <Link
-                href="/projects/new"
-                className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm font-medium transition hover:bg-muted"
-              >
-                <Plus className="h-4 w-4" />
-                Add Project
-              </Link>
             </div>
             <ProjectList projects={projects} />
           </>

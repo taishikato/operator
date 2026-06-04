@@ -10,11 +10,12 @@ test("Project page links to Project settings", async () => {
   assert.match(source, />\s*Settings\s*</)
 })
 
-test("Project page links to Add Project without a local Projects backlink", async () => {
+test("Project page omits shared navigation links from its local header", async () => {
   const source = await readSiblingPageSource(import.meta.url)
 
   assert.doesNotMatch(source, /FolderKanban/)
   assert.doesNotMatch(source, />\s*Projects\s*</)
-  assert.match(source, /href="\/projects\/new"/)
-  assert.match(source, />\s*Add Project\s*</)
+  assert.doesNotMatch(source, /href="\/projects\/new"/)
+  assert.doesNotMatch(source, />\s*Add Project\s*</)
+  assert.doesNotMatch(source, /Project \{project\.key\}/)
 })

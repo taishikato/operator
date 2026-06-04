@@ -73,10 +73,7 @@ test("root route renders Project home when active Projects exist", async () => {
   const view = render(element)
 
   assert.ok(view.getByRole("heading", { name: "Projects" }))
-  assert.equal(
-    view.getByRole("link", { name: "Add Project" }).getAttribute("href"),
-    "/projects/new"
-  )
+  assert.equal(view.queryByRole("link", { name: "Add Project" }), null)
   assert.ok(view.getByText("/Users/example/operator"))
   assert.ok(view.getByText("Schedule off"))
   assert.ok(view.getByRole("heading", { name: "Operator App" }))

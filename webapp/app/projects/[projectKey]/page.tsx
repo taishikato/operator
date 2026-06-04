@@ -1,5 +1,4 @@
-import { Plus, Settings } from "lucide-react"
-import Link from "next/link"
+import { Settings } from "lucide-react"
 import { notFound } from "next/navigation"
 
 import { SchemaWarning } from "@/components/projects/schema-warning"
@@ -126,9 +125,6 @@ function ProjectHeader({
     <header className="border-b px-4 py-4 sm:px-6 lg:px-8">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-medium text-muted-foreground uppercase">
-            Project {project.key}
-          </p>
           <h1 className="truncate text-xl font-semibold tracking-normal">
             {project.displayName}
           </h1>
@@ -140,13 +136,6 @@ function ProjectHeader({
           <div className="rounded-md border bg-muted/35 px-3 py-2 text-xs text-muted-foreground">
             Schedule {project.schedule.enabled ? "on" : "off"}
           </div>
-          <Link
-            href="/projects/new"
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm font-medium transition hover:bg-muted"
-          >
-            <Plus className="h-4 w-4" />
-            Add Project
-          </Link>
           <a
             href={`/projects/${encodeURIComponent(project.key)}/settings`}
             className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-2.5 text-sm font-medium transition hover:bg-muted"

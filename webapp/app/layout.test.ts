@@ -16,3 +16,11 @@ test("RootLayout includes a shared Operator home link", async () => {
   assert.match(source, /href="\/"/)
   assert.match(source, />\s*Operator\s*</)
 })
+
+test("RootLayout includes a shared Add Project link", async () => {
+  const source = await readFile(new URL("./layout.tsx", import.meta.url), "utf8")
+
+  assert.match(source, /import\s+\{\s*Plus\s+\}\s+from\s+"lucide-react"/)
+  assert.match(source, /href="\/projects\/new"/)
+  assert.match(source, />\s*Add Project\s*</)
+})
