@@ -122,16 +122,10 @@ export function TaskDrawer({
     setErrorMessage("")
 
     try {
-      const response = await patchTask(getTaskEditSavePayload(editState))
-      const body = (await response.json()) as TaskResponseBody
-
-      if (response.ok && "task" in body) {
-        setEditState(createTaskEditState(toInstructionFields(body.task)))
-        router.refresh()
-        return
-      }
-
-      setErrorMessage(getErrorMessage(body, "Could not save the Task."))
+      await patchTaskAndRefresh(
+        getTaskEditSavePayload(editState),
+        "Could not save the Task."
+      )
     } catch {
       setErrorMessage("Could not reach the local Task API.")
     } finally {
@@ -144,16 +138,7 @@ export function TaskDrawer({
     setErrorMessage("")
 
     try {
-      const response = await patchTask({ status: "ready" })
-      const body = (await response.json()) as TaskResponseBody
-
-      if (response.ok && "task" in body) {
-        setEditState(createTaskEditState(toInstructionFields(body.task)))
-        router.refresh()
-        return
-      }
-
-      setErrorMessage(getErrorMessage(body, "Could not move the Task."))
+      await patchTaskAndRefresh({ status: "ready" }, "Could not move the Task.")
     } catch {
       setErrorMessage("Could not reach the local Task API.")
     } finally {
@@ -220,6 +205,22 @@ export function TaskDrawer({
     } finally {
       setIsCreatingPullRequest(false)
     }
+  }
+
+  async function patchTaskAndRefresh(
+    payload: Record<string, unknown>,
+    fallbackErrorMessage: string
+  ) {
+    const response = await patchTask(payload)
+    const body = (await response.json()) as TaskResponseBody
+
+    if (response.ok && "task" in body) {
+      setEditState(createTaskEditState(toInstructionFields(body.task)))
+      router.refresh()
+      return
+    }
+
+    setErrorMessage(getErrorMessage(body, fallbackErrorMessage))
   }
 
   function patchTask(payload: Record<string, unknown>) {
