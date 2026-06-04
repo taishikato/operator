@@ -45,23 +45,7 @@ mock.module("sonner", {
 })
 
 test("ProjectSettingsPanel exposes Project and App tabs with operational status and theme controls", async () => {
-  const component = await import("./project-settings-panel.tsx").catch(
-    () => null
-  )
-
-  assert.ok(component)
-
-  const view = render(
-    <component.ProjectSettingsPanel
-      projectKey="OP"
-      project={createProjectSettings()}
-      appStatus={{
-        appDataDir: "/Users/example/Library/Application Support/Operator",
-        cursorApiKeyStatus: "configured",
-        version: "0.0.1",
-      }}
-    />
-  )
+  const view = await renderProjectSettingsPanel()
 
   assert.ok(view.getByRole("tab", { name: "Project" }))
   assert.ok(view.getByRole("tab", { name: "App" }))
@@ -86,54 +70,22 @@ test("ProjectSettingsPanel exposes Project and App tabs with operational status 
 })
 
 test("ProjectSettingsPanel keeps unsaved Project edits when switching tabs", async () => {
-  const component = await import("./project-settings-panel.tsx").catch(
-    () => null
-  )
+  const view = await renderProjectSettingsPanel()
 
-  assert.ok(component)
-
-  const view = render(
-    <component.ProjectSettingsPanel
-      projectKey="OP"
-      project={createProjectSettings()}
-      appStatus={{
-        appDataDir: "/Users/example/Library/Application Support/Operator",
-        cursorApiKeyStatus: "configured",
-        version: "0.0.1",
-      }}
-    />
-  )
-
-  fireEvent.input(view.getByLabelText("Default model"), {
-    target: { value: "cursor/gpt-5.1" },
+  fireEvent.change(view.getByLabelText("Default model"), {
+    target: { value: "opus-4.7" },
   })
   fireEvent.click(view.getByRole("tab", { name: "App" }))
   fireEvent.click(view.getByRole("tab", { name: "Project" }))
 
   assert.equal(
-    (view.getByLabelText("Default model") as HTMLInputElement).value,
-    "cursor/gpt-5.1"
+    (view.getByLabelText("Default model") as HTMLSelectElement).value,
+    "opus-4.7"
   )
 })
 
 test("ProjectSettingsPanel wires tabs to panels and supports arrow-key switching", async () => {
-  const component = await import("./project-settings-panel.tsx").catch(
-    () => null
-  )
-
-  assert.ok(component)
-
-  const view = render(
-    <component.ProjectSettingsPanel
-      projectKey="OP"
-      project={createProjectSettings()}
-      appStatus={{
-        appDataDir: "/Users/example/Library/Application Support/Operator",
-        cursorApiKeyStatus: "configured",
-        version: "0.0.1",
-      }}
-    />
-  )
+  const view = await renderProjectSettingsPanel()
 
   const projectTab = view.getByRole("tab", { name: "Project" })
   const appTab = view.getByRole("tab", { name: "App" })
@@ -154,11 +106,31 @@ test("ProjectSettingsPanel wires tabs to panels and supports arrow-key switching
   assert.equal(document.activeElement, projectTab)
 })
 
+async function renderProjectSettingsPanel() {
+  const component = await import("./project-settings-panel.tsx").catch(
+    () => null
+  )
+
+  assert.ok(component)
+
+  return render(
+    <component.ProjectSettingsPanel
+      projectKey="OP"
+      project={createProjectSettings()}
+      appStatus={{
+        appDataDir: "/Users/example/Library/Application Support/Operator",
+        cursorApiKeyStatus: "configured",
+        version: "0.0.1",
+      }}
+    />
+  )
+}
+
 function createProjectSettings() {
   return {
     defaults: {
-      model: "cursor/gpt-5",
-      reasoningLevel: "high",
+      model: "gpt-5.5",
+      reasoningLevel: "medium",
       runTimeoutSeconds: 3600,
     },
     schedule: {

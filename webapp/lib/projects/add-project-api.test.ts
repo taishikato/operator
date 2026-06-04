@@ -75,8 +75,8 @@ test("create Project API persists a Project from a valid repository path and key
     instructionFiles: [],
   })
   assert.deepEqual(body.project.defaults, {
-    model: "cursor/gpt-5",
-    reasoningLevel: "high",
+    model: "gpt-5.5",
+    reasoningLevel: "medium",
     runTimeoutSeconds: 3600,
   })
   assert.deepEqual(body.project.schedule, {
@@ -160,10 +160,9 @@ test("detect Project API returns issue details for a non-Git path", async () => 
   const databasePath = await createProjectDatabaseForTest()
   const repoPath = await mkdtemp(join(tmpdir(), "operator-detect-not-a-repo-"))
 
-  const response = await handleDetectProjectRequest(
-    jsonRequest({ repoPath }),
-    { databasePath }
-  )
+  const response = await handleDetectProjectRequest(jsonRequest({ repoPath }), {
+    databasePath,
+  })
   const body = await response.json()
 
   assert.equal(response.status, 400)

@@ -78,7 +78,8 @@ mock.module("@/lib/app-data/app-data", {
   namedExports: {
     resolveAppDataPaths: () => ({
       appDataDir: "/Users/example/Library/Application Support/Operator",
-      databasePath: "/Users/example/Library/Application Support/Operator/operator.db",
+      databasePath:
+        "/Users/example/Library/Application Support/Operator/operator.db",
       runLogsDir: "/Users/example/Library/Application Support/Operator/runs",
     }),
   },
@@ -144,8 +145,8 @@ function createProject() {
       instructionFiles: ["AGENTS.md"],
     },
     defaults: {
-      model: "cursor/gpt-5",
-      reasoningLevel: "high",
+      model: "gpt-5.5",
+      reasoningLevel: "medium",
       runTimeoutSeconds: 3600,
     },
     schedule: {

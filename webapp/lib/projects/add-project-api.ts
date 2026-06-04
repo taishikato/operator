@@ -1,12 +1,11 @@
 import { z } from "zod"
 
+import { parseJsonRequest, validationError } from "../api/api-response.ts"
+import { resolveLocalDatabaseOptions } from "../db/local-database-options.ts"
 import {
-  parseJsonRequest,
-  validationError,
-} from "../api/api-response.ts"
-import {
-  resolveLocalDatabaseOptions,
-} from "../db/local-database-options.ts"
+  defaultCursorModel,
+  defaultCursorReasoningLevel,
+} from "../cursor-models.ts"
 import {
   detectProjectRepository,
   ProjectRepositoryDetectionError,
@@ -151,8 +150,8 @@ export async function handleCreateProjectRequest(
         instructionFiles: repository.instructionFiles,
       },
       defaults: {
-        model: "cursor/gpt-5",
-        reasoningLevel: "high",
+        model: defaultCursorModel,
+        reasoningLevel: defaultCursorReasoningLevel,
         runTimeoutSeconds: 3600,
       },
       schedule: {

@@ -6,6 +6,12 @@ import { useState } from "react"
 import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
+import {
+  cursorModelOptions,
+  cursorModelSupportsReasoning,
+  normalizeCursorModel,
+  normalizeCursorReasoningLevel,
+} from "@/lib/cursor-models"
 
 export type ProjectSettingsFormValue = {
   defaults: {
@@ -53,9 +59,22 @@ export function ProjectSettingsForm({
   const [draft, setDraft] = useState(() => toDraft(project))
   const [isSaving, setIsSaving] = useState(false)
   const hasChanges = JSON.stringify(saved) !== JSON.stringify(draft)
+  const reasoningDisabled =
+    !cursorModelSupportsReasoning(draft.defaultModel) || isSaving
 
   function updateDraft(patch: Partial<ProjectSettingsDraft>) {
     setDraft((current) => ({ ...current, ...patch }))
+  }
+
+  function updateDefaultModel(defaultModel: string) {
+    setDraft((current) => ({
+      ...current,
+      defaultModel,
+      defaultReasoningLevel: normalizeCursorReasoningLevel({
+        model: defaultModel,
+        reasoningLevel: current.defaultReasoningLevel,
+      }),
+    }))
   }
 
   async function saveSettings() {
@@ -96,14 +115,18 @@ export function ProjectSettingsForm({
           <span className="text-xs font-medium text-muted-foreground">
             Default model
           </span>
-          <input
+          <select
             value={draft.defaultModel}
-            onInput={(event) =>
-              updateDraft({ defaultModel: event.currentTarget.value })
-            }
+            onChange={(event) => updateDefaultModel(event.currentTarget.value)}
             disabled={isSaving}
             className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
-          />
+          >
+            {cursorModelOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </label>
 
         <label className="grid gap-1.5">
@@ -115,9 +138,12 @@ export function ProjectSettingsForm({
             onChange={(event) =>
               updateDraft({ defaultReasoningLevel: event.target.value })
             }
-            disabled={isSaving}
+            disabled={reasoningDisabled}
             className="h-9 rounded-md border bg-background px-3 text-sm transition outline-none focus-visible:ring-3 focus-visible:ring-ring/40 disabled:cursor-not-allowed disabled:opacity-50"
           >
+            {!cursorModelSupportsReasoning(draft.defaultModel) ? (
+              <option value="default">default</option>
+            ) : null}
             <option value="low">low</option>
             <option value="medium">medium</option>
             <option value="high">high</option>
@@ -226,9 +252,14 @@ export function ProjectSettingsForm({
 }
 
 function toDraft(project: ProjectSettingsFormValue): ProjectSettingsDraft {
+  const defaultModel = normalizeCursorModel(project.defaults.model)
+
   return {
-    defaultModel: project.defaults.model,
-    defaultReasoningLevel: project.defaults.reasoningLevel,
+    defaultModel,
+    defaultReasoningLevel: normalizeCursorReasoningLevel({
+      model: defaultModel,
+      reasoningLevel: project.defaults.reasoningLevel,
+    }),
     scheduleEnabled: project.schedule.enabled,
     scheduleDailyTime: project.schedule.dailyTime,
     scheduleTimezone: project.schedule.timezone,
@@ -238,9 +269,14 @@ function toDraft(project: ProjectSettingsFormValue): ProjectSettingsDraft {
 }
 
 function toPayload(draft: ProjectSettingsDraft) {
+  const defaultModel = normalizeCursorModel(draft.defaultModel)
+
   return {
-    defaultModel: draft.defaultModel,
-    defaultReasoningLevel: draft.defaultReasoningLevel,
+    defaultModel,
+    defaultReasoningLevel: normalizeCursorReasoningLevel({
+      model: defaultModel,
+      reasoningLevel: draft.defaultReasoningLevel,
+    }),
     scheduleEnabled: draft.scheduleEnabled,
     scheduleDailyTime: draft.scheduleDailyTime,
     scheduleTimezone: draft.scheduleTimezone,
@@ -250,5 +286,5 @@ function toPayload(draft: ProjectSettingsDraft) {
 }
 
 function getErrorMessage(body: ProjectSettingsResponse, fallback: string) {
-  return "error" in body ? body.error?.message ?? fallback : fallback
+  return "error" in body ? (body.error?.message ?? fallback) : fallback
 }
