@@ -44,7 +44,7 @@ test("KanbanBoard shows server-refreshed Tasks when initial columns change", asy
   assert.equal(view.queryAllByText("OP-2").length, 2)
 })
 
-test("KanbanBoard exposes Run Now for runnable Tasks only", async () => {
+test("KanbanBoard exposes card Run Now for Ready Tasks only", async () => {
   const { KanbanBoard } = await import("./kanban-board.tsx")
   const view = render(
     <KanbanBoard
@@ -60,12 +60,37 @@ test("KanbanBoard exposes Run Now for runnable Tasks only", async () => {
     />
   )
 
-  assert.equal(view.queryByRole("button", { name: "Run OP-1" }) !== null, true)
   assert.equal(view.queryByRole("button", { name: "Run OP-2" }) !== null, true)
-  assert.equal(view.queryByRole("button", { name: "Run OP-4" }) !== null, true)
-  assert.equal(view.queryByRole("button", { name: "Run OP-6" }) !== null, true)
+  assert.equal(view.queryByRole("button", { name: "Run OP-1" }), null)
   assert.equal(view.queryByRole("button", { name: "Run OP-3" }), null)
+  assert.equal(view.queryByRole("button", { name: "Run OP-4" }), null)
   assert.equal(view.queryByRole("button", { name: "Run OP-5" }), null)
+  assert.equal(view.queryByRole("button", { name: "Run OP-6" }), null)
+})
+
+test("KanbanBoard moves a Task to Running while Run Now is pending", async () => {
+  const { KanbanBoard } = await import("./kanban-board.tsx")
+  const originalFetch = globalThis.fetch
+
+  globalThis.fetch = async () => new Promise<Response>(() => {})
+
+  try {
+    const view = render(
+      <KanbanBoard
+        projectKey="OP"
+        initialColumns={boardColumns({ ready: ["OP-1"] })}
+      />
+    )
+
+    fireEvent.click(view.getByRole("button", { name: "Run OP-1" }))
+
+    await waitFor(() => {
+      assert.equal(columnCount(view, "Ready"), "0")
+      assert.equal(columnCount(view, "Running"), "1")
+    })
+  } finally {
+    globalThis.fetch = originalFetch
+  }
 })
 
 test("KanbanBoard shows a PR badge link for Tasks with a pull request URL", async () => {
@@ -257,4 +282,14 @@ function task(displayId: string, status: TaskStatus, position: number) {
     modelOverride: null,
     reasoningLevelOverride: null,
   }
+}
+
+function columnCount(
+  view: ReturnType<typeof render>,
+  label: "Backlog" | "Ready" | "Running" | "Review" | "Done" | "Blocked"
+) {
+  const header = view.getByText(label).parentElement
+  const count = header?.querySelector("span:last-child")
+
+  return count?.textContent
 }

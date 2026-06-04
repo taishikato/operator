@@ -173,6 +173,12 @@ export function KanbanBoard({
   }
 
   async function runTaskNow(task: KanbanTask) {
+    const optimisticColumns = moveKanbanTask(columns, {
+      activeDisplayId: task.displayId,
+      targetStatus: "running",
+    })
+
+    setColumns(optimisticColumns)
     setRunningTaskIds((current) => new Set(current).add(task.displayId))
     setErrorMessage("")
 
@@ -184,13 +190,16 @@ export function KanbanBoard({
       const body = (await response.json()) as BoardResponseBody
 
       if (!response.ok) {
-        setErrorMessage(getBoardErrorMessage(body))
+        recoverFromFailedSave(optimisticColumns, getBoardErrorMessage(body))
         return
       }
 
       router.refresh()
     } catch {
-      setErrorMessage("Could not reach the local Run Now API.")
+      recoverFromFailedSave(
+        optimisticColumns,
+        "Could not reach the local Run Now API."
+      )
     } finally {
       setRunningTaskIds((current) => {
         const next = new Set(current)
@@ -375,7 +384,7 @@ function KanbanTaskCard({
   onRunTask: (task: KanbanTask) => void
 }) {
   const disabled = task.status === "running"
-  const canRun = canRunTaskNow(task.status)
+  const canShowRunNow = canShowCardRunNow(task.status)
   const {
     attributes,
     listeners,
@@ -414,7 +423,7 @@ function KanbanTaskCard({
           </div>
         </a>
         <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          {canRun ? (
+          {canShowRunNow ? (
             <button
               type="button"
               aria-label={`Run ${task.displayId}`}
@@ -485,13 +494,8 @@ function ColumnStatusDot({ status }: { status: TaskStatus }) {
   )
 }
 
-function canRunTaskNow(status: TaskStatus) {
-  return (
-    status === "backlog" ||
-    status === "ready" ||
-    status === "blocked" ||
-    status === "review"
-  )
+function canShowCardRunNow(status: TaskStatus) {
+  return status === "ready"
 }
 
 function resolveDropTarget(columns: KanbanColumn[], overId: string) {
