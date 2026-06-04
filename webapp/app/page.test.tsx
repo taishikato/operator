@@ -51,6 +51,17 @@ mock.module("@/lib/projects/project-repository", {
   },
 })
 
+mock.module("@/components/projects/add-project-form", {
+  namedExports: {
+    AddProjectForm: () => (
+      <form>
+        <h2>Add Project</h2>
+        <input aria-label="Repository path" />
+      </form>
+    ),
+  },
+})
+
 test("root route renders Project home when active Projects exist", async () => {
   activeProjects = [
     createProject({ key: "OP", scheduleEnabled: false }),
@@ -66,17 +77,36 @@ test("root route renders Project home when active Projects exist", async () => {
     view.getByRole("link", { name: "Add Project" }).getAttribute("href"),
     "/projects/new"
   )
-  assert.ok(view.getByRole("heading", { name: "Operator" }))
+  assert.ok(view.getByText("Operator"))
   assert.ok(view.getByText("Project OP"))
   assert.ok(view.getByText("/Users/example/operator"))
   assert.ok(view.getByText("Schedule off"))
+  assert.ok(view.getByRole("heading", { name: "Operator App" }))
   assert.ok(view.getByRole("heading", { name: "Webapp" }))
   assert.ok(view.getByText("Project WEB"))
   assert.ok(view.getByText("Schedule on"))
   assert.equal(
-    view.getAllByRole("link", { name: "Open" })[0]?.getAttribute("href"),
+    view.getByRole("link", { name: "Open Operator App" }).getAttribute("href"),
     "/projects/OP"
   )
+  assert.equal(
+    view.getByRole("link", { name: "Open Webapp" }).getAttribute("href"),
+    "/projects/WEB"
+  )
+})
+
+test("root route renders Add Project form when no active Projects exist", async () => {
+  activeProjects = []
+  const page = await import("./page.tsx")
+
+  const element = await page.default()
+  const view = render(element)
+
+  assert.ok(view.getByRole("heading", { name: "Projects" }))
+  assert.ok(view.getByRole("heading", { name: "Add Project" }))
+  assert.ok(view.getByLabelText("Repository path"))
+  assert.equal(view.queryByRole("link", { name: "Add Project" }), null)
+  assert.equal(view.queryByText(/^Project /), null)
 })
 
 test("root route shows schema warning before querying Projects", async () => {
@@ -103,7 +133,7 @@ function createProject({
   scheduleEnabled: boolean
 }) {
   const nameByKey = {
-    OP: "Operator",
+    OP: "Operator App",
     WEB: "Webapp",
   }
   const pathByKey = {

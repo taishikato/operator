@@ -2,6 +2,7 @@ import { FolderKanban, Plus, Settings } from "lucide-react"
 import Link from "next/link"
 import { notFound } from "next/navigation"
 
+import { SchemaWarning } from "@/components/projects/schema-warning"
 import { KanbanBoard } from "@/components/tasks/kanban-board"
 import { TaskCreateButton } from "@/components/tasks/task-create-drawer"
 import { TaskDrawer } from "@/components/tasks/task-drawer"
@@ -45,13 +46,7 @@ export default async function ProjectPage({
       <main className="min-h-svh bg-background">
         <ProjectHeader project={project} />
         <section className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
-          <div
-            role="alert"
-            className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100"
-          >
-            Operator database schema is out of date. Run the explicit database
-            apply command or reset the local Operator database.
-          </div>
+          <SchemaWarning />
         </section>
       </main>
     )

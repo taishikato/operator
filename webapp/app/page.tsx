@@ -2,6 +2,7 @@ import { Plus } from "lucide-react"
 import Link from "next/link"
 
 import { AddProjectForm } from "@/components/projects/add-project-form"
+import { SchemaWarning } from "@/components/projects/schema-warning"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
 import { createProjectRepository } from "@/lib/projects/project-repository"
 import type { Project } from "@/lib/projects/project-repository"
@@ -93,6 +94,7 @@ function ProjectList({ projects }: { projects: Project[] }) {
             </div>
             <Link
               href={`/projects/${encodeURIComponent(project.key)}`}
+              aria-label={`Open ${project.displayName}`}
               className="inline-flex h-8 items-center rounded-md border bg-background px-2.5 text-sm font-medium transition hover:bg-muted"
             >
               Open
@@ -101,17 +103,5 @@ function ProjectList({ projects }: { projects: Project[] }) {
         </article>
       ))}
     </section>
-  )
-}
-
-function SchemaWarning() {
-  return (
-    <div
-      role="alert"
-      className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100"
-    >
-      Operator database schema is out of date. Run the explicit database apply
-      command or reset the local Operator database.
-    </div>
   )
 }

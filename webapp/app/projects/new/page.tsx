@@ -1,4 +1,5 @@
 import { AddProjectForm } from "@/components/projects/add-project-form"
+import { SchemaWarning } from "@/components/projects/schema-warning"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
 
 export const dynamic = "force-dynamic"
@@ -20,13 +21,7 @@ export default async function NewProjectPage() {
         </header>
 
         {databaseStatus === "requires_explicit_apply" ? (
-          <div
-            role="alert"
-            className="rounded-lg border border-amber-500/35 bg-amber-500/10 p-4 text-sm text-amber-950 dark:text-amber-100"
-          >
-            Operator database schema is out of date. Run the explicit database
-            apply command or reset the local Operator database.
-          </div>
+          <SchemaWarning />
         ) : (
           <AddProjectForm />
         )}

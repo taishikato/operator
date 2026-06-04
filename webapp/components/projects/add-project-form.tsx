@@ -139,9 +139,9 @@ export function AddProjectForm() {
       <section className="min-w-0 rounded-lg border bg-card p-5 shadow-sm">
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold tracking-normal">
+            <h2 className="text-xl font-semibold tracking-normal">
               Add Project
-            </h1>
+            </h2>
             <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
               Connect Operator to a local Git checkout.
             </p>
