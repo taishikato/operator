@@ -2,7 +2,7 @@ import { Settings } from "lucide-react"
 import { notFound } from "next/navigation"
 
 import { KanbanBoard } from "@/components/tasks/kanban-board"
-import { TaskCreateForm } from "@/components/tasks/task-create-form"
+import { TaskCreateButton } from "@/components/tasks/task-create-drawer"
 import { TaskDrawer } from "@/components/tasks/task-drawer"
 import { resolveAppDataPaths } from "@/lib/app-data/app-data"
 import { resolveAddProjectApiOptions } from "@/lib/projects/add-project-api"
@@ -95,11 +95,7 @@ export default async function ProjectPage({
     <main className="min-h-svh bg-background">
       <ProjectHeader project={project} />
 
-      <div className="mx-auto grid max-w-7xl gap-4 px-4 py-5 sm:px-6 lg:grid-cols-[320px_minmax(0,1fr)] lg:px-8">
-        <aside className="min-w-0">
-          <TaskCreateForm projectKey={project.key} />
-        </aside>
-
+      <div className="mx-auto max-w-7xl px-4 py-5 sm:px-6 lg:px-8">
         <KanbanBoard
           projectKey={project.key}
           scheduledRunLimit={project.schedule.scheduledRunLimit}
@@ -155,6 +151,7 @@ function ProjectHeader({
             <Settings className="h-4 w-4" />
             Settings
           </a>
+          <TaskCreateButton projectKey={project.key} />
         </div>
       </div>
     </header>
