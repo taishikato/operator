@@ -27,6 +27,22 @@ public enum OperatorDestination: Equatable, Sendable {
     case settings
 }
 
+public enum OperatorSidebarSelection: CaseIterable, Equatable, Sendable {
+    case board
+    case archived
+
+    public init?(destination: OperatorDestination) {
+        switch destination {
+        case .board:
+            self = .board
+        case .archived:
+            self = .archived
+        case .settings:
+            return nil
+        }
+    }
+}
+
 public struct BoardSpec: Equatable, Sendable {
     public let columns: [BoardColumnSpec]
     public let emptyState: BoardEmptyState

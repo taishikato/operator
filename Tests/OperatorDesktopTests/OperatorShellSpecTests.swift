@@ -21,6 +21,14 @@ import Testing
     #expect(shell.navigationDestinations.contains(.settings))
 }
 
+@Test func sidebarSelectionsOnlyExposeBoardAndArchivedDestinations() {
+    #expect(OperatorSidebarSelection.allCases == [.board, .archived])
+}
+
+@Test func settingsDestinationIsNotSelectableFromSidebar() {
+    #expect(OperatorSidebarSelection(destination: .settings) == nil)
+}
+
 @Test func emptyBoardProvidesEmptyStateAndInspectorReserve() {
     let shell = OperatorShellSpec.mvp
 

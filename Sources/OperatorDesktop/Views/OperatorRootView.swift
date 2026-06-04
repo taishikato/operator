@@ -3,11 +3,11 @@ import SwiftUI
 public struct OperatorRootView: View {
     private let shell: OperatorShellSpec
 
-    @State private var selection: OperatorDestination
+    @State private var selection: OperatorSidebarSelection
 
     public init(shell: OperatorShellSpec = .mvp) {
         self.shell = shell
-        _selection = State(initialValue: shell.launchDestination)
+        _selection = State(initialValue: OperatorSidebarSelection(destination: shell.launchDestination) ?? .board)
     }
 
     public var body: some View {
@@ -15,7 +15,7 @@ public struct OperatorRootView: View {
             SidebarView(selection: $selection)
         } detail: {
             switch selection {
-            case .board, .settings:
+            case .board:
                 BoardView(board: shell.board)
                     .navigationTitle("Board")
             case .archived:
@@ -27,15 +27,15 @@ public struct OperatorRootView: View {
 }
 
 private struct SidebarView: View {
-    @Binding var selection: OperatorDestination
+    @Binding var selection: OperatorSidebarSelection
 
     var body: some View {
         List(selection: $selection) {
             Label("Board", systemImage: "rectangle.grid.3x2")
-                .tag(OperatorDestination.board)
+                .tag(OperatorSidebarSelection.board)
 
             Label("Archived", systemImage: "archivebox")
-                .tag(OperatorDestination.archived)
+                .tag(OperatorSidebarSelection.archived)
         }
         .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
