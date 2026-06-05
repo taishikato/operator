@@ -64,6 +64,12 @@ import Testing
     }
 }
 
+@Test func gitInspectorPrefersMainThenMasterThenFirstLocalBranchFallback() throws {
+    #expect(try inspectedDefaultBranch(forLocalBranches: ["topic", "master", "main"]) == "main")
+    #expect(try inspectedDefaultBranch(forLocalBranches: ["topic", "master"]) == "master")
+    #expect(try inspectedDefaultBranch(forLocalBranches: ["topic", "release"]) == "topic")
+}
+
 @Test func defaultGitCommandRunnerCompletesWhenGitWritesLargeOutput() async throws {
     let repositoryURL = try temporaryDirectory(named: "many-branches")
     try runGit(["init", "-b", "main"], in: repositoryURL)
@@ -115,6 +121,18 @@ private final class RecordingGitCommandRunner: GitCommandRunning, @unchecked Sen
         }
         throw RepositoryRegistrationError.gitCommandFailed
     }
+}
+
+private func inspectedDefaultBranch(forLocalBranches branches: [String]) throws -> String? {
+    let runner = RecordingGitCommandRunner(outputs: [
+        ["rev-parse", "--show-toplevel"]: "/tmp/operator\n",
+        ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]: "",
+        ["branch", "--show-current"]: "",
+        ["for-each-ref", "--format=%(refname:short)", "refs/heads"]: branches.joined(separator: "\n")
+    ])
+    let inspector = GitRepositoryInspector(commandRunner: runner)
+
+    return try inspector.inspect(URL(filePath: "/tmp/operator")).defaultBranch
 }
 
 private func temporaryDirectory(named name: String) throws -> URL {
