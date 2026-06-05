@@ -3,6 +3,16 @@ import SwiftUI
 
 @main
 struct OperatorApp: App {
+    private let store: OperatorStore
+
+    init() {
+        do {
+            store = try OperatorAppBootstrap.initializeStore()
+        } catch {
+            fatalError("Unable to initialize Operator store: \(error)")
+        }
+    }
+
     var body: some Scene {
         WindowGroup("Operator") {
             OperatorRootView(shell: .mvp)
