@@ -30,10 +30,24 @@ public struct OperatorRun: Equatable, Identifiable, Sendable {
     public let completedAt: Date?
 }
 
-public enum OperatorStoreError: Error, Equatable, Sendable {
+public enum OperatorStoreError: Error, Equatable, LocalizedError, Sendable {
     case repositoryNotFound
+    case repositoryPathAlreadyRegistered(existingID: UUID)
     case taskNotFound
     case invalidStoredValue(String)
+
+    public var errorDescription: String? {
+        switch self {
+        case .repositoryNotFound:
+            "Repository not found."
+        case .repositoryPathAlreadyRegistered:
+            "This repository is already registered."
+        case .taskNotFound:
+            "Task not found."
+        case .invalidStoredValue:
+            "Stored data is invalid."
+        }
+    }
 }
 
 public final class OperatorStore: @unchecked Sendable {
@@ -75,16 +89,19 @@ public final class OperatorStore: @unchecked Sendable {
         defaultBranch: String,
         now: Date = Date()
     ) throws -> OperatorRepository {
-        let repository = OperatorRepository(
-            id: id,
-            name: name,
-            path: path,
-            defaultBranch: defaultBranch,
-            createdAt: now,
-            updatedAt: now
-        )
-
         try dbQueue.write { db in
+            if let existingRepository = try repository(path: path, db: db) {
+                throw OperatorStoreError.repositoryPathAlreadyRegistered(existingID: existingRepository.id)
+            }
+
+            let repository = OperatorRepository(
+                id: id,
+                name: name,
+                path: path,
+                defaultBranch: defaultBranch,
+                createdAt: now,
+                updatedAt: now
+            )
             try db.execute(
                 sql: """
                     INSERT INTO repositories (id, name, path, defaultBranch, createdAt, updatedAt)
@@ -99,15 +116,47 @@ public final class OperatorStore: @unchecked Sendable {
                     repository.updatedAt.storageValue
                 ]
             )
+            return repository
         }
-
-        return repository
     }
 
     public func repositories() throws -> [OperatorRepository] {
         try dbQueue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM repositories ORDER BY createdAt, id")
                 .map(Self.repository(from:))
+        }
+    }
+
+    public func updateRepositoryDefaultBranch(
+        id: UUID,
+        defaultBranch: String,
+        now: Date = Date()
+    ) throws -> OperatorRepository {
+        try dbQueue.write { db in
+            let repository = try requiredRepository(id: id, db: db)
+            let updatedRepository = OperatorRepository(
+                id: repository.id,
+                name: repository.name,
+                path: repository.path,
+                defaultBranch: defaultBranch,
+                createdAt: repository.createdAt,
+                updatedAt: now
+            )
+
+            try db.execute(
+                sql: """
+                    UPDATE repositories
+                    SET defaultBranch = ?, updatedAt = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    updatedRepository.defaultBranch,
+                    updatedRepository.updatedAt.storageValue,
+                    updatedRepository.id.uuidString
+                ]
+            )
+
+            return updatedRepository
         }
     }
 
@@ -289,6 +338,18 @@ public final class OperatorStore: @unchecked Sendable {
         ) == 1
     }
 
+    private func requiredRepository(id: UUID, db: Database) throws -> OperatorRepository {
+        guard let row = try Row.fetchOne(db, sql: "SELECT * FROM repositories WHERE id = ?", arguments: [id.uuidString]) else {
+            throw OperatorStoreError.repositoryNotFound
+        }
+        return try Self.repository(from: row)
+    }
+
+    private func repository(path: String, db: Database) throws -> OperatorRepository? {
+        try Row.fetchOne(db, sql: "SELECT * FROM repositories WHERE path = ?", arguments: [path])
+            .map(Self.repository(from:))
+    }
+
     private func requiredTask(id: UUID, db: Database) throws -> OperatorTask {
         guard let row = try Row.fetchOne(db, sql: "SELECT * FROM tasks WHERE id = ?", arguments: [id.uuidString]) else {
             throw OperatorStoreError.taskNotFound
@@ -405,6 +466,10 @@ private extension OperatorStore {
             try db.create(index: "runs_on_taskID", on: "runs", columns: ["taskID"])
             // Keep this predicate aligned with RunStatus.triggered.rawValue.
             try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status = 'triggered'")
+        }
+
+        migrator.registerMigration("addUniqueRepositoryPathIndex") { db in
+            try db.create(index: "repositories_on_path", on: "repositories", columns: ["path"], unique: true)
         }
 
         return migrator

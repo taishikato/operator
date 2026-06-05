@@ -5,6 +5,7 @@ import { join } from "node:path"
 import { pathToFileURL } from "node:url"
 
 import type { SchemaApplyOptions } from "./local-database.ts"
+import { spawnFailureDetail } from "./spawn-output.ts"
 
 export function isAtlasAvailable() {
   const result = spawnSync("atlas", ["version"], { encoding: "utf8" })
@@ -50,18 +51,4 @@ export async function applyOperatorSchemaWithAtlas({
 
 function sqliteDatabaseUrl(absolutePath: string) {
   return `sqlite://file:${absolutePath}?mode=rwc`
-}
-
-function spawnFailureDetail(result: ReturnType<typeof spawnSync>) {
-  return (
-    result.error?.message ??
-    spawnOutputText(result.stderr) ??
-    spawnOutputText(result.stdout) ??
-    "unknown error"
-  )
-}
-
-function spawnOutputText(output: ReturnType<typeof spawnSync>["stderr"]) {
-  const text = String(output ?? "").trim()
-  return text || undefined
 }

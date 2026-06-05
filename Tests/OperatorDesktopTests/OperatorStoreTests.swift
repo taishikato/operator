@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import OperatorDesktop
 
@@ -193,9 +194,114 @@ import Testing
     }
 }
 
+@Test func storeRejectsDuplicateRepositoryPathsPredictably() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+
+    #expect(throws: OperatorStoreError.repositoryPathAlreadyRegistered(existingID: repository.id)) {
+        try store.createRepository(name: "Operator Copy", path: "/tmp/operator", defaultBranch: "feature/desktop")
+    }
+
+    let error = OperatorStoreError.repositoryPathAlreadyRegistered(existingID: repository.id)
+    #expect(error.errorDescription == "This repository is already registered.")
+    #expect(try store.repositories().map(\.id) == [repository.id])
+}
+
+@Test func storeAddsRepositoryPathIndexToExistingDesktopDatabases() throws {
+    let databaseURL = try temporaryDatabaseURL()
+    let dbQueue = try DatabaseQueue(path: databaseURL.path)
+    try dbQueue.write { db in
+        try createLegacyDesktopSchema(in: db)
+        try db.execute(sql: "INSERT INTO grdb_migrations (identifier) VALUES ('createOperatorDesktopMVPStore')")
+    }
+
+    _ = try OperatorStore(databaseURL: databaseURL)
+
+    let hasRepositoryPathIndex = try dbQueue.read { db in
+        try Bool.fetchOne(
+            db,
+            sql: """
+                SELECT EXISTS(
+                    SELECT 1 FROM sqlite_master
+                    WHERE type = 'index' AND name = 'repositories_on_path'
+                )
+                """
+        ) ?? false
+    }
+    #expect(hasRepositoryPathIndex)
+}
+
+@Test func storeUpdatesRepositoryDefaultBranchWithoutChangingCreatedAt() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let updatedAt = Date(timeIntervalSince1970: 1_700_000_500)
+    let repository = try store.createRepository(
+        name: "operator",
+        path: "/tmp/operator",
+        defaultBranch: "main",
+        now: createdAt
+    )
+
+    let updatedRepository = try store.updateRepositoryDefaultBranch(
+        id: repository.id,
+        defaultBranch: "feature/desktop",
+        now: updatedAt
+    )
+
+    #expect(updatedRepository.defaultBranch == "feature/desktop")
+    #expect(updatedRepository.createdAt == createdAt)
+    #expect(updatedRepository.updatedAt == updatedAt)
+    #expect(try store.repositories().first?.defaultBranch == "feature/desktop")
+}
+
 private func temporaryDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "OperatorStoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appending(path: "operator.sqlite")
+}
+
+private func createLegacyDesktopSchema(in db: Database) throws {
+    try db.create(table: "repositories") { table in
+        table.column("id", .text).primaryKey()
+        table.column("name", .text).notNull()
+        table.column("path", .text).notNull()
+        table.column("defaultBranch", .text).notNull()
+        table.column("createdAt", .double).notNull()
+        table.column("updatedAt", .double).notNull()
+    }
+
+    try db.create(table: "tasks") { table in
+        table.column("id", .text).primaryKey()
+        table.column("repositoryID", .text).notNull().references("repositories", onDelete: .restrict)
+        table.column("title", .text).notNull()
+        table.column("prompt", .text).notNull()
+        table.column("reasoningEffort", .text).notNull()
+        table.column("status", .text).notNull()
+        table.column("createdAt", .double).notNull()
+        table.column("updatedAt", .double).notNull()
+    }
+
+    try db.create(table: "runs") { table in
+        table.column("id", .text).primaryKey()
+        table.column("taskID", .text).notNull().references("tasks", onDelete: .restrict)
+        table.column("repositoryID", .text).notNull().references("repositories", onDelete: .restrict)
+        table.column("status", .text).notNull()
+        table.column("worktreePath", .text).notNull()
+        table.column("baseBranch", .text).notNull()
+        table.column("baseRef", .text).notNull()
+        table.column("codexThreadID", .text)
+        table.column("codexThreadURL", .text)
+        table.column("errorMessage", .text)
+        table.column("createdAt", .double).notNull()
+        table.column("completedAt", .double)
+    }
+
+    try db.create(index: "tasks_on_repositoryID", on: "tasks", columns: ["repositoryID"])
+    try db.create(index: "runs_on_taskID", on: "runs", columns: ["taskID"])
+    try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status = 'triggered'")
+
+    try db.create(table: "grdb_migrations") { table in
+        table.column("identifier", .text).primaryKey()
+    }
 }
