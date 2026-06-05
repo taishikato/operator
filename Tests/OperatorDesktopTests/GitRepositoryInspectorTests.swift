@@ -53,6 +53,37 @@ import Testing
     })
 }
 
+@Test func defaultGitCommandRunnerCompletesWhenGitWritesLargeOutput() async throws {
+    let repositoryURL = try temporaryDirectory(named: "many-branches")
+    try runGit(["init", "-b", "main"], in: repositoryURL)
+    try runGit(
+        [
+            "-c", "user.name=Operator",
+            "-c", "user.email=operator@example.test",
+            "commit", "--allow-empty", "-m", "init"
+        ],
+        in: repositoryURL
+    )
+    let head = try runGitOutput(["rev-parse", "HEAD"], in: repositoryURL)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    let refsURL = repositoryURL.appending(path: ".git/refs/heads", directoryHint: .isDirectory)
+    for index in 0..<4_000 {
+        let branchName = "branch-\(index)-\(String(repeating: "x", count: 80))"
+        try head.write(
+            to: refsURL.appending(path: branchName),
+            atomically: true,
+            encoding: .utf8
+        )
+    }
+
+    let output = try await runGitWithTimeout(
+        repositoryURL: repositoryURL,
+        arguments: ["for-each-ref", "--format=%(refname:short)", "refs/heads"]
+    )
+
+    #expect(output.contains("branch-3999"))
+}
+
 private final class RecordingGitCommandRunner: GitCommandRunning, @unchecked Sendable {
     struct Command: Equatable {
         let repositoryURL: URL?
@@ -101,6 +132,81 @@ private func runGit(_ arguments: [String], in directoryURL: URL?) throws {
             domain: "GitRepositoryInspectorTests",
             code: Int(process.terminationStatus),
             userInfo: [NSLocalizedDescriptionKey: error]
+        )
+    }
+}
+
+private func runGitOutput(_ arguments: [String], in directoryURL: URL?) throws -> String {
+    let process = Process()
+    process.executableURL = URL(filePath: "/usr/bin/git")
+    process.arguments = arguments
+    process.currentDirectoryURL = directoryURL
+
+    let outputPipe = Pipe()
+    let errorPipe = Pipe()
+    process.standardOutput = outputPipe
+    process.standardError = errorPipe
+
+    try process.run()
+    process.waitUntilExit()
+
+    guard process.terminationStatus == 0 else {
+        let error = String(data: errorPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        throw NSError(
+            domain: "GitRepositoryInspectorTests",
+            code: Int(process.terminationStatus),
+            userInfo: [NSLocalizedDescriptionKey: error]
+        )
+    }
+
+    return String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+}
+
+private func runGitWithTimeout(repositoryURL: URL, arguments: [String]) async throws -> String {
+    enum Completion: Sendable {
+        case output(String)
+        case failure(String)
+        case timedOut
+    }
+
+    let commandTask = Task.detached {
+        do {
+            return Completion.output(
+                try DefaultGitCommandRunner().runGit(repositoryURL: repositoryURL, arguments: arguments)
+            )
+        } catch {
+            return Completion.failure(String(describing: error))
+        }
+    }
+
+    let completion = await withTaskGroup(of: Completion.self) { group in
+        group.addTask {
+            await commandTask.value
+        }
+        group.addTask {
+            try? await Task.sleep(for: .seconds(5))
+            return .timedOut
+        }
+
+        let firstCompletion = await group.next() ?? .timedOut
+        group.cancelAll()
+        return firstCompletion
+    }
+
+    switch completion {
+    case let .output(output):
+        return output
+    case let .failure(message):
+        throw NSError(
+            domain: "GitRepositoryInspectorTests",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: message]
+        )
+    case .timedOut:
+        throw NSError(
+            domain: "GitRepositoryInspectorTests",
+            code: 3,
+            userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for git output."]
         )
     }
 }

@@ -117,16 +117,17 @@ public final class DefaultGitCommandRunner: GitCommandRunning, @unchecked Sendab
 
         let outputPipe = Pipe()
         process.standardOutput = outputPipe
-        process.standardError = Pipe()
+        process.standardError = FileHandle.nullDevice
 
         try process.run()
+        let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
             throw RepositoryRegistrationError.gitCommandFailed
         }
 
-        return String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return String(data: output, encoding: .utf8) ?? ""
     }
 }
 
