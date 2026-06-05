@@ -193,6 +193,42 @@ import Testing
     }
 }
 
+@Test func storeRejectsDuplicateRepositoryPathsPredictably() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+
+    #expect(throws: OperatorStoreError.repositoryPathAlreadyRegistered(existingID: repository.id)) {
+        try store.createRepository(name: "Operator Copy", path: "/tmp/operator", defaultBranch: "feature/desktop")
+    }
+
+    let error = OperatorStoreError.repositoryPathAlreadyRegistered(existingID: repository.id)
+    #expect(error.errorDescription == "This repository is already registered.")
+    #expect(try store.repositories().map(\.id) == [repository.id])
+}
+
+@Test func storeUpdatesRepositoryDefaultBranchWithoutChangingCreatedAt() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let updatedAt = Date(timeIntervalSince1970: 1_700_000_500)
+    let repository = try store.createRepository(
+        name: "operator",
+        path: "/tmp/operator",
+        defaultBranch: "main",
+        now: createdAt
+    )
+
+    let updatedRepository = try store.updateRepositoryDefaultBranch(
+        id: repository.id,
+        defaultBranch: "feature/desktop",
+        now: updatedAt
+    )
+
+    #expect(updatedRepository.defaultBranch == "feature/desktop")
+    #expect(updatedRepository.createdAt == createdAt)
+    #expect(updatedRepository.updatedAt == updatedAt)
+    #expect(try store.repositories().first?.defaultBranch == "feature/desktop")
+}
+
 private func temporaryDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "OperatorStoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)

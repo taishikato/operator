@@ -21,7 +21,7 @@ struct OperatorApp: App {
         .windowResizability(.contentMinSize)
 
         Settings {
-            OperatorSettingsView()
+            OperatorSettingsView(store: store)
                 .frame(width: 480)
         }
     }
