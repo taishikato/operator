@@ -53,6 +53,17 @@ import Testing
     })
 }
 
+@Test func gitInspectorSurfacesBranchInferenceGitFailures() throws {
+    let runner = RecordingGitCommandRunner(outputs: [
+        ["rev-parse", "--show-toplevel"]: "/tmp/operator\n"
+    ])
+    let inspector = GitRepositoryInspector(commandRunner: runner)
+
+    #expect(throws: RepositoryRegistrationError.gitCommandFailed) {
+        try inspector.inspect(URL(filePath: "/tmp/operator"))
+    }
+}
+
 @Test func defaultGitCommandRunnerCompletesWhenGitWritesLargeOutput() async throws {
     let repositoryURL = try temporaryDirectory(named: "many-branches")
     try runGit(["init", "-b", "main"], in: repositoryURL)

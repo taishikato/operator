@@ -59,11 +59,11 @@ public struct GitRepositoryInspector: RepositoryInspecting, Sendable {
         return RepositoryInspection(
             name: rootURL.lastPathComponent,
             path: rootURL.path,
-            defaultBranch: inferDefaultBranch(repositoryURL: rootURL)
+            defaultBranch: try inferDefaultBranch(repositoryURL: rootURL)
         )
     }
 
-    private func inferDefaultBranch(repositoryURL: URL) -> String? {
+    private func inferDefaultBranch(repositoryURL: URL) throws -> String? {
         if let originHead = try? commandRunner.runGit(
             repositoryURL: repositoryURL,
             arguments: ["symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"]
@@ -72,21 +72,21 @@ public struct GitRepositoryInspector: RepositoryInspecting, Sendable {
             return branch
         }
 
-        if let currentBranch = try? commandRunner.runGit(
+        let currentBranch = try commandRunner.runGit(
             repositoryURL: repositoryURL,
             arguments: ["branch", "--show-current"]
-        ).trimmed,
-            !currentBranch.isEmpty {
+        ).trimmed
+        if !currentBranch.isEmpty {
             return currentBranch
         }
 
-        if let branches = try? commandRunner.runGit(
+        let branches = try commandRunner.runGit(
             repositoryURL: repositoryURL,
             arguments: ["for-each-ref", "--format=%(refname:short)", "refs/heads"]
         )
         .split(whereSeparator: \.isNewline)
-        .map(String.init),
-            !branches.isEmpty {
+        .map(String.init)
+        if !branches.isEmpty {
             return branches.first(where: { $0 == "main" })
                 ?? branches.first(where: { $0 == "master" })
                 ?? branches.first
