@@ -82,6 +82,7 @@ private struct RepositorySettingsRow: View {
             HStack(spacing: 8) {
                 TextField("Default branch", text: defaultBranchBinding)
                     .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel(RepositorySettingsAccessibility.defaultBranchLabel(for: repository))
 
                 Button {
                     model.updateDefaultBranchReportingErrors(
@@ -91,6 +92,7 @@ private struct RepositorySettingsRow: View {
                 } label: {
                     Label("Save", systemImage: "checkmark")
                 }
+                .accessibilityLabel(RepositorySettingsAccessibility.saveDefaultBranchLabel(for: repository))
             }
         }
         .padding(.vertical, 4)
@@ -102,5 +104,15 @@ private struct RepositorySettingsRow: View {
         } set: { defaultBranch in
             model.setDefaultBranchDraft(defaultBranch, for: repository.id)
         }
+    }
+}
+
+enum RepositorySettingsAccessibility {
+    static func defaultBranchLabel(for repository: OperatorRepository) -> String {
+        "Default branch for \(repository.name)"
+    }
+
+    static func saveDefaultBranchLabel(for repository: OperatorRepository) -> String {
+        "Save default branch for \(repository.name)"
     }
 }
