@@ -17,6 +17,32 @@ import Testing
 }
 
 @MainActor
+@Test func repositorySettingsModelKeepsUpdatedBranchWhenReloadFailsAfterWrite() throws {
+    let repository = OperatorRepository(
+        id: UUID(),
+        name: "operator",
+        path: "/tmp/operator",
+        defaultBranch: "main",
+        createdAt: Date(timeIntervalSince1970: 1_700_000_000),
+        updatedAt: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+    let store = ReloadFailingSettingsStore(repositories: [repository])
+    let registrationStore = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let model = RepositorySettingsModel(
+        store: store,
+        registrationService: RepositoryRegistrationService(store: registrationStore)
+    )
+
+    try model.loadRepositories()
+    store.failReads = true
+
+    #expect(throws: SettingsStoreError.reloadFailed) {
+        try model.updateDefaultBranch(repositoryID: repository.id, defaultBranch: "develop")
+    }
+    #expect(model.repositories.first?.defaultBranch == "develop")
+}
+
+@MainActor
 @Test func repositorySettingsModelResyncsDefaultBranchDraftsWhenRepositoriesReload() throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -101,6 +127,47 @@ private struct SlowRepositoryInspector: RepositoryInspecting {
         Thread.sleep(forTimeInterval: 0.3)
         return inspection
     }
+}
+
+private final class ReloadFailingSettingsStore: RepositorySettingsStoring, @unchecked Sendable {
+    var repositoriesValue: [OperatorRepository]
+    var failReads = false
+
+    init(repositories: [OperatorRepository]) {
+        repositoriesValue = repositories
+    }
+
+    func repositories() throws -> [OperatorRepository] {
+        if failReads {
+            throw SettingsStoreError.reloadFailed
+        }
+        return repositoriesValue
+    }
+
+    func updateRepositoryDefaultBranch(
+        id: UUID,
+        defaultBranch: String,
+        now: Date
+    ) throws -> OperatorRepository {
+        guard let index = repositoriesValue.firstIndex(where: { $0.id == id }) else {
+            throw OperatorStoreError.repositoryNotFound
+        }
+        let existingRepository = repositoriesValue[index]
+        let updatedRepository = OperatorRepository(
+            id: existingRepository.id,
+            name: existingRepository.name,
+            path: existingRepository.path,
+            defaultBranch: defaultBranch,
+            createdAt: existingRepository.createdAt,
+            updatedAt: now
+        )
+        repositoriesValue[index] = updatedRepository
+        return updatedRepository
+    }
+}
+
+private enum SettingsStoreError: Error, Equatable {
+    case reloadFailed
 }
 
 private struct StubRepositoryInspector: RepositoryInspecting {

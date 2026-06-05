@@ -1,12 +1,19 @@
 import Foundation
 
+protocol RepositorySettingsStoring: Sendable {
+    func repositories() throws -> [OperatorRepository]
+    func updateRepositoryDefaultBranch(id: UUID, defaultBranch: String, now: Date) throws -> OperatorRepository
+}
+
+extension OperatorStore: RepositorySettingsStoring {}
+
 @MainActor
 public final class RepositorySettingsModel: ObservableObject {
     @Published public private(set) var repositories: [OperatorRepository] = []
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isAddingRepository = false
 
-    private let store: OperatorStore
+    private let store: any RepositorySettingsStoring
     private let registrationService: RepositoryRegistrationService
     private var defaultBranchDrafts: [UUID: String] = [:]
 
@@ -16,6 +23,14 @@ public final class RepositorySettingsModel: ObservableObject {
     ) {
         self.store = store
         self.registrationService = registrationService ?? RepositoryRegistrationService(store: store)
+    }
+
+    init(
+        store: any RepositorySettingsStoring,
+        registrationService: RepositoryRegistrationService
+    ) {
+        self.store = store
+        self.registrationService = registrationService
     }
 
     public func loadRepositories() throws {
@@ -34,7 +49,8 @@ public final class RepositorySettingsModel: ObservableObject {
     }
 
     public func addRepository(at repositoryURL: URL) throws {
-        _ = try registrationService.registerRepository(at: repositoryURL)
+        let repository = try registrationService.registerRepository(at: repositoryURL)
+        mergeRepository(repository)
         try loadRepositories()
     }
 
@@ -44,21 +60,26 @@ public final class RepositorySettingsModel: ObservableObject {
 
         let registrationService = registrationService
         Task { [weak self, registrationService] in
-            let errorMessage = await Task.detached(priority: .userInitiated) {
+            let completion = await Task.detached(priority: .userInitiated) {
                 do {
-                    _ = try registrationService.registerRepository(at: repositoryURL)
-                    return nil as String?
+                    let repository = try registrationService.registerRepository(at: repositoryURL)
+                    return RepositoryRegistrationCompletion.success(repository)
                 } catch {
-                    return Self.userFacingMessage(for: error)
+                    return RepositoryRegistrationCompletion.failure(Self.userFacingMessage(for: error))
                 }
             }.value
 
-            self?.finishRepositoryRegistration(errorMessage: errorMessage)
+            self?.finishRepositoryRegistration(completion)
         }
     }
 
     public func updateDefaultBranch(repositoryID: UUID, defaultBranch: String) throws {
-        _ = try store.updateRepositoryDefaultBranch(id: repositoryID, defaultBranch: defaultBranch)
+        let repository = try store.updateRepositoryDefaultBranch(
+            id: repositoryID,
+            defaultBranch: defaultBranch,
+            now: Date()
+        )
+        mergeRepository(repository)
         try loadRepositories()
     }
 
@@ -89,14 +110,26 @@ public final class RepositorySettingsModel: ObservableObject {
         )
     }
 
-    private func finishRepositoryRegistration(errorMessage: String?) {
+    private func mergeRepository(_ repository: OperatorRepository) {
+        if let index = repositories.firstIndex(where: { $0.id == repository.id }) {
+            repositories[index] = repository
+        } else {
+            repositories.append(repository)
+        }
+        defaultBranchDrafts[repository.id] = repository.defaultBranch
+    }
+
+    private func finishRepositoryRegistration(_ completion: RepositoryRegistrationCompletion) {
         defer {
             isAddingRepository = false
         }
 
-        if let errorMessage {
+        switch completion {
+        case let .failure(errorMessage):
             self.errorMessage = errorMessage
             return
+        case let .success(repository):
+            mergeRepository(repository)
         }
 
         do {
@@ -113,4 +146,9 @@ public final class RepositorySettingsModel: ObservableObject {
         }
         return "Unable to update repository settings."
     }
+}
+
+private enum RepositoryRegistrationCompletion: Sendable {
+    case success(OperatorRepository)
+    case failure(String)
 }
