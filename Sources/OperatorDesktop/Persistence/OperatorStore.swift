@@ -403,6 +403,7 @@ private extension OperatorStore {
 
             try db.create(index: "tasks_on_repositoryID", on: "tasks", columns: ["repositoryID"])
             try db.create(index: "runs_on_taskID", on: "runs", columns: ["taskID"])
+            // Keep this predicate aligned with RunStatus.triggered.rawValue.
             try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status = 'triggered'")
         }
 
