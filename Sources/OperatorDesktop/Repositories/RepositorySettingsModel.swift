@@ -7,6 +7,7 @@ public final class RepositorySettingsModel: ObservableObject {
 
     private let store: OperatorStore
     private let registrationService: RepositoryRegistrationService
+    private var defaultBranchDrafts: [UUID: String] = [:]
 
     public init(
         store: OperatorStore,
@@ -17,7 +18,9 @@ public final class RepositorySettingsModel: ObservableObject {
     }
 
     public func loadRepositories() throws {
-        repositories = try store.repositories()
+        let loadedRepositories = try store.repositories()
+        repositories = loadedRepositories
+        syncDefaultBranchDrafts(with: loadedRepositories)
         errorMessage = nil
     }
 
@@ -53,6 +56,25 @@ public final class RepositorySettingsModel: ObservableObject {
         } catch {
             errorMessage = userFacingMessage(for: error)
         }
+    }
+
+    func defaultBranchDraft(for repositoryID: UUID) -> String {
+        defaultBranchDrafts[repositoryID]
+            ?? repositories.first(where: { $0.id == repositoryID })?.defaultBranch
+            ?? ""
+    }
+
+    func setDefaultBranchDraft(_ defaultBranch: String, for repositoryID: UUID) {
+        defaultBranchDrafts[repositoryID] = defaultBranch
+        objectWillChange.send()
+    }
+
+    private func syncDefaultBranchDrafts(with repositories: [OperatorRepository]) {
+        defaultBranchDrafts = Dictionary(
+            uniqueKeysWithValues: repositories.map { repository in
+                (repository.id, repository.defaultBranch)
+            }
+        )
     }
 
     private func userFacingMessage(for error: Error) -> String {

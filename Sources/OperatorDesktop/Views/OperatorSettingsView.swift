@@ -64,12 +64,9 @@ private struct RepositorySettingsRow: View {
     @ObservedObject var model: RepositorySettingsModel
     let repository: OperatorRepository
 
-    @State private var defaultBranch: String
-
     init(model: RepositorySettingsModel, repository: OperatorRepository) {
         self.model = model
         self.repository = repository
-        _defaultBranch = State(initialValue: repository.defaultBranch)
     }
 
     var body: some View {
@@ -82,13 +79,13 @@ private struct RepositorySettingsRow: View {
             }
 
             HStack(spacing: 8) {
-                TextField("Default branch", text: $defaultBranch)
+                TextField("Default branch", text: defaultBranchBinding)
                     .textFieldStyle(.roundedBorder)
 
                 Button {
                     model.updateDefaultBranchReportingErrors(
                         repositoryID: repository.id,
-                        defaultBranch: defaultBranch
+                        defaultBranch: model.defaultBranchDraft(for: repository.id)
                     )
                 } label: {
                     Label("Save", systemImage: "checkmark")
@@ -96,5 +93,13 @@ private struct RepositorySettingsRow: View {
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var defaultBranchBinding: Binding<String> {
+        Binding {
+            model.defaultBranchDraft(for: repository.id)
+        } set: { defaultBranch in
+            model.setDefaultBranchDraft(defaultBranch, for: repository.id)
+        }
     }
 }

@@ -17,6 +17,21 @@ import Testing
 }
 
 @MainActor
+@Test func repositorySettingsModelResyncsDefaultBranchDraftsWhenRepositoriesReload() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let model = RepositorySettingsModel(store: store)
+
+    try model.loadRepositories()
+    model.setDefaultBranchDraft("typed-but-not-saved", for: repository.id)
+    _ = try store.updateRepositoryDefaultBranch(id: repository.id, defaultBranch: "develop")
+
+    try model.loadRepositories()
+
+    #expect(model.defaultBranchDraft(for: repository.id) == "develop")
+}
+
+@MainActor
 @Test func repositorySettingsModelRegistersRepositoryAndReloadsList() throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let repositoryURL = URL(filePath: "/tmp/operator")
