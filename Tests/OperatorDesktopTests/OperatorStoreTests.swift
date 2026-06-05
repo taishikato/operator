@@ -89,7 +89,7 @@ import Testing
     )
 
     #expect(throws: TaskLifecycleError.transitionNotAllowed) {
-        try store.moveTaskToReady(id: task.id)
+        try store.assertTaskReady(id: task.id)
     }
     #expect(throws: TaskLifecycleError.taskIsImmutable) {
         try store.updateTaskContent(
@@ -99,6 +99,56 @@ import Testing
             reasoningEffort: .high
         )
     }
+}
+
+@Test func storeRejectsInvalidManualTransitions() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let readyTask = try store.createTask(repositoryID: repository.id, title: "Ready", prompt: "Prompt")
+
+    #expect(throws: TaskLifecycleError.transitionNotAllowed) {
+        try store.markTaskDone(id: readyTask.id)
+    }
+
+    let archivedTask = try store.archiveTask(id: readyTask.id)
+    #expect(throws: TaskLifecycleError.transitionNotAllowed) {
+        try store.archiveTask(id: archivedTask.id)
+    }
+    #expect(throws: TaskLifecycleError.transitionNotAllowed) {
+        try store.assertTaskReady(id: archivedTask.id)
+    }
+
+    let doneCandidate = try store.createTask(repositoryID: repository.id, title: "Done", prompt: "Prompt")
+    _ = try store.recordSuccessfulRun(
+        taskID: doneCandidate.id,
+        worktreePath: "/tmp/worktrees/done",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-done",
+        codexThreadURL: nil
+    )
+    let doneTask = try store.markTaskDone(id: doneCandidate.id)
+    #expect(throws: TaskLifecycleError.transitionNotAllowed) {
+        try store.assertTaskReady(id: doneTask.id)
+    }
+}
+
+@Test func assertingReadyTaskDoesNotUpdateStoredTimestamp() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let createdAt = Date(timeIntervalSince1970: 1_700_000_000)
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Ready",
+        prompt: "Prompt",
+        now: createdAt
+    )
+
+    let readyTask = try store.assertTaskReady(id: task.id)
+
+    #expect(readyTask.status == .ready)
+    #expect(readyTask.updatedAt == createdAt)
+    #expect(try store.task(id: task.id)?.updatedAt == createdAt)
 }
 
 @Test func storeAllowsFailedRunsBeforeOneSuccessfulRunOnly() throws {

@@ -184,9 +184,10 @@ public final class OperatorStore: @unchecked Sendable {
         }
     }
 
-    public func moveTaskToReady(id: UUID) throws -> OperatorTask {
-        try updateTask(id: id) { task in
-            try TaskLifecyclePolicy.moveToReady(task)
+    public func assertTaskReady(id: UUID) throws -> OperatorTask {
+        try dbQueue.read { db in
+            let task = try requiredTask(id: id, db: db)
+            return try TaskLifecyclePolicy.moveToReady(task)
         }
     }
 
