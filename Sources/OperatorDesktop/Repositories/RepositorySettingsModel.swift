@@ -4,6 +4,7 @@ import Foundation
 public final class RepositorySettingsModel: ObservableObject {
     @Published public private(set) var repositories: [OperatorRepository] = []
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var isAddingRepository = false
 
     private let store: OperatorStore
     private let registrationService: RepositoryRegistrationService
@@ -28,7 +29,7 @@ public final class RepositorySettingsModel: ObservableObject {
         do {
             try loadRepositories()
         } catch {
-            errorMessage = userFacingMessage(for: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -38,10 +39,21 @@ public final class RepositorySettingsModel: ObservableObject {
     }
 
     public func addRepositoryReportingErrors(at repositoryURL: URL) {
-        do {
-            try addRepository(at: repositoryURL)
-        } catch {
-            errorMessage = userFacingMessage(for: error)
+        errorMessage = nil
+        isAddingRepository = true
+
+        let registrationService = registrationService
+        Task { [weak self, registrationService] in
+            let errorMessage = await Task.detached(priority: .userInitiated) {
+                do {
+                    _ = try registrationService.registerRepository(at: repositoryURL)
+                    return nil as String?
+                } catch {
+                    return Self.userFacingMessage(for: error)
+                }
+            }.value
+
+            self?.finishRepositoryRegistration(errorMessage: errorMessage)
         }
     }
 
@@ -54,7 +66,7 @@ public final class RepositorySettingsModel: ObservableObject {
         do {
             try updateDefaultBranch(repositoryID: repositoryID, defaultBranch: defaultBranch)
         } catch {
-            errorMessage = userFacingMessage(for: error)
+            errorMessage = Self.userFacingMessage(for: error)
         }
     }
 
@@ -77,7 +89,24 @@ public final class RepositorySettingsModel: ObservableObject {
         )
     }
 
-    private func userFacingMessage(for error: Error) -> String {
+    private func finishRepositoryRegistration(errorMessage: String?) {
+        defer {
+            isAddingRepository = false
+        }
+
+        if let errorMessage {
+            self.errorMessage = errorMessage
+            return
+        }
+
+        do {
+            try loadRepositories()
+        } catch {
+            self.errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    nonisolated private static func userFacingMessage(for error: Error) -> String {
         if let localizedError = error as? LocalizedError,
            let errorDescription = localizedError.errorDescription {
             return errorDescription

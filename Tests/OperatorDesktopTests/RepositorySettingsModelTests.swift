@@ -51,7 +51,30 @@ import Testing
 }
 
 @MainActor
-@Test func repositorySettingsModelKeepsListAndShowsRegistrationError() throws {
+@Test func repositorySettingsModelStartsRepositoryRegistrationWithoutBlockingMainActor() async throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let repositoryURL = URL(filePath: "/tmp/operator")
+    let service = RepositoryRegistrationService(
+        store: store,
+        inspector: SlowRepositoryInspector(
+            inspection: RepositoryInspection(name: "operator", path: repositoryURL.path, defaultBranch: "main")
+        )
+    )
+    let model = RepositorySettingsModel(store: store, registrationService: service)
+
+    let startedAt = Date()
+    model.addRepositoryReportingErrors(at: repositoryURL)
+    let elapsed = Date().timeIntervalSince(startedAt)
+
+    #expect(elapsed < 0.1)
+    try await waitUntil {
+        model.repositories.map(\.name) == ["operator"]
+    }
+    #expect(model.errorMessage == nil)
+}
+
+@MainActor
+@Test func repositorySettingsModelKeepsListAndShowsRegistrationError() async throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let existingRepository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let invalidURL = URL(filePath: "/tmp/not-a-repo")
@@ -64,8 +87,20 @@ import Testing
     model.loadRepositoriesReportingErrors()
     model.addRepositoryReportingErrors(at: invalidURL)
 
+    try await waitUntil {
+        model.errorMessage == "Selected folder is not a Git repository."
+    }
     #expect(model.repositories.map(\.id) == [existingRepository.id])
-    #expect(model.errorMessage == "Selected folder is not a Git repository.")
+    #expect(model.isAddingRepository == false)
+}
+
+private struct SlowRepositoryInspector: RepositoryInspecting {
+    let inspection: RepositoryInspection
+
+    func inspect(_ repositoryURL: URL) throws -> RepositoryInspection {
+        Thread.sleep(forTimeInterval: 0.3)
+        return inspection
+    }
 }
 
 private struct StubRepositoryInspector: RepositoryInspecting {
@@ -95,4 +130,23 @@ private func temporarySettingsDatabaseURL() throws -> URL {
         .appending(path: "RepositorySettingsModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appending(path: "operator.sqlite")
+}
+
+@MainActor
+private func waitUntil(
+    timeout: Duration = .seconds(2),
+    condition: @escaping @MainActor () -> Bool
+) async throws {
+    let clock = ContinuousClock()
+    let deadline = clock.now + timeout
+    while !condition() {
+        if clock.now >= deadline {
+            throw NSError(
+                domain: "RepositorySettingsModelTests",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: "Timed out waiting for condition."]
+            )
+        }
+        try await Task.sleep(for: .milliseconds(10))
+    }
 }

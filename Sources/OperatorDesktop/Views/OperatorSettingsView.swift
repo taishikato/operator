@@ -25,6 +25,7 @@ public struct OperatorSettingsView: View {
                 } label: {
                     Label("Add Repository", systemImage: "plus")
                 }
+                .disabled(model.isAddingRepository)
 
                 if let errorMessage = model.errorMessage {
                     Text(errorMessage)
