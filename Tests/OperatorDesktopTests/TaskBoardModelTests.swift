@@ -128,6 +128,22 @@ import Testing
     #expect(reviewInspector.isEditable == false)
 }
 
+@Test func inspectorProjectionOnlyIncludesVisibleTasks() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let operatorRepo = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let codexRepo = try store.createRepository(name: "codex", path: "/tmp/codex", defaultBranch: "main")
+    let visibleTask = try store.createTask(repositoryID: operatorRepo.id, title: "Visible", prompt: "Prompt")
+    let filteredTask = try store.createTask(repositoryID: codexRepo.id, title: "Filtered", prompt: "Prompt")
+    let archivedTask = try store.createTask(repositoryID: operatorRepo.id, title: "Archived", prompt: "Prompt")
+    _ = try store.archiveTask(id: archivedTask.id)
+
+    let projection = try TaskBoardProjection.load(from: store, selectedRepositoryID: operatorRepo.id)
+
+    #expect(projection.inspector(taskID: visibleTask.id) != nil)
+    #expect(projection.inspector(taskID: filteredTask.id) == nil)
+    #expect(projection.inspector(taskID: archivedTask.id) == nil)
+}
+
 @Test func inspectorDraftUpdatesReadyTaskThroughStoreAndRejectsImmutableTasks() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -182,6 +198,73 @@ import Testing
     #expect(try store.task(id: taskID)?.title == "Updated board")
     #expect(model.projection.inspector(taskID: taskID)?.prompt == "Updated prompt")
     #expect(model.projection.inspector(taskID: taskID)?.reasoningEffort == .high)
+}
+
+@Test @MainActor func taskBoardModelClearsSelectionWhenSelectedTaskLeavesRepositoryFilter() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let operatorRepo = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let codexRepo = try store.createRepository(name: "codex", path: "/tmp/codex", defaultBranch: "main")
+    let operatorTask = try store.createTask(repositoryID: operatorRepo.id, title: "Operator task", prompt: "Prompt")
+    _ = try store.createTask(repositoryID: codexRepo.id, title: "Codex task", prompt: "Prompt")
+    let model = TaskBoardModel(store: store)
+    try model.load()
+    model.selectTask(operatorTask.id)
+
+    model.selectRepository(codexRepo.id)
+
+    #expect(model.selectedTaskID == nil)
+    #expect(model.inspectorDraft == nil)
+    #expect(model.projection.inspector(taskID: operatorTask.id) == nil)
+}
+
+@Test @MainActor func taskBoardModelKeepsCreationRepositoryIndependentFromFilter() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let operatorRepo = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let codexRepo = try store.createRepository(name: "codex", path: "/tmp/codex", defaultBranch: "main")
+    let model = TaskBoardModel(store: store)
+    try model.load()
+
+    model.creationDraft.repositoryID = codexRepo.id
+    model.selectRepository(operatorRepo.id)
+
+    #expect(model.creationDraft.repositoryID == codexRepo.id)
+}
+
+@Test @MainActor func taskBoardModelDoesNotSelectNewTaskHiddenByRepositoryFilter() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let operatorRepo = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let codexRepo = try store.createRepository(name: "codex", path: "/tmp/codex", defaultBranch: "main")
+    let model = TaskBoardModel(store: store)
+    try model.load()
+    model.selectRepository(operatorRepo.id)
+    model.creationDraft.repositoryID = codexRepo.id
+    model.creationDraft.title = "Hidden task"
+    model.creationDraft.prompt = "Prompt"
+
+    try model.createTask()
+
+    #expect(model.selectedTaskID == nil)
+    #expect(model.inspectorDraft == nil)
+    #expect(model.projection.column(.ready).cards.map(\.title) == [])
+}
+
+@Test @MainActor func taskBoardModelPreservesUnsavedInspectorDraftAcrossReloadsForSameVisibleTask() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Original", prompt: "Original prompt")
+    let model = TaskBoardModel(store: store)
+    try model.load()
+    model.selectTask(task.id)
+    model.inspectorDraft?.title = "Unsaved title"
+    model.inspectorDraft?.prompt = "Unsaved prompt"
+    model.inspectorDraft?.reasoningEffort = .xhigh
+
+    try model.load()
+
+    #expect(model.selectedTaskID == task.id)
+    #expect(model.inspectorDraft?.title == "Unsaved title")
+    #expect(model.inspectorDraft?.prompt == "Unsaved prompt")
+    #expect(model.inspectorDraft?.reasoningEffort == .xhigh)
 }
 
 private func temporaryDatabaseURL() throws -> URL {

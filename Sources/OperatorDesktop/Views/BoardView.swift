@@ -2,8 +2,10 @@ import SwiftUI
 
 public struct BoardView: View {
     @StateObject private var model: TaskBoardModel
+    private let store: OperatorStore
 
     public init(store: OperatorStore) {
+        self.store = store
         _model = StateObject(wrappedValue: TaskBoardModel(store: store))
     }
 
@@ -31,6 +33,9 @@ public struct BoardView: View {
         .onAppear {
             model.loadReportingErrors()
         }
+        .onReceive(store.changes) {
+            model.loadReportingErrors()
+        }
     }
 }
 
@@ -39,7 +44,7 @@ private struct BoardToolbarView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Picker("Repository", selection: repositorySelection) {
+            Picker("Filter by repository", selection: repositorySelection) {
                 ForEach(model.projection.repositoryFilters) { filter in
                     Text(filter.name).tag(filter.id)
                 }
@@ -74,7 +79,7 @@ private struct TaskCreationFormView: View {
                 TextField("Task title", text: creationTitle)
                     .textFieldStyle(.roundedBorder)
 
-                Picker("Repository", selection: creationRepository) {
+                Picker("Task repository", selection: creationRepository) {
                     Text("Choose Repository").tag(Optional<UUID>.none)
                     ForEach(model.projection.repositoryFilters.filter { $0.id != nil }) { filter in
                         Text(filter.name).tag(filter.id)

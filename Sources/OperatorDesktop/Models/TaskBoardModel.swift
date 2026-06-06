@@ -92,16 +92,12 @@ public struct TaskBoardProjection: Equatable, Sendable {
     ) throws -> TaskBoardProjection {
         let repositories = try store.repositories()
         let tasks = try store.tasks()
-        var runsByTaskID: [UUID: [OperatorRun]] = [:]
-
-        for task in tasks {
-            runsByTaskID[task.id] = try store.runs(taskID: task.id)
-        }
+        let latestRunsByTaskID = try store.latestRunsByTaskID()
 
         return TaskBoardProjection(
             repositories: repositories,
             tasks: tasks,
-            runsByTaskID: runsByTaskID,
+            latestRunsByTaskID: latestRunsByTaskID,
             selectedRepositoryID: selectedRepositoryID
         )
     }
@@ -110,9 +106,11 @@ public struct TaskBoardProjection: Equatable, Sendable {
         repositories: [OperatorRepository],
         tasks: [OperatorTask],
         runsByTaskID: [UUID: [OperatorRun]] = [:],
+        latestRunsByTaskID: [UUID: OperatorRun]? = nil,
         selectedRepositoryID: UUID? = nil
     ) {
         let repositoriesByID = Dictionary(uniqueKeysWithValues: repositories.map { ($0.id, $0) })
+        let latestRunsByTaskID = latestRunsByTaskID ?? runsByTaskID.compactMapValues(\.last)
         let filteredTasks = tasks.filter { task in
             guard task.status != .archived else {
                 return false
@@ -136,13 +134,13 @@ public struct TaskBoardProjection: Equatable, Sendable {
                         TaskCardProjection(
                             task: task,
                             repositoryName: repositoriesByID[task.repositoryID]?.name ?? "Unknown Repository",
-                            latestRun: runsByTaskID[task.id]?.last
+                            latestRun: latestRunsByTaskID[task.id]
                         )
                     }
             )
         }
         inspectorsByTaskID = Dictionary(
-            uniqueKeysWithValues: tasks.compactMap { task in
+            uniqueKeysWithValues: filteredTasks.compactMap { task in
                 guard let repository = repositoriesByID[task.repositoryID] else {
                     return nil
                 }
@@ -272,7 +270,6 @@ public final class TaskBoardModel: ObservableObject {
 
     public func selectRepository(_ repositoryID: UUID?) {
         selectedRepositoryID = repositoryID
-        creationDraft.repositoryID = repositoryID ?? creationDraft.repositoryID
         loadReportingErrors()
     }
 
@@ -292,6 +289,9 @@ public final class TaskBoardModel: ObservableObject {
     }
 
     public func selectTask(_ taskID: UUID?) {
+        if selectedTaskID != taskID {
+            inspectorDraft = nil
+        }
         selectedTaskID = taskID
         syncInspectorDraft()
     }
@@ -318,11 +318,14 @@ public final class TaskBoardModel: ObservableObject {
             let selectedTaskID,
             let inspector = projection.inspector(taskID: selectedTaskID)
         else {
+            selectedTaskID = nil
             inspectorDraft = nil
             return
         }
 
-        inspectorDraft = TaskInspectorDraft(inspector: inspector)
+        if inspectorDraft == nil {
+            inspectorDraft = TaskInspectorDraft(inspector: inspector)
+        }
     }
 
     nonisolated private static func userFacingMessage(for error: Error) -> String {
