@@ -2,6 +2,7 @@ import SwiftUI
 
 public struct BoardView: View {
     @StateObject private var model: TaskBoardModel
+    @State private var showInspector = true
     private let store: OperatorStore
 
     public init(
@@ -33,16 +34,31 @@ public struct BoardView: View {
             .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
 
-            Divider()
+            if showInspector {
+                Divider()
 
-            InspectorPanelView(model: model)
-                .frame(width: 320)
+                InspectorPanelView(model: model)
+                    .frame(width: 320)
+                    .transition(.move(edge: .trailing))
+            }
+        }
+        .background {
+            // Hidden control hosting the ⌥⌘B shortcut to toggle the inspector panel.
+            Button("Toggle Inspector", action: toggleInspector)
+                .keyboardShortcut("b", modifiers: [.command, .option])
+                .hidden()
         }
         .onAppear {
             model.loadReportingErrors()
         }
         .onReceive(store.changes) {
             model.loadReportingErrors()
+        }
+    }
+
+    private func toggleInspector() {
+        withAnimation {
+            showInspector.toggle()
         }
     }
 }
