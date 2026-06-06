@@ -77,6 +77,136 @@ import Testing
 }
 
 @MainActor
+@Test func repositorySettingsModelExposesCodexSettingsAppDataPathAndAboutInformation() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let binarySettings = CodexBinarySettings(
+        store: InMemorySettingsBinaryStore(),
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        codexStatusChecker: CodexStatusChecker(runner: StubSettingsCodexStatusRunner(result: .success(.ready)))
+    )
+
+    try model.loadSettings()
+
+    #expect(model.appDataPath == "/tmp/Operator")
+    #expect(model.codexBinaryPath == "/opt/homebrew/bin/codex")
+    #expect(model.codexBinaryOverrideDraft == "")
+    #expect(model.codexStatus == .notChecked)
+    #expect(model.aboutAppName == "Operator Desktop")
+    #expect(model.aboutMinimumMacOS == "15 Sequoia")
+}
+
+@MainActor
+@Test func repositorySettingsModelSavesAbsoluteCodexOverrideAndReportsRelativeOverrideError() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let binaryStore = InMemorySettingsBinaryStore()
+    let binarySettings = CodexBinarySettings(
+        store: binaryStore,
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        codexStatusChecker: CodexStatusChecker(runner: StubSettingsCodexStatusRunner(result: .success(.ready)))
+    )
+
+    try model.loadSettings()
+    model.codexBinaryOverrideDraft = "/custom/bin/codex"
+    model.saveCodexBinaryOverrideReportingErrors()
+
+    #expect(binaryStore.overridePath == "/custom/bin/codex")
+    #expect(model.codexBinaryPath == "/custom/bin/codex")
+    #expect(model.errorMessage == nil)
+
+    model.codexBinaryOverrideDraft = "relative/codex"
+    model.saveCodexBinaryOverrideReportingErrors()
+
+    #expect(model.errorMessage == "Codex binary override must be an absolute path.")
+    #expect(model.codexErrorMessage == "Codex binary override must be an absolute path.")
+    #expect(binaryStore.overridePath == "/custom/bin/codex")
+}
+
+@MainActor
+@Test func repositorySettingsModelRefreshesCodexStatusWithoutBlockingMainActor() async throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let binarySettings = CodexBinarySettings(
+        store: InMemorySettingsBinaryStore(),
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        codexStatusChecker: CodexStatusChecker(runner: StubSettingsCodexStatusRunner(result: .success(.ready)))
+    )
+
+    try model.loadSettings()
+    model.refreshCodexStatus()
+
+    try await waitUntil {
+        model.codexStatus == .ready(URL(filePath: "/opt/homebrew/bin/codex"))
+    }
+}
+
+@MainActor
+@Test func repositorySettingsModelIgnoresStaleCodexStatusRefreshResults() async throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let binaryStore = InMemorySettingsBinaryStore()
+    let binarySettings = CodexBinarySettings(
+        store: binaryStore,
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let statusRunner = SequencedSettingsCodexStatusRunner(results: [
+        (.milliseconds(300), .success(.ready), URL(filePath: "/opt/homebrew/bin/codex")),
+        (.milliseconds(0), .success(.ready), URL(filePath: "/custom/bin/codex"))
+    ])
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        codexStatusChecker: CodexStatusChecker(runner: statusRunner)
+    )
+
+    try model.loadSettings()
+    model.refreshCodexStatus()
+    try model.setCodexBinaryOverride("/custom/bin/codex")
+    model.refreshCodexStatus()
+
+    try await waitUntil(timeout: .seconds(3)) {
+        model.codexStatus == .ready(URL(filePath: "/custom/bin/codex"))
+    }
+    try await Task.sleep(for: .milliseconds(400))
+    #expect(model.codexStatus == .ready(URL(filePath: "/custom/bin/codex")))
+}
+
+@MainActor
+@Test func repositorySettingsModelReportsCodexConfigurationErrorDuringStatusRefresh() async throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let binarySettings = CodexBinarySettings(
+        store: InMemorySettingsBinaryStore(overridePath: "relative/codex"),
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        codexStatusChecker: CodexStatusChecker(runner: StubSettingsCodexStatusRunner(result: .success(.ready)))
+    )
+
+    model.refreshCodexStatus()
+
+    try await waitUntil {
+        model.codexErrorMessage == "Codex binary override must be an absolute path."
+    }
+    #expect(model.codexStatus == .notFound)
+}
+
+@MainActor
 @Test func repositorySettingsModelStartsRepositoryRegistrationWithoutBlockingMainActor() async throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let repositoryURL = URL(filePath: "/tmp/operator")
@@ -189,6 +319,58 @@ private struct StubRepositoryInspector: RepositoryInspecting {
             throw error
         }
         return inspection!
+    }
+}
+
+private final class InMemorySettingsBinaryStore: CodexBinarySettingsStoring, @unchecked Sendable {
+    var overridePath: String?
+
+    init(overridePath: String? = nil) {
+        self.overridePath = overridePath
+    }
+
+    func codexBinaryOverridePath() -> String? {
+        overridePath
+    }
+
+    func setCodexBinaryOverridePath(_ path: String?) {
+        overridePath = path
+    }
+}
+
+private struct StubSettingsBinaryDetector: CodexBinaryDetecting {
+    let detectedURL: URL?
+
+    func detectedCodexBinaryURL() -> URL? {
+        detectedURL
+    }
+}
+
+private struct StubSettingsCodexStatusRunner: CodexStatusRunning {
+    let result: Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>
+
+    func runCodexStatus(binaryURL: URL) async -> Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure> {
+        result
+    }
+}
+
+private final class SequencedSettingsCodexStatusRunner: CodexStatusRunning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var scheduledResults: [(Duration, Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>, URL)]
+
+    init(results: [(Duration, Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>, URL)]) {
+        scheduledResults = results
+    }
+
+    func runCodexStatus(binaryURL: URL) async -> Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure> {
+        let scheduledResult: (Duration, Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>, URL) = lock.withLock {
+            scheduledResults.removeFirst()
+        }
+        try? await Task.sleep(for: scheduledResult.0)
+        guard scheduledResult.2 == binaryURL else {
+            return .failure(.notAuthenticatedOrUnavailable("Unexpected binary URL"))
+        }
+        return scheduledResult.1
     }
 }
 

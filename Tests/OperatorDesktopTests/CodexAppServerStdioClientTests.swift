@@ -141,6 +141,23 @@ import Testing
     #expect(!FileManager.default.fileExists(atPath: overlapURL.path))
 }
 
+@Test func codexAppServerStdioClientReportsMissingExecutablePathClearly() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientMissingExecutable")
+    let missingBinaryURL = directory.appending(path: "missing-codex")
+    let client = CodexAppServerStdioClient(codexBinaryURL: missingBinaryURL)
+
+    await #expect(throws: CodexAppServerClientError.binaryNotFound(path: missingBinaryURL.path)) {
+        try await client.startThreadAndTurn(
+            CodexThreadStartRequest(
+                cwd: directory,
+                model: "gpt-5.5",
+                reasoningEffort: .medium,
+                prompt: "Run with missing executable"
+            )
+        )
+    }
+}
+
 private func writeScript(_ body: String, to url: URL) throws {
     try body.write(to: url, atomically: true, encoding: .utf8)
 }

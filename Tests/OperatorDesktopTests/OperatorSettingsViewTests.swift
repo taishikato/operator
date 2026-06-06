@@ -21,3 +21,11 @@ import Testing
             == "Save default branch for operator"
     )
 }
+
+@Test func settingsAccessibilityLabelsExposeCodexAndOperatorSections() {
+    #expect(RepositorySettingsAccessibility.codexBinaryOverrideLabel == "Codex binary override")
+    #expect(RepositorySettingsAccessibility.saveCodexBinaryOverrideLabel == "Save Codex binary override")
+    #expect(RepositorySettingsAccessibility.refreshCodexStatusLabel == "Refresh Codex status")
+    #expect(RepositorySettingsAccessibility.appDataPathLabel == "Operator app data path")
+    #expect(RepositorySettingsAccessibility.aboutLabel == "About Operator")
+}

@@ -28,8 +28,12 @@ public protocol CodexWorktreePreparing {
     func prepareWorktree(for repository: OperatorRepository) throws -> PreparedWorktree
 }
 
-public protocol CodexAppServerClient {
+public protocol CodexAppServerClient: Sendable {
     func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference
+}
+
+public protocol CodexAppServerClientFactory: Sendable {
+    func makeAppServerClient() throws -> any CodexAppServerClient
 }
 
 public protocol CodexTaskSending: Sendable {
@@ -52,16 +56,28 @@ public struct CodexTriggerService: @unchecked Sendable {
 
     private let store: OperatorStore
     private let worktreePreparer: any CodexWorktreePreparing
-    private let appServerClient: any CodexAppServerClient
+    private let appServerClientFactory: any CodexAppServerClientFactory
 
     public init(
         store: OperatorStore,
         worktreePreparer: any CodexWorktreePreparing,
         appServerClient: any CodexAppServerClient
     ) {
+        self.init(
+            store: store,
+            worktreePreparer: worktreePreparer,
+            appServerClientFactory: FixedCodexAppServerClientFactory(appServerClient: appServerClient)
+        )
+    }
+
+    public init(
+        store: OperatorStore,
+        worktreePreparer: any CodexWorktreePreparing,
+        appServerClientFactory: any CodexAppServerClientFactory
+    ) {
         self.store = store
         self.worktreePreparer = worktreePreparer
-        self.appServerClient = appServerClient
+        self.appServerClientFactory = appServerClientFactory
     }
 
     public func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
@@ -72,6 +88,7 @@ public struct CodexTriggerService: @unchecked Sendable {
 
         let preparedWorktree = try worktreePreparer.prepareWorktree(for: repository)
         do {
+            let appServerClient = try appServerClientFactory.makeAppServerClient()
             let thread = try await appServerClient.startThreadAndTurn(
                 CodexThreadStartRequest(
                     cwd: preparedWorktree.worktreeURL,
@@ -118,3 +135,33 @@ public struct CodexTriggerService: @unchecked Sendable {
 }
 
 extension CodexTriggerService: CodexTaskSending {}
+
+private struct FixedCodexAppServerClientFactory: CodexAppServerClientFactory {
+    let appServerClient: any CodexAppServerClient
+
+    func makeAppServerClient() throws -> any CodexAppServerClient {
+        appServerClient
+    }
+}
+
+public final class ConfiguredCodexAppServerClientFactory: CodexAppServerClientFactory, @unchecked Sendable {
+    private let settings: any CodexBinarySettingsProviding
+    private let makeClient: @Sendable (URL) -> any CodexAppServerClient
+
+    public init(
+        settings: any CodexBinarySettingsProviding = CodexBinarySettings(),
+        makeClient: @escaping @Sendable (URL) -> any CodexAppServerClient = { binaryURL in
+            CodexAppServerStdioClient(codexBinaryURL: binaryURL)
+        }
+    ) {
+        self.settings = settings
+        self.makeClient = makeClient
+    }
+
+    public func makeAppServerClient() throws -> any CodexAppServerClient {
+        guard let binaryURL = try settings.configuration().effectiveBinaryURL else {
+            throw CodexBinaryConfigurationError.notFound
+        }
+        return makeClient(binaryURL)
+    }
+}

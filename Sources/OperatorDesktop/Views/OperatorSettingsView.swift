@@ -4,8 +4,8 @@ import SwiftUI
 public struct OperatorSettingsView: View {
     @StateObject private var model: RepositorySettingsModel
 
-    public init(store: OperatorStore) {
-        _model = StateObject(wrappedValue: RepositorySettingsModel(store: store))
+    public init(store: OperatorStore, appDataURL: URL? = nil) {
+        _model = StateObject(wrappedValue: RepositorySettingsModel(store: store, appDataURL: appDataURL))
     }
 
     public var body: some View {
@@ -34,9 +34,59 @@ public struct OperatorSettingsView: View {
                 }
             }
 
+            Section("Codex") {
+                LabeledContent("Detected binary", value: model.codexDetectedBinaryPath)
+                LabeledContent("Active binary", value: model.codexBinaryPath)
+
+                HStack(spacing: 8) {
+                    TextField("Absolute Codex binary path", text: $model.codexBinaryOverrideDraft)
+                        .textFieldStyle(.roundedBorder)
+                        .accessibilityLabel(RepositorySettingsAccessibility.codexBinaryOverrideLabel)
+
+                    Button {
+                        model.saveCodexBinaryOverrideReportingErrors()
+                    } label: {
+                        Label("Save", systemImage: "checkmark")
+                    }
+                    .accessibilityLabel(RepositorySettingsAccessibility.saveCodexBinaryOverrideLabel)
+                }
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.codexStatus.title)
+                            .font(.headline)
+                        Text(model.codexStatus.message)
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer()
+
+                    Button {
+                        model.refreshCodexStatus()
+                    } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise")
+                    }
+                    .accessibilityLabel(RepositorySettingsAccessibility.refreshCodexStatusLabel)
+                }
+
+                if let codexErrorMessage = model.codexErrorMessage {
+                    Text(codexErrorMessage)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                }
+            }
+
             Section("Operator") {
-                LabeledContent("App", value: "Operator Desktop")
-                LabeledContent("Minimum macOS", value: "15 Sequoia")
+                LabeledContent(RepositorySettingsAccessibility.appDataPathLabel, value: model.appDataPath)
+                LabeledContent("App", value: model.aboutAppName)
+                LabeledContent("Minimum macOS", value: model.aboutMinimumMacOS)
+            }
+
+            Section(RepositorySettingsAccessibility.aboutLabel) {
+                Text("Operator is a local Codex trigger and navigation surface. It does not collect Codex credentials or track Codex completion.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -108,6 +158,12 @@ private struct RepositorySettingsRow: View {
 }
 
 enum RepositorySettingsAccessibility {
+    static let codexBinaryOverrideLabel = "Codex binary override"
+    static let saveCodexBinaryOverrideLabel = "Save Codex binary override"
+    static let refreshCodexStatusLabel = "Refresh Codex status"
+    static let appDataPathLabel = "Operator app data path"
+    static let aboutLabel = "About Operator"
+
     static func defaultBranchLabel(for repository: OperatorRepository) -> String {
         "Default branch for \(repository.name)"
     }
