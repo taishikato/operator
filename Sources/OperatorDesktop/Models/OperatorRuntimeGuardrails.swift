@@ -25,6 +25,7 @@ public struct OperatorRuntimeGuardrails: Equatable, Sendable {
     public let allowedNavigationDestinations: [OperatorDestination]
     public let allowedRunPersistenceColumns: [String]
     public let forbiddenRunPersistenceColumns: Set<String>
+    public let forbiddenFailureErrorMessageSubstrings: [String]
     public let forbiddenVisibleLabels: Set<String>
     public let maximumFailureErrorMessageLength: Int
 
@@ -78,6 +79,14 @@ public struct OperatorRuntimeGuardrails: Equatable, Sendable {
             "testResult",
             "commitStatus",
             "pullRequestURL"
+        ],
+        forbiddenFailureErrorMessageSubstrings: [
+            "rawEvent",
+            "rawEvents",
+            "appServerEvent",
+            "appServerEvents",
+            "transcript",
+            "codexTranscript"
         ],
         forbiddenVisibleLabels: [
             "Backlog",

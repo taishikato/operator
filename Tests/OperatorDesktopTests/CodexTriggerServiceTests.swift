@@ -145,6 +145,33 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .ready)
 }
 
+@Test func codexTriggerStripsForbiddenMarkerSubstringsFromFailureErrorMessage() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Forbidden markers", prompt: "Send")
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-forbidden-markers")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+    ])
+    let rejectedMessage = "app-server rejected turn rawEvent={\"type\":\"delta\"} transcript=assistant said hi"
+    let appServer = FakeCodexAppServerClient(results: [
+        .failure(CodexAppServerClientError.serverRejected(message: rejectedMessage))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .triggerFailed)
+    let storedMessage = try #require(run.errorMessage)
+    #expect(storedMessage.contains("rawEvent") == false)
+    #expect(storedMessage.contains("transcript") == false)
+    #expect(storedMessage.count <= OperatorRuntimeGuardrails.mvp.maximumFailureErrorMessageLength)
+}
+
 @Test func codexTriggerRecordsClearFailureWhenCodexAuthenticationIsUnavailable() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")

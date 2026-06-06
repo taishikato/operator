@@ -108,8 +108,39 @@ import Testing
     #expect(run.codexThreadID == "thread-guardrail")
     #expect(run.codexThreadURL == URL(string: "codex://thread/guardrail"))
     #expect(run.errorMessage == nil)
-    #expect(run.serializedTriggerFields.contains("RAW_EVENT_MARKER") == false)
-    #expect(run.serializedTriggerFields.contains("TRANSCRIPT_MARKER") == false)
+}
+
+@Test func failedSendFlowDoesNotPersistForbiddenMarkerSubstringsInStoredRun() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Guard failure storage",
+        prompt: "Prompt"
+    )
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-guardrail-failure")
+    let worktreePreparer = GuardrailWorktreePreparer(worktreeURL: worktreeURL)
+    let rejectedMessage = "app-server rejected turn rawEvent={\"type\":\"delta\"} transcript=assistant said hi"
+    let appServer = FailingGuardrailAppServerClient(message: rejectedMessage)
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .triggerFailed)
+    #expect(
+        run.serializedPersistedFieldValues()
+            .joined(separator: "\n")
+            .contains("rawEvent") == false
+    )
+    #expect(
+        run.serializedPersistedFieldValues()
+            .joined(separator: "\n")
+            .contains("transcript") == false
+    )
 }
 
 private final class GuardrailWorktreePreparer: CodexWorktreePreparing, @unchecked Sendable {
@@ -121,6 +152,18 @@ private final class GuardrailWorktreePreparer: CodexWorktreePreparing, @unchecke
 
     func prepareWorktree(for repository: OperatorRepository) throws -> PreparedWorktree {
         PreparedWorktree(worktreeURL: worktreeURL, baseBranch: repository.defaultBranch, baseRef: "abc123")
+    }
+}
+
+private final class FailingGuardrailAppServerClient: CodexAppServerClient, @unchecked Sendable {
+    private let message: String
+
+    init(message: String) {
+        self.message = message
+    }
+
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+        throw CodexAppServerClientError.serverRejected(message: message)
     }
 }
 
@@ -137,21 +180,39 @@ private final class GuardrailAppServerClient: CodexAppServerClient, @unchecked S
 }
 
 private extension OperatorRun {
-    var serializedTriggerFields: String {
-        [
-            id.uuidString,
-            taskID.uuidString,
-            repositoryID.uuidString,
-            status.rawValue,
-            worktreePath,
-            baseBranch,
-            baseRef,
-            codexThreadID,
-            codexThreadURL?.absoluteString,
-            errorMessage
-        ]
-            .compactMap(\.self)
-            .joined(separator: "\n")
+    func serializedPersistedFieldValues(
+        using guardrails: OperatorRuntimeGuardrails = .mvp
+    ) -> [String] {
+        guardrails.allowedRunPersistenceColumns.compactMap { column in
+            switch column {
+            case "id":
+                id.uuidString
+            case "taskID":
+                taskID.uuidString
+            case "repositoryID":
+                repositoryID.uuidString
+            case "status":
+                status.rawValue
+            case "worktreePath":
+                worktreePath
+            case "baseBranch":
+                baseBranch
+            case "baseRef":
+                baseRef
+            case "codexThreadID":
+                codexThreadID
+            case "codexThreadURL":
+                codexThreadURL?.absoluteString
+            case "errorMessage":
+                errorMessage
+            case "createdAt":
+                ISO8601DateFormatter().string(from: createdAt)
+            case "completedAt":
+                completedAt.map { ISO8601DateFormatter().string(from: $0) }
+            default:
+                nil
+            }
+        }
     }
 }
 

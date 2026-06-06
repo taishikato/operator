@@ -127,11 +127,27 @@ public struct CodexTriggerService: @unchecked Sendable {
         let normalized = message
             .split(whereSeparator: \.isNewline)
             .joined(separator: " ")
+        let sanitized = sanitizedFailureErrorMessage(normalized)
         let maximumLength = OperatorRuntimeGuardrails.mvp.maximumFailureErrorMessageLength
-        if normalized.count <= maximumLength {
-            return normalized
+        if sanitized.count <= maximumLength {
+            return sanitized
         }
-        return String(normalized.prefix(maximumLength - 3)) + "..."
+        return String(sanitized.prefix(maximumLength - 3)) + "..."
+    }
+
+    private static func sanitizedFailureErrorMessage(_ message: String) -> String {
+        var sanitized = message
+        for forbiddenSubstring in OperatorRuntimeGuardrails.mvp.forbiddenFailureErrorMessageSubstrings {
+            sanitized = sanitized.replacingOccurrences(
+                of: forbiddenSubstring,
+                with: "",
+                options: .caseInsensitive
+            )
+        }
+        return sanitized
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 
