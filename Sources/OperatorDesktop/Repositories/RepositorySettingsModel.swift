@@ -11,6 +11,7 @@ extension OperatorStore: RepositorySettingsStoring {}
 public final class RepositorySettingsModel: ObservableObject {
     @Published public private(set) var repositories: [OperatorRepository] = []
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var codexErrorMessage: String?
     @Published public private(set) var isAddingRepository = false
     @Published public private(set) var appDataPath: String
     @Published public private(set) var codexBinaryPath = "Not found"
@@ -128,7 +129,9 @@ public final class RepositorySettingsModel: ObservableObject {
         do {
             try setCodexBinaryOverride(codexBinaryOverrideDraft)
         } catch {
-            errorMessage = Self.userFacingMessage(for: error)
+            let message = Self.userFacingMessage(for: error)
+            errorMessage = message
+            codexErrorMessage = message
         }
     }
 
@@ -137,6 +140,7 @@ public final class RepositorySettingsModel: ObservableObject {
         try loadCodexBinarySettings()
         codexStatus = .notChecked
         errorMessage = nil
+        codexErrorMessage = nil
     }
 
     public func refreshCodexStatus() {

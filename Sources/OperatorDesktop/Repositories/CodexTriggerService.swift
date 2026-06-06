@@ -147,14 +147,6 @@ private struct FixedCodexAppServerClientFactory: CodexAppServerClientFactory {
 public final class ConfiguredCodexAppServerClientFactory: CodexAppServerClientFactory, @unchecked Sendable {
     private let settings: any CodexBinarySettingsProviding
     private let makeClient: @Sendable (URL) -> any CodexAppServerClient
-    private let lock = NSLock()
-    private var recordedBinaryURLs: [URL] = []
-
-    var createdBinaryURLs: [URL] {
-        lock.withLock {
-            recordedBinaryURLs
-        }
-    }
 
     public init(
         settings: any CodexBinarySettingsProviding = CodexBinarySettings(),
@@ -169,9 +161,6 @@ public final class ConfiguredCodexAppServerClientFactory: CodexAppServerClientFa
     public func makeAppServerClient() throws -> any CodexAppServerClient {
         guard let binaryURL = try settings.configuration().effectiveBinaryURL else {
             throw CodexBinaryConfigurationError.notFound
-        }
-        lock.withLock {
-            recordedBinaryURLs.append(binaryURL)
         }
         return makeClient(binaryURL)
     }

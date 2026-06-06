@@ -69,6 +69,12 @@ public struct OperatorSettingsView: View {
                     }
                     .accessibilityLabel(RepositorySettingsAccessibility.refreshCodexStatusLabel)
                 }
+
+                if let codexErrorMessage = model.codexErrorMessage {
+                    Text(codexErrorMessage)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                }
             }
 
             Section("Operator") {

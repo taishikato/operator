@@ -99,8 +99,10 @@ import Testing
     let builtClient = FakeCodexAppServerClient(results: [
         .success(CodexThreadReference(id: "thread-configured", url: nil))
     ])
+    let createdBinaryURLs = CreatedBinaryURLRecorder()
     let factory = ConfiguredCodexAppServerClientFactory(settings: binarySettings) { binaryURL in
-        RecordingCodexAppServerClient(binaryURL: binaryURL, client: builtClient)
+        createdBinaryURLs.record(binaryURL)
+        return RecordingCodexAppServerClient(binaryURL: binaryURL, client: builtClient)
     }
     let service = CodexTriggerService(
         store: store,
@@ -111,7 +113,7 @@ import Testing
     let run = try await service.sendTaskToCodex(taskID: task.id)
 
     #expect(run.status == .triggered)
-    #expect(factory.createdBinaryURLs == [URL(filePath: "/custom/bin/codex")])
+    #expect(createdBinaryURLs.urls == [URL(filePath: "/custom/bin/codex")])
     #expect(builtClient.requests.map(\.cwd) == [worktreeURL])
 }
 
@@ -227,6 +229,21 @@ private struct FakeCodexAppServerError: Error, LocalizedError {
 
     var errorDescription: String? {
         message
+    }
+}
+
+private final class CreatedBinaryURLRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedURLs: [URL] = []
+
+    var urls: [URL] {
+        lock.withLock { recordedURLs }
+    }
+
+    func record(_ url: URL) {
+        lock.withLock {
+            recordedURLs.append(url)
+        }
     }
 }
 

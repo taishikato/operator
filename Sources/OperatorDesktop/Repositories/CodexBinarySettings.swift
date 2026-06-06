@@ -130,6 +130,7 @@ public struct ProcessCodexBinaryDetector: CodexBinaryDetecting {
         let process = Process()
         process.executableURL = URL(filePath: "/usr/bin/env")
         process.arguments = ["which", "codex"]
+        process.environment = CodexProcessEnvironment.augmentedEnvironment()
 
         let outputPipe = Pipe()
         process.standardOutput = outputPipe

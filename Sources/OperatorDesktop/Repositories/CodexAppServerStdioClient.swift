@@ -127,6 +127,7 @@ private actor CodexAppServerStdioTransport {
         let process = Process()
         process.executableURL = executableURL
         process.arguments = arguments
+        process.environment = CodexProcessEnvironment.augmentedEnvironment(binaryURL: executableURL)
 
         let inputPipe = Pipe()
         let outputPipe = Pipe()

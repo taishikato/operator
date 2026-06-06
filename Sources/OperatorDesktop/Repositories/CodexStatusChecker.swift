@@ -77,7 +77,8 @@ public struct ProcessCodexStatusRunner: CodexStatusRunning {
         await Task.detached(priority: .utility) {
             let process = Process()
             process.executableURL = binaryURL
-            process.arguments = ["auth", "status"]
+            process.arguments = ["login", "status"]
+            process.environment = CodexProcessEnvironment.augmentedEnvironment(binaryURL: binaryURL)
 
             let outputPipe = Pipe()
             let errorPipe = Pipe()

@@ -127,6 +127,7 @@ import Testing
     model.saveCodexBinaryOverrideReportingErrors()
 
     #expect(model.errorMessage == "Codex binary override must be an absolute path.")
+    #expect(model.codexErrorMessage == "Codex binary override must be an absolute path.")
     #expect(binaryStore.overridePath == "/custom/bin/codex")
 }
 
