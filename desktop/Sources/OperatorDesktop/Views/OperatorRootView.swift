@@ -7,6 +7,7 @@ public struct OperatorRootView: View {
     private let codexOpener: (any CodexAppOpening)?
 
     @State private var selection: OperatorSidebarSelection
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     public init(
         store: OperatorStore,
@@ -22,7 +23,7 @@ public struct OperatorRootView: View {
     }
 
     public var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(selection: $selection)
         } detail: {
             switch selection {
@@ -33,6 +34,18 @@ public struct OperatorRootView: View {
                 ArchivedView(store: store, codexOpener: codexOpener)
                     .navigationTitle("Archived")
             }
+        }
+        .background {
+            // Hidden control hosting the ⌘B shortcut to toggle the sidebar.
+            Button("Toggle Sidebar", action: toggleSidebar)
+                .keyboardShortcut("b", modifiers: .command)
+                .hidden()
+        }
+    }
+
+    private func toggleSidebar() {
+        withAnimation {
+            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
         }
     }
 }
