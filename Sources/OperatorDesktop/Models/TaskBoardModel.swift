@@ -302,6 +302,7 @@ public final class TaskBoardModel: ObservableObject {
         }
 
         _ = try inspectorDraft.save(taskID: selectedTaskID, in: store)
+        self.inspectorDraft = nil
         try load()
     }
 

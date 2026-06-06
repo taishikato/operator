@@ -267,6 +267,25 @@ import Testing
     #expect(model.inspectorDraft?.reasoningEffort == .xhigh)
 }
 
+@Test @MainActor func taskBoardModelRefreshesInspectorDraftAfterSuccessfulSave() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Original", prompt: "Original prompt")
+    let model = TaskBoardModel(store: store)
+    try model.load()
+    model.selectTask(task.id)
+    model.inspectorDraft?.title = "  Trimmed title  "
+    model.inspectorDraft?.prompt = "  Trimmed prompt  "
+    model.inspectorDraft?.reasoningEffort = .high
+
+    try model.saveSelectedInspectorTask()
+
+    #expect(model.selectedTaskID == task.id)
+    #expect(model.inspectorDraft?.title == "Trimmed title")
+    #expect(model.inspectorDraft?.prompt == "Trimmed prompt")
+    #expect(model.inspectorDraft?.reasoningEffort == .high)
+}
+
 private func temporaryDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "TaskBoardModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)
