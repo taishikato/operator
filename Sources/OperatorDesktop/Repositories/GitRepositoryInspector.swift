@@ -132,10 +132,6 @@ public final class DefaultGitCommandRunner: GitCommandRunning, @unchecked Sendab
 }
 
 private extension String {
-    var trimmed: String {
-        trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
     func removingPrefix(_ prefix: String) -> String {
         guard hasPrefix(prefix) else {
             return self
