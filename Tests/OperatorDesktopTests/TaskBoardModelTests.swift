@@ -73,6 +73,48 @@ import Testing
     #expect(projection.columns.flatMap(\.cards).map(\.title).contains("Archived work") == false)
 }
 
+@Test func boardProjectionExposesOpenInCodexForReviewAndDoneButNotReadyTasks() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let readyTask = try store.createTask(repositoryID: repository.id, title: "Ready work", prompt: "Prompt")
+    let reviewTask = try store.createTask(repositoryID: repository.id, title: "Review work", prompt: "Prompt")
+    let reviewURL = URL(string: "codex://thread/review")!
+    _ = try store.recordSuccessfulRun(
+        taskID: reviewTask.id,
+        worktreePath: "/tmp/worktrees/review",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-review",
+        codexThreadURL: reviewURL
+    )
+    let doneCandidate = try store.createTask(repositoryID: repository.id, title: "Done work", prompt: "Prompt")
+    _ = try store.recordSuccessfulRun(
+        taskID: doneCandidate.id,
+        worktreePath: "/tmp/worktrees/done",
+        baseBranch: "main",
+        baseRef: "def456",
+        codexThreadID: "thread-done",
+        codexThreadURL: nil
+    )
+    let doneTask = try store.markTaskDone(id: doneCandidate.id)
+
+    let projection = try TaskBoardProjection.load(from: store)
+    let readyCard = try #require(projection.column(.ready).cards.first)
+    let reviewCard = try #require(projection.column(.review).cards.first)
+    let doneCard = try #require(projection.column(.done).cards.first)
+
+    #expect(readyCard.id == readyTask.id)
+    #expect(readyCard.canOpenInCodexApp == false)
+    #expect(readyCard.codexOpenTarget == nil)
+    #expect(reviewCard.id == reviewTask.id)
+    #expect(reviewCard.canOpenInCodexApp)
+    #expect(reviewCard.codexOpenLabel == "Open in Codex App")
+    #expect(reviewCard.codexOpenTarget == .url(reviewURL))
+    #expect(doneCard.id == doneTask.id)
+    #expect(doneCard.canOpenInCodexApp)
+    #expect(doneCard.codexOpenTarget == .worktree(URL(filePath: "/tmp/worktrees/done", directoryHint: .isDirectory)))
+}
+
 @Test func boardProjectionFiltersByRepositoryAndIncludesCardBadges() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let operatorRepo = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -131,6 +173,92 @@ import Testing
     #expect(reviewInspector.prompt == "Review prompt")
     #expect(reviewInspector.isEditable == false)
     #expect(reviewInspector.canSendToCodex == false)
+    #expect(reviewInspector.canOpenInCodexApp)
+    #expect(reviewInspector.codexOpenLabel == "Open in Codex App")
+}
+
+@Test @MainActor func taskBoardModelOpensCodexTargetForReviewTask() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
+    let threadURL = URL(string: "codex://thread/thread-1")!
+    _ = try store.recordSuccessfulRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/review",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-1",
+        codexThreadURL: threadURL
+    )
+    let opener = RecordingCodexAppOpener()
+    let model = TaskBoardModel(store: store, codexOpener: opener)
+    try model.load()
+
+    await model.openTaskInCodexAppReportingErrors(taskID: task.id)
+
+    #expect(opener.openedTargets == [.url(threadURL)])
+    #expect(model.errorMessage == nil)
+}
+
+@Test @MainActor func taskBoardModelReportsShortErrorWhenCodexOpenFails() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
+    _ = try store.recordSuccessfulRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/review",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-1",
+        codexThreadURL: nil
+    )
+    let opener = FailingCodexAppOpener()
+    let model = TaskBoardModel(store: store, codexOpener: opener)
+    try model.load()
+
+    await model.openTaskInCodexAppReportingErrors(taskID: task.id)
+
+    #expect(opener.openedTargets == [.worktree(URL(filePath: "/tmp/worktrees/review", directoryHint: .isDirectory))])
+    #expect(model.errorMessage == "Unable to open Codex App.")
+}
+
+@Test func taskBoardModelDoesNotBlockMainActorWhileOpeningCodex() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
+    _ = try store.recordSuccessfulRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/review",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-1",
+        codexThreadURL: nil
+    )
+    let opener = HoldingCodexAppOpener()
+    let model = await MainActor.run {
+        let model = TaskBoardModel(store: store, codexOpener: opener)
+        model.loadReportingErrors()
+        return model
+    }
+
+    let openTask = Task {
+        await model.openTaskInCodexAppReportingErrors(taskID: task.id)
+    }
+    await waitUntil { opener.didStartOpening }
+
+    let mainActorPing = ThreadSafeFlag()
+    let pingTask = Task {
+        await MainActor.run {
+            mainActorPing.set()
+        }
+    }
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(mainActorPing.isSet)
+
+    opener.complete()
+    await openTask.value
+    await pingTask.value
 }
 
 @Test func inspectorProjectionOnlyIncludesVisibleTasks() throws {
@@ -409,6 +537,73 @@ private final class RecordingCodexTaskSender: CodexTaskSending, @unchecked Senda
             codexThreadID: "thread-1",
             codexThreadURL: nil
         )
+    }
+}
+
+private final class RecordingCodexAppOpener: CodexAppOpening, @unchecked Sendable {
+    private(set) var openedTargets: [CodexOpenTarget] = []
+
+    func open(_ target: CodexOpenTarget) throws {
+        openedTargets.append(target)
+    }
+}
+
+private final class FailingCodexAppOpener: CodexAppOpening, @unchecked Sendable {
+    private(set) var openedTargets: [CodexOpenTarget] = []
+
+    func open(_ target: CodexOpenTarget) throws {
+        openedTargets.append(target)
+        throw CodexAppOpenError.openFailed
+    }
+}
+
+private final class HoldingCodexAppOpener: CodexAppOpening, @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var startedOpening = false
+
+    var didStartOpening: Bool {
+        lock.withLock {
+            startedOpening
+        }
+    }
+
+    func open(_ target: CodexOpenTarget) throws {
+        lock.withLock {
+            startedOpening = true
+        }
+        semaphore.wait()
+    }
+
+    func complete() {
+        semaphore.signal()
+    }
+}
+
+private final class ThreadSafeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.withLock {
+            value
+        }
+    }
+
+    func set() {
+        lock.withLock {
+            value = true
+        }
+    }
+}
+
+private func waitUntil(
+    timeout: Duration = .seconds(1),
+    condition: @escaping @Sendable () -> Bool
+) async {
+    let start = ContinuousClock.now
+    while !condition(), start.duration(to: .now) < timeout {
+        await Task.yield()
     }
 }
 
