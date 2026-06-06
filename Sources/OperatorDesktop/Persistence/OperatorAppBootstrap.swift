@@ -6,6 +6,16 @@ public enum OperatorAppBootstrap {
             return try OperatorStore(databaseURL: databaseURL)
         }
 
-        return try OperatorStore.applicationSupportStore()
+        return try OperatorStore(databaseURL: applicationDataURL().appending(path: "operator.sqlite"))
+    }
+
+    public static func applicationDataURL(fileManager: FileManager = .default) throws -> URL {
+        let baseURL = try fileManager.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        return baseURL.appending(path: "Operator", directoryHint: .isDirectory)
     }
 }

@@ -1,6 +1,6 @@
 # Codex App-Server Trigger
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: AFK
 
 ## Parent
@@ -19,25 +19,25 @@ Operator is only the trigger surface for Codex. Do not track Codex completion, r
 
 ## Acceptance criteria
 
-- [ ] Ready task cards expose a "Send to Codex" action.
-- [ ] Ready task inspector exposes a primary "Send to Codex" action.
-- [ ] Sending shows "Sending..." while worktree preparation and app-server triggering are in progress.
-- [ ] `codex app-server` is spawned lazily only when sending requires it.
-- [ ] app-server communication uses stdio.
-- [ ] The Codex App does not need to be running.
-- [ ] The app-server thread is started with the prepared worktree as cwd.
-- [ ] The model parameter is fixed to `gpt-5.5`.
-- [ ] The selected reasoning effort is passed as an app-server parameter.
-- [ ] The Task prompt is sent exactly as written.
-- [ ] Operator does not append hidden instructions or metadata to the prompt.
-- [ ] Trigger success stores the Codex thread reference.
-- [ ] Trigger success moves the Task to Review.
-- [ ] Trigger failure leaves the Task in Ready.
-- [ ] Trigger failure stores a short error message.
-- [ ] Failed trigger retry creates a new Run record and a new worktree.
-- [ ] Successful Tasks cannot be sent again.
-- [ ] App-server notifications are drained but not persisted.
-- [ ] Tests use a fake app-server client or transport and do not require real Codex.
+- [x] Ready task cards expose a "Send to Codex" action.
+- [x] Ready task inspector exposes a primary "Send to Codex" action.
+- [x] Sending shows "Sending..." while worktree preparation and app-server triggering are in progress.
+- [x] `codex app-server` is spawned lazily only when sending requires it.
+- [x] app-server communication uses stdio.
+- [x] The Codex App does not need to be running.
+- [x] The app-server thread is started with the prepared worktree as cwd.
+- [x] The model parameter is fixed to `gpt-5.5`.
+- [x] The selected reasoning effort is passed as an app-server parameter.
+- [x] The Task prompt is sent exactly as written.
+- [x] Operator does not append hidden instructions or metadata to the prompt.
+- [x] Trigger success stores the Codex thread reference.
+- [x] Trigger success moves the Task to Review.
+- [x] Trigger failure leaves the Task in Ready.
+- [x] Trigger failure stores a short error message.
+- [x] Failed trigger retry creates a new Run record and a new worktree.
+- [x] Successful Tasks cannot be sent again.
+- [x] App-server notifications are drained but not persisted.
+- [x] Tests use a fake app-server client or transport and do not require real Codex.
 
 ## Implementation notes
 
