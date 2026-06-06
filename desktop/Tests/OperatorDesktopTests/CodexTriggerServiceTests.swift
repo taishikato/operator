@@ -117,6 +117,36 @@ import Testing
     #expect(builtClient.requests.map(\.cwd) == [worktreeURL])
 }
 
+@Test func configuredCodexAppServerClientFactoryKeepsCreatedClientAliveForReuse() throws {
+    let binarySettings = StaticCodexBinarySettingsProvider(
+        configuration: CodexBinaryConfiguration(
+            detectedBinaryURL: URL(filePath: "/usr/local/bin/codex"),
+            overrideBinaryURL: nil
+        )
+    )
+    let lifetime = ClientLifetimeRecorder()
+    let factory = ConfiguredCodexAppServerClientFactory(settings: binarySettings) { _ in
+        lifetime.recordCreated()
+        return LifetimeRecordingCodexAppServerClient {
+            lifetime.recordDeinitialized()
+        }
+    }
+
+    do {
+        _ = try factory.makeAppServerClient()
+    }
+
+    #expect(lifetime.createdCount == 1)
+    #expect(lifetime.deinitializedCount == 0)
+
+    do {
+        _ = try factory.makeAppServerClient()
+    }
+
+    #expect(lifetime.createdCount == 1)
+    #expect(lifetime.deinitializedCount == 0)
+}
+
 @Test func codexTriggerRecordsClearFailureWhenConfiguredBinaryIsMissing() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -297,6 +327,48 @@ private final class RecordingCodexAppServerClient: CodexAppServerClient, @unchec
 
     func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
         try await client.startThreadAndTurn(request)
+    }
+}
+
+private final class LifetimeRecordingCodexAppServerClient: CodexAppServerClient, @unchecked Sendable {
+    let onDeinit: @Sendable () -> Void
+
+    init(onDeinit: @escaping @Sendable () -> Void) {
+        self.onDeinit = onDeinit
+    }
+
+    deinit {
+        onDeinit()
+    }
+
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+        CodexThreadReference(id: "thread-lifetime", url: nil)
+    }
+}
+
+private final class ClientLifetimeRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var createdCountValue = 0
+    private var deinitializedCountValue = 0
+
+    var createdCount: Int {
+        lock.withLock { createdCountValue }
+    }
+
+    var deinitializedCount: Int {
+        lock.withLock { deinitializedCountValue }
+    }
+
+    func recordCreated() {
+        lock.withLock {
+            createdCountValue += 1
+        }
+    }
+
+    func recordDeinitialized() {
+        lock.withLock {
+            deinitializedCountValue += 1
+        }
     }
 }
 

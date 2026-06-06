@@ -141,6 +141,62 @@ import Testing
     #expect(!FileManager.default.fileExists(atPath: overlapURL.path))
 }
 
+@Test func codexAppServerStdioClientSendsCurrentTextUserInputShape() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientTextInput")
+    let scriptURL = directory.appending(path: "server.py")
+    let inputURL = directory.appending(path: "turn-input.json")
+    try writeScript(
+        """
+        import json
+        import pathlib
+        import sys
+
+        input_path = pathlib.Path(sys.argv[1])
+
+        def read_request():
+            line = sys.stdin.readline()
+            if not line:
+                sys.exit(1)
+            return json.loads(line)
+
+        def send(message):
+            sys.stdout.write(json.dumps(message) + "\\n")
+            sys.stdout.flush()
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-input"}}})
+
+        request = read_request()
+        input_path.write_text(json.dumps(request["params"]["input"]))
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path, inputURL.path]
+    )
+
+    _ = try await client.startThreadAndTurn(
+        CodexThreadStartRequest(
+            cwd: directory,
+            model: "gpt-5.5",
+            reasoningEffort: .medium,
+            prompt: "Preserve this prompt"
+        )
+    )
+
+    let inputData = try Data(contentsOf: inputURL)
+    let input = try #require(JSONSerialization.jsonObject(with: inputData) as? [[String: Any]])
+    let textInput = try #require(input.first)
+    #expect(textInput["type"] as? String == "text")
+    #expect(textInput["text"] as? String == "Preserve this prompt")
+    #expect((textInput["text_elements"] as? [Any])?.isEmpty == true)
+}
+
 @Test func codexAppServerStdioClientReportsMissingExecutablePathClearly() async throws {
     let directory = try temporaryDirectory(named: "CodexAppServerStdioClientMissingExecutable")
     let missingBinaryURL = directory.appending(path: "missing-codex")

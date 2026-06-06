@@ -80,7 +80,8 @@ private actor CodexAppServerStdioTransport {
                     "input": [
                         [
                             "type": "text",
-                            "text": request.prompt
+                            "text": request.prompt,
+                            "text_elements": []
                         ]
                     ]
                 ]
