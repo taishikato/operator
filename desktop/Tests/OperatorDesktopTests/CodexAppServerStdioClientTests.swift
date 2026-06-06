@@ -56,6 +56,7 @@ import Testing
     )
 
     #expect(thread.id == "thread-drain")
+    #expect(thread.url == URL(string: "codex://threads/thread-drain"))
     #expect(await fileExists(at: completionURL, withinMilliseconds: 5_000))
 }
 

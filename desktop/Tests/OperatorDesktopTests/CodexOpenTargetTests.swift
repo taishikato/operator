@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import OperatorDesktop
 
-@Test func codexOpenTargetPrefersSavedThreadURL() throws {
+@Test func codexOpenTargetCanonicalizesSavedThreadURLFromThreadID() throws {
     let run = successfulRun(
         worktreePath: "/tmp/operator-worktree",
         codexThreadURL: URL(string: "codex://thread/thread-1")
@@ -10,12 +10,13 @@ import Testing
 
     let target = try #require(CodexOpenTarget(run: run))
 
-    #expect(target == .url(URL(string: "codex://thread/thread-1")!))
+    #expect(target == .url(URL(string: "codex://threads/thread-1")!))
 }
 
 @Test func codexOpenTargetFallsBackToRunWorktreePath() throws {
     let run = successfulRun(
         worktreePath: "/tmp/operator worktree",
+        codexThreadID: nil,
         codexThreadURL: nil
     )
 
@@ -44,12 +45,12 @@ import Testing
 }
 
 @Test func codexOpenCommandOpensDeepLinkDirectlyThroughOSOpen() {
-    let target = CodexOpenTarget.url(URL(string: "codex://thread/thread-1")!)
+    let target = CodexOpenTarget.url(URL(string: "codex://threads/thread-1")!)
 
     let command = CodexOpenCommand(target: target)
 
     #expect(command.executableURL == URL(filePath: "/usr/bin/open"))
-    #expect(command.arguments == ["codex://thread/thread-1"])
+    #expect(command.arguments == ["codex://threads/thread-1"])
 }
 
 @Test func codexOpenCommandOpensWorktreeWithCodexApplication() {
@@ -61,7 +62,11 @@ import Testing
     #expect(command.arguments == ["-a", "Codex", "/tmp/operator worktree"])
 }
 
-private func successfulRun(worktreePath: String, codexThreadURL: URL?) -> OperatorRun {
+private func successfulRun(
+    worktreePath: String,
+    codexThreadID: String? = "thread-1",
+    codexThreadURL: URL?
+) -> OperatorRun {
     OperatorRun(
         id: UUID(),
         taskID: UUID(),
@@ -70,7 +75,7 @@ private func successfulRun(worktreePath: String, codexThreadURL: URL?) -> Operat
         worktreePath: worktreePath,
         baseBranch: "main",
         baseRef: "abc123",
-        codexThreadID: "thread-1",
+        codexThreadID: codexThreadID,
         codexThreadURL: codexThreadURL,
         errorMessage: nil,
         createdAt: Date(timeIntervalSince1970: 1_700_000_000),

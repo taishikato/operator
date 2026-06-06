@@ -263,7 +263,7 @@ private actor CodexAppServerStdioTransport {
             throw CodexAppServerClientError.invalidResponse
         }
 
-        let url = URL(string: "codex://thread/\(threadID)")
+        let url = CodexThreadReference.deepLinkURL(threadID: threadID)
         return CodexThreadReference(id: threadID, url: url)
     }
 }

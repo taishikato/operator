@@ -22,6 +22,10 @@ public struct CodexThreadReference: Equatable, Sendable {
         self.id = id
         self.url = url
     }
+
+    public static func deepLinkURL(threadID: String) -> URL? {
+        URL(string: "codex://threads/\(threadID)")
+    }
 }
 
 public protocol CodexWorktreePreparing {

@@ -78,14 +78,16 @@ import Testing
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let readyTask = try store.createTask(repositoryID: repository.id, title: "Ready work", prompt: "Prompt")
     let reviewTask = try store.createTask(repositoryID: repository.id, title: "Review work", prompt: "Prompt")
-    let reviewURL = URL(string: "codex://thread/review")!
+    let legacyReviewURL = URL(string: "codex://thread/review")!
+    let canonicalReviewURL = URL(string: "codex://threads/thread-review")!
+    let doneURL = URL(string: "codex://threads/thread-done")!
     _ = try store.recordSuccessfulRun(
         taskID: reviewTask.id,
         worktreePath: "/tmp/worktrees/review",
         baseBranch: "main",
         baseRef: "abc123",
         codexThreadID: "thread-review",
-        codexThreadURL: reviewURL
+        codexThreadURL: legacyReviewURL
     )
     let doneCandidate = try store.createTask(repositoryID: repository.id, title: "Done work", prompt: "Prompt")
     _ = try store.recordSuccessfulRun(
@@ -109,10 +111,10 @@ import Testing
     #expect(reviewCard.id == reviewTask.id)
     #expect(reviewCard.canOpenInCodexApp)
     #expect(reviewCard.codexOpenLabel == "Open in Codex App")
-    #expect(reviewCard.codexOpenTarget == .url(reviewURL))
+    #expect(reviewCard.codexOpenTarget == .url(canonicalReviewURL))
     #expect(doneCard.id == doneTask.id)
     #expect(doneCard.canOpenInCodexApp)
-    #expect(doneCard.codexOpenTarget == .worktree(URL(filePath: "/tmp/worktrees/done", directoryHint: .isDirectory)))
+    #expect(doneCard.codexOpenTarget == .url(doneURL))
 }
 
 @Test func boardProjectionFiltersByRepositoryAndIncludesCardBadges() throws {
@@ -218,14 +220,15 @@ import Testing
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
-    let threadURL = URL(string: "codex://thread/thread-1")!
+    let legacyThreadURL = URL(string: "codex://thread/thread-1")!
+    let canonicalThreadURL = URL(string: "codex://threads/thread-1")!
     _ = try store.recordSuccessfulRun(
         taskID: task.id,
         worktreePath: "/tmp/worktrees/review",
         baseBranch: "main",
         baseRef: "abc123",
         codexThreadID: "thread-1",
-        codexThreadURL: threadURL
+        codexThreadURL: legacyThreadURL
     )
     let opener = RecordingCodexAppOpener()
     let model = TaskBoardModel(store: store, codexOpener: opener)
@@ -233,7 +236,7 @@ import Testing
 
     await model.openTaskInCodexAppReportingErrors(taskID: task.id)
 
-    #expect(opener.openedTargets == [.url(threadURL)])
+    #expect(opener.openedTargets == [.url(canonicalThreadURL)])
     #expect(model.errorMessage == nil)
 }
 
@@ -255,7 +258,7 @@ import Testing
 
     await model.openTaskInCodexAppReportingErrors(taskID: task.id)
 
-    #expect(opener.openedTargets == [.worktree(URL(filePath: "/tmp/worktrees/review", directoryHint: .isDirectory))])
+    #expect(opener.openedTargets == [.url(URL(string: "codex://threads/thread-1")!)])
     #expect(model.errorMessage == "Unable to open Codex App.")
 }
 

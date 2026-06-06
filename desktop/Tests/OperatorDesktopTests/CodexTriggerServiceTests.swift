@@ -16,7 +16,7 @@ import Testing
         PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
     ])
     let appServer = FakeCodexAppServerClient(results: [
-        .success(CodexThreadReference(id: "thread-1", url: URL(string: "codex://thread/thread-1")))
+        .success(CodexThreadReference(id: "thread-1", url: URL(string: "codex://threads/thread-1")))
     ])
     let service = CodexTriggerService(
         store: store,
@@ -31,7 +31,7 @@ import Testing
     #expect(run.baseBranch == "main")
     #expect(run.baseRef == "abc123")
     #expect(run.codexThreadID == "thread-1")
-    #expect(run.codexThreadURL == URL(string: "codex://thread/thread-1"))
+    #expect(run.codexThreadURL == URL(string: "codex://threads/thread-1"))
     #expect(try store.task(id: task.id)?.status == .review)
     #expect(try store.runs(taskID: task.id).map(\.id) == [run.id])
     #expect(worktreePreparer.repositories.map(\.id) == [repository.id])

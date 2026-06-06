@@ -6,14 +6,15 @@ import Testing
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let successfulTask = try store.createTask(repositoryID: repository.id, title: "Successful archive", prompt: "Prompt")
-    let threadURL = URL(string: "codex://thread/archived")!
+    let legacyThreadURL = URL(string: "codex://thread/archived")!
+    let canonicalThreadURL = URL(string: "codex://threads/thread-archived")!
     _ = try store.recordSuccessfulRun(
         taskID: successfulTask.id,
         worktreePath: "/tmp/worktrees/archived-success",
         baseBranch: "main",
         baseRef: "abc123",
         codexThreadID: "thread-archived",
-        codexThreadURL: threadURL
+        codexThreadURL: legacyThreadURL
     )
     _ = try store.archiveTask(id: successfulTask.id)
     let readyArchivedTask = try store.createTask(repositoryID: repository.id, title: "Ready archive", prompt: "Prompt")
@@ -25,7 +26,7 @@ import Testing
     #expect(projection.tasks[0].title == "Successful archive")
     #expect(projection.tasks[0].canOpenInCodexApp)
     #expect(projection.tasks[0].codexOpenLabel == "Open in Codex App")
-    #expect(projection.tasks[0].codexOpenTarget == .url(threadURL))
+    #expect(projection.tasks[0].codexOpenTarget == .url(canonicalThreadURL))
     #expect(projection.tasks[1].title == "Ready archive")
     #expect(projection.tasks[1].canOpenInCodexApp == false)
     #expect(projection.tasks[1].codexOpenTarget == nil)
@@ -50,7 +51,7 @@ import Testing
 
     await model.openTaskInCodexAppReportingErrors(taskID: task.id)
 
-    #expect(opener.openedTargets == [.worktree(URL(filePath: "/tmp/worktrees/archived", directoryHint: .isDirectory))])
+    #expect(opener.openedTargets == [.url(URL(string: "codex://threads/thread-archived")!)])
     #expect(model.errorMessage == nil)
 }
 
@@ -73,7 +74,7 @@ import Testing
 
     await model.openTaskInCodexAppReportingErrors(taskID: task.id)
 
-    #expect(opener.openedTargets == [.worktree(URL(filePath: "/tmp/worktrees/archived", directoryHint: .isDirectory))])
+    #expect(opener.openedTargets == [.url(URL(string: "codex://threads/thread-archived")!)])
     #expect(model.errorMessage == "Unable to open Codex App.")
 }
 

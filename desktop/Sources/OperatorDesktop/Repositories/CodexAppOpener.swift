@@ -9,7 +9,10 @@ public enum CodexOpenTarget: Equatable, Sendable {
             return nil
         }
 
-        if let codexThreadURL = run.codexThreadURL {
+        if let codexThreadID = run.codexThreadID,
+           let codexThreadURL = CodexThreadReference.deepLinkURL(threadID: codexThreadID) {
+            self = .url(codexThreadURL)
+        } else if let codexThreadURL = run.codexThreadURL {
             self = .url(codexThreadURL)
         } else {
             self = .worktree(URL(filePath: run.worktreePath, directoryHint: .isDirectory))

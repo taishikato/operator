@@ -31,7 +31,7 @@ import Testing
         baseBranch: "feature/desktop",
         baseRef: "def456",
         codexThreadID: "thread-1",
-        codexThreadURL: URL(string: "codex://thread/thread-1")
+        codexThreadURL: URL(string: "codex://threads/thread-1")
     )
 
     let reloadedStore = try OperatorStore(databaseURL: databaseURL)

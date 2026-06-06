@@ -59,7 +59,7 @@ import Testing
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let task = try store.createTask(repositoryID: repository.id, title: "Already sent", prompt: "Prompt")
-    let threadURL = URL(string: "codex://thread/thread-guardrail")!
+    let threadURL = URL(string: "codex://threads/thread-guardrail")!
     _ = try store.recordSuccessfulRun(
         taskID: task.id,
         worktreePath: "/tmp/worktrees/sent",
@@ -92,7 +92,7 @@ import Testing
     let worktreeURL = URL(filePath: "/tmp/operator-worktree-guardrail")
     let worktreePreparer = GuardrailWorktreePreparer(worktreeURL: worktreeURL)
     let appServer = GuardrailAppServerClient(
-        thread: CodexThreadReference(id: "thread-guardrail", url: URL(string: "codex://thread/guardrail"))
+        thread: CodexThreadReference(id: "thread-guardrail", url: URL(string: "codex://threads/thread-guardrail"))
     )
     let service = CodexTriggerService(
         store: store,
@@ -106,7 +106,7 @@ import Testing
     #expect(storedRuns.map(\.id) == [run.id])
     #expect(storedRuns.map(\.status) == [.triggered])
     #expect(run.codexThreadID == "thread-guardrail")
-    #expect(run.codexThreadURL == URL(string: "codex://thread/guardrail"))
+    #expect(run.codexThreadURL == URL(string: "codex://threads/thread-guardrail"))
     #expect(run.errorMessage == nil)
 }
 
