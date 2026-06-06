@@ -30,6 +30,7 @@ public struct BoardView: View {
                         BoardColumnView(model: model, column: column)
                     }
                 }
+                .frame(maxHeight: .infinity)
             }
             .padding(20)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -195,14 +196,15 @@ private struct BoardColumnView: View {
                     .background(.quaternary, in: Capsule())
             }
 
-            VStack(spacing: 8) {
-                if column.cards.isEmpty {
-                    Text("Empty")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, minHeight: 120)
-                } else {
-                    ForEach(column.cards) { card in
+            ScrollView(.vertical) {
+                VStack(spacing: 8) {
+                    if column.cards.isEmpty {
+                        Text("Empty")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, minHeight: 120)
+                    } else {
+                        ForEach(column.cards) { card in
                         VStack(spacing: 6) {
                             Button {
                                 model.selectTask(card.id)
@@ -237,12 +239,13 @@ private struct BoardColumnView: View {
                             }
                         }
                     }
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
         }
         .padding(12)
-        .frame(maxWidth: .infinity, minHeight: 240, alignment: .top)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
     }
 }
