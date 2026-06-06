@@ -109,3 +109,5 @@ public struct WorktreePreparer {
         }
     }
 }
+
+extension WorktreePreparer: CodexWorktreePreparing {}

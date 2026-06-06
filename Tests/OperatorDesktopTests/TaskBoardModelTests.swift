@@ -102,6 +102,8 @@ import Testing
     #expect(card.reasoningBadge == "Extra High")
     #expect(card.triggerStateBadge == "Failed to send")
     #expect(card.promptPreview == nil)
+    #expect(card.canSendToCodex)
+    #expect(card.codexSendLabel == "Send to Codex")
 }
 
 @Test func inspectorProjectionShowsPromptAndEditabilityOnlyForReadyTasks() throws {
@@ -124,8 +126,11 @@ import Testing
 
     #expect(readyInspector.prompt == "Ready prompt")
     #expect(readyInspector.isEditable)
+    #expect(readyInspector.canSendToCodex)
+    #expect(readyInspector.codexSendLabel == "Send to Codex")
     #expect(reviewInspector.prompt == "Review prompt")
     #expect(reviewInspector.isEditable == false)
+    #expect(reviewInspector.canSendToCodex == false)
 }
 
 @Test func inspectorProjectionOnlyIncludesVisibleTasks() throws {
@@ -284,6 +289,135 @@ import Testing
     #expect(model.inspectorDraft?.title == "Trimmed title")
     #expect(model.inspectorDraft?.prompt == "Trimmed prompt")
     #expect(model.inspectorDraft?.reasoningEffort == .high)
+}
+
+@Test @MainActor func taskBoardModelShowsSendingStateWhileCodexTriggerIsInProgress() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "Prompt")
+    let trigger = HoldingCodexTaskSender()
+    let model = TaskBoardModel(store: store, codexTrigger: trigger)
+    try model.load()
+
+    let send = Task {
+        await model.sendTaskToCodexReportingErrors(taskID: task.id)
+    }
+    while trigger.requestedTaskIDs.isEmpty {
+        await Task.yield()
+    }
+
+    #expect(model.sendingTaskIDs == [task.id])
+    #expect(model.projection.column(.ready).cards.first?.codexSendLabel == "Sending...")
+    #expect(model.projection.inspector(taskID: task.id)?.codexSendLabel == "Sending...")
+
+    trigger.complete(
+        try store.recordSuccessfulRun(
+            taskID: task.id,
+            worktreePath: "/tmp/worktree",
+            baseBranch: "main",
+            baseRef: "abc123",
+            codexThreadID: "thread-1",
+            codexThreadURL: nil
+        )
+    )
+    await send.value
+
+    #expect(model.sendingTaskIDs.isEmpty)
+    #expect(model.projection.column(.ready).cards.isEmpty)
+    #expect(model.projection.column(.review).cards.map(\.id) == [task.id])
+}
+
+@Test @MainActor func taskBoardModelKeepsReadyTaskAndReportsErrorWhenCodexTriggerFails() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "Prompt")
+    let trigger = FailingCodexTaskSender(error: FakeBoardCodexError(message: "app-server unavailable"))
+    let model = TaskBoardModel(store: store, codexTrigger: trigger)
+    try model.load()
+
+    await model.sendTaskToCodexReportingErrors(taskID: task.id)
+
+    #expect(model.sendingTaskIDs.isEmpty)
+    #expect(model.projection.column(.ready).cards.map(\.id) == [task.id])
+    #expect(model.errorMessage == "app-server unavailable")
+}
+
+@Test @MainActor func taskBoardModelSavesInspectorDraftBeforeSendingSelectedTaskToCodex() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Original", prompt: "Original prompt")
+    let trigger = RecordingCodexTaskSender(store: store)
+    let model = TaskBoardModel(store: store, codexTrigger: trigger)
+    try model.load()
+    model.selectTask(task.id)
+    model.inspectorDraft?.title = "Edited"
+    model.inspectorDraft?.prompt = "Edited prompt exactly"
+    model.inspectorDraft?.reasoningEffort = .xhigh
+
+    await model.sendSelectedInspectorTaskToCodexReportingErrors()
+
+    #expect(trigger.requestedTaskIDs == [task.id])
+    #expect(try store.task(id: task.id)?.title == "Edited")
+    #expect(try store.task(id: task.id)?.prompt == "Edited prompt exactly")
+    #expect(try store.task(id: task.id)?.reasoningEffort == .xhigh)
+    #expect(model.projection.column(.review).cards.map(\.id) == [task.id])
+}
+
+private final class HoldingCodexTaskSender: CodexTaskSending, @unchecked Sendable {
+    private(set) var requestedTaskIDs: [UUID] = []
+    private var continuation: CheckedContinuation<OperatorRun, Error>?
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        requestedTaskIDs.append(taskID)
+        return try await withCheckedThrowingContinuation { continuation in
+            self.continuation = continuation
+        }
+    }
+
+    func complete(_ run: OperatorRun) {
+        continuation?.resume(returning: run)
+    }
+}
+
+private final class FailingCodexTaskSender: CodexTaskSending, @unchecked Sendable {
+    private let error: Error
+
+    init(error: Error) {
+        self.error = error
+    }
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        throw error
+    }
+}
+
+private final class RecordingCodexTaskSender: CodexTaskSending, @unchecked Sendable {
+    private let store: OperatorStore
+    private(set) var requestedTaskIDs: [UUID] = []
+
+    init(store: OperatorStore) {
+        self.store = store
+    }
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        requestedTaskIDs.append(taskID)
+        return try store.recordSuccessfulRun(
+            taskID: taskID,
+            worktreePath: "/tmp/worktree",
+            baseBranch: "main",
+            baseRef: "abc123",
+            codexThreadID: "thread-1",
+            codexThreadURL: nil
+        )
+    }
+}
+
+private struct FakeBoardCodexError: Error, LocalizedError {
+    let message: String
+
+    var errorDescription: String? {
+        message
+    }
 }
 
 private func temporaryDatabaseURL() throws -> URL {

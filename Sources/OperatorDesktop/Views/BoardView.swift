@@ -4,9 +4,9 @@ public struct BoardView: View {
     @StateObject private var model: TaskBoardModel
     private let store: OperatorStore
 
-    public init(store: OperatorStore) {
+    public init(store: OperatorStore, codexTrigger: (any CodexTaskSending)? = nil) {
         self.store = store
-        _model = StateObject(wrappedValue: TaskBoardModel(store: store))
+        _model = StateObject(wrappedValue: TaskBoardModel(store: store, codexTrigger: codexTrigger))
     }
 
     public var body: some View {
@@ -179,12 +179,27 @@ private struct BoardColumnView: View {
                         .frame(maxWidth: .infinity, minHeight: 120)
                 } else {
                     ForEach(column.cards) { card in
-                        Button {
-                            model.selectTask(card.id)
-                        } label: {
-                            TaskCardView(card: card, isSelected: model.selectedTaskID == card.id)
+                        VStack(spacing: 6) {
+                            Button {
+                                model.selectTask(card.id)
+                            } label: {
+                                TaskCardView(card: card, isSelected: model.selectedTaskID == card.id)
+                            }
+                            .buttonStyle(.plain)
+
+                            if card.canSendToCodex || card.codexSendLabel == "Sending..." {
+                                Button {
+                                    Task {
+                                        await model.sendTaskToCodexReportingErrors(taskID: card.id)
+                                    }
+                                } label: {
+                                    Label(card.codexSendLabel, systemImage: "paperplane")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                                .disabled(!card.canSendToCodex)
+                            }
                         }
-                        .buttonStyle(.plain)
                     }
                 }
             }
@@ -282,12 +297,24 @@ private struct TaskInspectorView: View {
                     }
                     .accessibilityLabel("Inspector prompt")
 
-                Button {
-                    model.saveSelectedInspectorTaskReportingErrors()
-                } label: {
-                    Label("Save", systemImage: "checkmark")
+                HStack {
+                    Button {
+                        model.saveSelectedInspectorTaskReportingErrors()
+                    } label: {
+                        Label("Save", systemImage: "checkmark")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        Task {
+                            await model.sendSelectedInspectorTaskToCodexReportingErrors()
+                        }
+                    } label: {
+                        Label(inspector.codexSendLabel, systemImage: "paperplane")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(!inspector.canSendToCodex)
                 }
-                .buttonStyle(.borderedProminent)
             } else {
                 Text(inspector.title)
                     .font(.title3.weight(.semibold))

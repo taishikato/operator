@@ -3,12 +3,14 @@ import SwiftUI
 public struct OperatorRootView: View {
     private let store: OperatorStore
     private let shell: OperatorShellSpec
+    private let codexTrigger: (any CodexTaskSending)?
 
     @State private var selection: OperatorSidebarSelection
 
-    public init(store: OperatorStore, shell: OperatorShellSpec = .mvp) {
+    public init(store: OperatorStore, shell: OperatorShellSpec = .mvp, codexTrigger: (any CodexTaskSending)? = nil) {
         self.store = store
         self.shell = shell
+        self.codexTrigger = codexTrigger
         _selection = State(initialValue: OperatorSidebarSelection(destination: shell.launchDestination) ?? .board)
     }
 
@@ -18,7 +20,7 @@ public struct OperatorRootView: View {
         } detail: {
             switch selection {
             case .board:
-                BoardView(store: store)
+                BoardView(store: store, codexTrigger: codexTrigger)
                     .navigationTitle("Board")
             case .archived:
                 ArchivedView()

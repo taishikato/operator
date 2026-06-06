@@ -88,7 +88,8 @@ public struct TaskBoardProjection: Equatable, Sendable {
 
     public static func load(
         from store: OperatorStore,
-        selectedRepositoryID: UUID? = nil
+        selectedRepositoryID: UUID? = nil,
+        sendingTaskIDs: Set<UUID> = []
     ) throws -> TaskBoardProjection {
         let repositories = try store.repositories()
         let tasks = try store.tasks()
@@ -98,7 +99,8 @@ public struct TaskBoardProjection: Equatable, Sendable {
             repositories: repositories,
             tasks: tasks,
             latestRunsByTaskID: latestRunsByTaskID,
-            selectedRepositoryID: selectedRepositoryID
+            selectedRepositoryID: selectedRepositoryID,
+            sendingTaskIDs: sendingTaskIDs
         )
     }
 
@@ -107,7 +109,8 @@ public struct TaskBoardProjection: Equatable, Sendable {
         tasks: [OperatorTask],
         runsByTaskID: [UUID: [OperatorRun]] = [:],
         latestRunsByTaskID: [UUID: OperatorRun]? = nil,
-        selectedRepositoryID: UUID? = nil
+        selectedRepositoryID: UUID? = nil,
+        sendingTaskIDs: Set<UUID> = []
     ) {
         let repositoriesByID = Dictionary(uniqueKeysWithValues: repositories.map { ($0.id, $0) })
         let latestRunsByTaskID = latestRunsByTaskID ?? runsByTaskID.compactMapValues(\.last)
@@ -134,7 +137,8 @@ public struct TaskBoardProjection: Equatable, Sendable {
                         TaskCardProjection(
                             task: task,
                             repositoryName: repositoriesByID[task.repositoryID]?.name ?? "Unknown Repository",
-                            latestRun: latestRunsByTaskID[task.id]
+                            latestRun: latestRunsByTaskID[task.id],
+                            isSending: sendingTaskIDs.contains(task.id)
                         )
                     }
             )
@@ -144,7 +148,11 @@ public struct TaskBoardProjection: Equatable, Sendable {
                 guard let repository = repositoriesByID[task.repositoryID] else {
                     return nil
                 }
-                return (task.id, TaskInspectorProjection(task: task, repository: repository))
+                return (task.id, TaskInspectorProjection(
+                    task: task,
+                    repository: repository,
+                    isSending: sendingTaskIDs.contains(task.id)
+                ))
             }
         )
     }
@@ -171,14 +179,18 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
     public let reasoningBadge: String
     public let triggerStateBadge: String?
     public let promptPreview: String?
+    public let canSendToCodex: Bool
+    public let codexSendLabel: String
 
-    public init(task: OperatorTask, repositoryName: String, latestRun: OperatorRun? = nil) {
+    public init(task: OperatorTask, repositoryName: String, latestRun: OperatorRun? = nil, isSending: Bool = false) {
         id = task.id
         title = task.title
         repositoryBadge = repositoryName
         reasoningBadge = task.reasoningEffort.displayLabel
         triggerStateBadge = latestRun?.triggerStateBadge
         promptPreview = nil
+        canSendToCodex = task.status == .ready && latestRun?.status != .triggered && !isSending
+        codexSendLabel = isSending ? "Sending..." : "Send to Codex"
     }
 }
 
@@ -189,14 +201,18 @@ public struct TaskInspectorProjection: Equatable, Identifiable, Sendable {
     public let prompt: String
     public let reasoningEffort: ReasoningEffort
     public let isEditable: Bool
+    public let canSendToCodex: Bool
+    public let codexSendLabel: String
 
-    public init(task: OperatorTask, repository: OperatorRepository) {
+    public init(task: OperatorTask, repository: OperatorRepository, isSending: Bool = false) {
         id = task.id
         repositoryName = repository.name
         title = task.title
         prompt = task.prompt
         reasoningEffort = task.reasoningEffort
         isEditable = task.status == .ready
+        canSendToCodex = task.status == .ready && !isSending
+        codexSendLabel = isSending ? "Sending..." : "Send to Codex"
     }
 }
 
@@ -245,17 +261,25 @@ public final class TaskBoardModel: ObservableObject {
     @Published public private(set) var selectedTaskID: UUID?
     @Published public var inspectorDraft: TaskInspectorDraft?
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var sendingTaskIDs: Set<UUID>
 
     private let store: OperatorStore
+    private let codexTrigger: (any CodexTaskSending)?
 
-    public init(store: OperatorStore) {
+    public init(store: OperatorStore, codexTrigger: (any CodexTaskSending)? = nil) {
         self.store = store
+        self.codexTrigger = codexTrigger
         projection = TaskBoardProjection(repositories: [], tasks: [])
         creationDraft = TaskCreationDraft()
+        sendingTaskIDs = []
     }
 
     public func load() throws {
-        projection = try TaskBoardProjection.load(from: store, selectedRepositoryID: selectedRepositoryID)
+        projection = try TaskBoardProjection.load(
+            from: store,
+            selectedRepositoryID: selectedRepositoryID,
+            sendingTaskIDs: sendingTaskIDs
+        )
         syncInspectorDraft()
         errorMessage = nil
     }
@@ -312,6 +336,65 @@ public final class TaskBoardModel: ObservableObject {
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }
+    }
+
+    public func sendTaskToCodexReportingErrors(taskID: UUID) async {
+        guard !sendingTaskIDs.contains(taskID) else {
+            return
+        }
+        guard let codexTrigger else {
+            errorMessage = "Unable to send task to Codex."
+            return
+        }
+
+        sendingTaskIDs.insert(taskID)
+        reloadProjectionPreservingError()
+        defer {
+            sendingTaskIDs.remove(taskID)
+            reloadProjectionPreservingError()
+        }
+
+        do {
+            _ = try await codexTrigger.sendTaskToCodex(taskID: taskID)
+            try load()
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func sendSelectedInspectorTaskToCodexReportingErrors() async {
+        guard let selectedTaskID else {
+            return
+        }
+
+        do {
+            if inspectorDraft != nil {
+                _ = try inspectorDraft?.save(taskID: selectedTaskID, in: store)
+                inspectorDraft = nil
+                try load()
+            }
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return
+        }
+
+        await sendTaskToCodexReportingErrors(taskID: selectedTaskID)
+    }
+
+    private func reloadProjectionPreservingError() {
+        let previousError = errorMessage
+        do {
+            projection = try TaskBoardProjection.load(
+                from: store,
+                selectedRepositoryID: selectedRepositoryID,
+                sendingTaskIDs: sendingTaskIDs
+            )
+            syncInspectorDraft()
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return
+        }
+        errorMessage = previousError
     }
 
     private func syncInspectorDraft() {

@@ -135,6 +135,13 @@ public final class OperatorStore: @unchecked Sendable {
         }
     }
 
+    public func repository(id: UUID) throws -> OperatorRepository? {
+        try dbQueue.read { db in
+            try Row.fetchOne(db, sql: "SELECT * FROM repositories WHERE id = ?", arguments: [id.uuidString])
+                .map(Self.repository(from:))
+        }
+    }
+
     public func updateRepositoryDefaultBranch(
         id: UUID,
         defaultBranch: String,
