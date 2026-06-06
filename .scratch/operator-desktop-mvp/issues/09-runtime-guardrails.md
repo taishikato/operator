@@ -1,6 +1,6 @@
 # Runtime Guardrails
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: AFK
 
 ## Parent
@@ -19,23 +19,23 @@ Operator remains a local Codex trigger/navigation/configuration surface. This is
 
 ## Acceptance criteria
 
-- [ ] There is no schedule, cron, timezone, missed schedule, trigger queue, or concurrency setting in the MVP UI.
-- [ ] There is no Backlog column.
-- [ ] There is no Running column.
-- [ ] There is no Review to Ready movement.
-- [ ] There is no rerun action after a successful send.
-- [ ] There is no hard delete action.
-- [ ] There is no automatic worktree cleanup.
-- [ ] There is no PR creation action.
-- [ ] There is no branch creation action during worktree preparation.
-- [ ] There is no diff, changed-file count, test result, commit status, or Codex completion status shown in Operator.
-- [ ] App-server raw events are not persisted.
-- [ ] Codex transcripts are not persisted.
-- [ ] Failure storage is limited to short trigger-level errors.
-- [ ] Tests assert the forbidden lifecycle transitions remain forbidden.
-- [ ] Tests assert successful Tasks cannot be sent again.
-- [ ] Tests assert the send flow does not store raw event or transcript content.
-- [ ] Implementation branch is published with a non-draft PR after the guardrails are complete.
+- [x] There is no schedule, cron, timezone, missed schedule, trigger queue, or concurrency setting in the MVP UI.
+- [x] There is no Backlog column.
+- [x] There is no Running column.
+- [x] There is no Review to Ready movement.
+- [x] There is no rerun action after a successful send.
+- [x] There is no hard delete action.
+- [x] There is no automatic worktree cleanup.
+- [x] There is no PR creation action.
+- [x] There is no branch creation action during worktree preparation.
+- [x] There is no diff, changed-file count, test result, commit status, or Codex completion status shown in Operator.
+- [x] App-server raw events are not persisted.
+- [x] Codex transcripts are not persisted.
+- [x] Failure storage is limited to short trigger-level errors.
+- [x] Tests assert the forbidden lifecycle transitions remain forbidden.
+- [x] Tests assert successful Tasks cannot be sent again.
+- [x] Tests assert the send flow does not store raw event or transcript content.
+- [x] Implementation branch is published with a non-draft PR after the guardrails are complete.
 
 ## Implementation notes
 

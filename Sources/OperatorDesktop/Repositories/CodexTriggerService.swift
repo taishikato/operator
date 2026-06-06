@@ -127,10 +127,11 @@ public struct CodexTriggerService: @unchecked Sendable {
         let normalized = message
             .split(whereSeparator: \.isNewline)
             .joined(separator: " ")
-        if normalized.count <= 160 {
+        let maximumLength = OperatorRuntimeGuardrails.mvp.maximumFailureErrorMessageLength
+        if normalized.count <= maximumLength {
             return normalized
         }
-        return String(normalized.prefix(157)) + "..."
+        return String(normalized.prefix(maximumLength - 3)) + "..."
     }
 }
 
