@@ -31,7 +31,7 @@ Operator remains a local Codex trigger/navigation surface. This issue should imp
 - [x] Missing Codex binary is surfaced as a clear status and send failure.
 - [x] Codex authentication failure is surfaced as a clear status and send failure.
 - [x] Tests cover binary-path selection and status classification where practical.
-- [ ] Implementation branch is published with a non-draft PR after the feature is complete.
+- [x] Implementation branch is published with a non-draft PR after the feature is complete.
 
 ## Implementation notes
 
