@@ -63,7 +63,7 @@ private actor CodexAppServerStdioTransport {
             let threadResponse = try await sendRequest(
                 method: "thread/start",
                 params: [
-                    "cwd": request.cwd.path,
+                    "cwd": request.threadCwd.path,
                     "model": request.model,
                     "ephemeral": false
                 ]

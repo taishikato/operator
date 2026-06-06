@@ -266,6 +266,68 @@ import Testing
     #expect(nameParams["name"] as? String == "Operator task title")
 }
 
+@Test func codexAppServerStdioClientSeparatesThreadCwdFromTurnCwd() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientSeparateCwd")
+    let threadCwd = directory.appending(path: "repo", directoryHint: .isDirectory)
+    let turnCwd = directory.appending(path: "worktree", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: threadCwd, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: turnCwd, withIntermediateDirectories: true)
+    let scriptURL = directory.appending(path: "server.py")
+    let cwdURL = directory.appending(path: "cwd.json")
+    try writeScript(
+        """
+        import json
+        import pathlib
+        import sys
+
+        cwd_path = pathlib.Path(sys.argv[1])
+        captured = {}
+
+        def read_request():
+            line = sys.stdin.readline()
+            if not line:
+                sys.exit(1)
+            return json.loads(line)
+
+        def send(message):
+            sys.stdout.write(json.dumps(message) + "\\n")
+            sys.stdout.flush()
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        captured["thread_start_cwd"] = request["params"]["cwd"]
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-cwd"}}})
+
+        request = read_request()
+        captured["turn_start_cwd"] = request["params"]["cwd"]
+        cwd_path.write_text(json.dumps(captured))
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path, cwdURL.path]
+    )
+
+    _ = try await client.startThreadAndTurn(
+        CodexThreadStartRequest(
+            cwd: turnCwd,
+            threadCwd: threadCwd,
+            model: "gpt-5.5",
+            reasoningEffort: .medium,
+            prompt: "Prompt body"
+        )
+    )
+
+    let cwdData = try Data(contentsOf: cwdURL)
+    let captured = try #require(JSONSerialization.jsonObject(with: cwdData) as? [String: String])
+    #expect(captured["thread_start_cwd"] == threadCwd.path)
+    #expect(captured["turn_start_cwd"] == turnCwd.path)
+}
+
 @Test func codexAppServerStdioClientReportsMissingExecutablePathClearly() async throws {
     let directory = try temporaryDirectory(named: "CodexAppServerStdioClientMissingExecutable")
     let missingBinaryURL = directory.appending(path: "missing-codex")

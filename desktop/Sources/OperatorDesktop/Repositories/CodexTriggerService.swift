@@ -2,6 +2,7 @@ import Foundation
 
 public struct CodexThreadStartRequest: Equatable, Sendable {
     public let cwd: URL
+    public let threadCwd: URL
     public let model: String
     public let reasoningEffort: ReasoningEffort
     public let prompt: String
@@ -9,12 +10,14 @@ public struct CodexThreadStartRequest: Equatable, Sendable {
 
     public init(
         cwd: URL,
+        threadCwd: URL? = nil,
         model: String,
         reasoningEffort: ReasoningEffort,
         prompt: String,
         displayName: String? = nil
     ) {
         self.cwd = cwd
+        self.threadCwd = threadCwd ?? cwd
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.prompt = prompt
@@ -104,6 +107,7 @@ public struct CodexTriggerService: @unchecked Sendable {
             let thread = try await appServerClient.startThreadAndTurn(
                 CodexThreadStartRequest(
                     cwd: preparedWorktree.worktreeURL,
+                    threadCwd: URL(filePath: repository.path, directoryHint: .isDirectory),
                     model: Self.fixedModel,
                     reasoningEffort: task.reasoningEffort,
                     prompt: task.prompt,

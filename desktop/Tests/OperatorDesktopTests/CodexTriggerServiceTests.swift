@@ -38,6 +38,7 @@ import Testing
     #expect(appServer.requests == [
         CodexThreadStartRequest(
             cwd: worktreeURL,
+            threadCwd: URL(filePath: "/tmp/operator", directoryHint: .isDirectory),
             model: "gpt-5.5",
             reasoningEffort: .high,
             prompt: "Implement this exactly.\nDo not add metadata.",
