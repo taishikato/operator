@@ -5,12 +5,20 @@ public struct CodexThreadStartRequest: Equatable, Sendable {
     public let model: String
     public let reasoningEffort: ReasoningEffort
     public let prompt: String
+    public let displayName: String?
 
-    public init(cwd: URL, model: String, reasoningEffort: ReasoningEffort, prompt: String) {
+    public init(
+        cwd: URL,
+        model: String,
+        reasoningEffort: ReasoningEffort,
+        prompt: String,
+        displayName: String? = nil
+    ) {
         self.cwd = cwd
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.prompt = prompt
+        self.displayName = displayName
     }
 }
 
@@ -98,7 +106,8 @@ public struct CodexTriggerService: @unchecked Sendable {
                     cwd: preparedWorktree.worktreeURL,
                     model: Self.fixedModel,
                     reasoningEffort: task.reasoningEffort,
-                    prompt: task.prompt
+                    prompt: task.prompt,
+                    displayName: task.title
                 )
             )
             return try store.recordSuccessfulRun(

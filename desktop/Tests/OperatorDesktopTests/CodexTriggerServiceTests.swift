@@ -40,7 +40,8 @@ import Testing
             cwd: worktreeURL,
             model: "gpt-5.5",
             reasoningEffort: .high,
-            prompt: "Implement this exactly.\nDo not add metadata."
+            prompt: "Implement this exactly.\nDo not add metadata.",
+            displayName: "Exact prompt"
         )
     ])
 }

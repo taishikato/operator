@@ -70,6 +70,8 @@ private actor CodexAppServerStdioTransport {
             )
             let thread = try threadReference(fromThreadStartResponse: threadResponse)
 
+            try await setThreadNameIfPresent(threadID: thread.id, displayName: request.displayName)
+
             _ = try await sendRequest(
                 method: "turn/start",
                 params: [
@@ -91,6 +93,24 @@ private actor CodexAppServerStdioTransport {
         } catch {
             resetProcessState()
             throw error
+        }
+    }
+
+    private func setThreadNameIfPresent(threadID: String, displayName: String?) async throws {
+        guard let displayName, !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return
+        }
+
+        do {
+            _ = try await sendRequest(
+                method: "thread/name/set",
+                params: [
+                    "threadId": threadID,
+                    "name": displayName
+                ]
+            )
+        } catch CodexAppServerClientError.serverRejected {
+            return
         }
     }
 

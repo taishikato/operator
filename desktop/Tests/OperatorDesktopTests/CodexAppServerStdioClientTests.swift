@@ -198,6 +198,74 @@ import Testing
     #expect((textInput["text_elements"] as? [Any])?.isEmpty == true)
 }
 
+@Test func codexAppServerStdioClientSetsThreadNameBeforeStartingTurn() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientThreadName")
+    let scriptURL = directory.appending(path: "server.py")
+    let methodsURL = directory.appending(path: "methods.json")
+    try writeScript(
+        """
+        import json
+        import pathlib
+        import sys
+
+        methods_path = pathlib.Path(sys.argv[1])
+        methods = []
+
+        def read_request():
+            line = sys.stdin.readline()
+            if not line:
+                sys.exit(1)
+            request = json.loads(line)
+            methods.append({"method": request["method"], "params": request.get("params", {})})
+            return request
+
+        def send(message):
+            sys.stdout.write(json.dumps(message) + "\\n")
+            sys.stdout.flush()
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-named"}}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        methods_path.write_text(json.dumps(methods))
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path, methodsURL.path]
+    )
+
+    _ = try await client.startThreadAndTurn(
+        CodexThreadStartRequest(
+            cwd: directory,
+            model: "gpt-5.5",
+            reasoningEffort: .medium,
+            prompt: "Prompt body",
+            displayName: "Operator task title"
+        )
+    )
+
+    let methodsData = try Data(contentsOf: methodsURL)
+    let methods = try #require(JSONSerialization.jsonObject(with: methodsData) as? [[String: Any]])
+    #expect(methods.map { $0["method"] as? String } == [
+        "initialize",
+        "thread/start",
+        "thread/name/set",
+        "turn/start"
+    ])
+    let nameParams = try #require(methods[2]["params"] as? [String: Any])
+    #expect(nameParams["threadId"] as? String == "thread-named")
+    #expect(nameParams["name"] as? String == "Operator task title")
+}
+
 @Test func codexAppServerStdioClientReportsMissingExecutablePathClearly() async throws {
     let directory = try temporaryDirectory(named: "CodexAppServerStdioClientMissingExecutable")
     let missingBinaryURL = directory.appending(path: "missing-codex")
