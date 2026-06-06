@@ -177,7 +177,7 @@ import Testing
     #expect(reviewInspector.codexOpenLabel == "Open in Codex App")
 }
 
-@Test @MainActor func taskBoardModelOpensCodexTargetForReviewTask() throws {
+@Test @MainActor func taskBoardModelOpensCodexTargetForReviewTask() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
@@ -194,13 +194,13 @@ import Testing
     let model = TaskBoardModel(store: store, codexOpener: opener)
     try model.load()
 
-    model.openTaskInCodexAppReportingErrors(taskID: task.id)
+    await model.openTaskInCodexAppReportingErrors(taskID: task.id)
 
     #expect(opener.openedTargets == [.url(threadURL)])
     #expect(model.errorMessage == nil)
 }
 
-@Test @MainActor func taskBoardModelReportsShortErrorWhenCodexOpenFails() throws {
+@Test @MainActor func taskBoardModelReportsShortErrorWhenCodexOpenFails() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
@@ -216,10 +216,49 @@ import Testing
     let model = TaskBoardModel(store: store, codexOpener: opener)
     try model.load()
 
-    model.openTaskInCodexAppReportingErrors(taskID: task.id)
+    await model.openTaskInCodexAppReportingErrors(taskID: task.id)
 
     #expect(opener.openedTargets == [.worktree(URL(filePath: "/tmp/worktrees/review", directoryHint: .isDirectory))])
     #expect(model.errorMessage == "Unable to open Codex App.")
+}
+
+@Test func taskBoardModelDoesNotBlockMainActorWhileOpeningCodex() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
+    _ = try store.recordSuccessfulRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/review",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-1",
+        codexThreadURL: nil
+    )
+    let opener = HoldingCodexAppOpener()
+    let model = await MainActor.run {
+        let model = TaskBoardModel(store: store, codexOpener: opener)
+        model.loadReportingErrors()
+        return model
+    }
+
+    let openTask = Task {
+        await model.openTaskInCodexAppReportingErrors(taskID: task.id)
+    }
+    await waitUntil { opener.didStartOpening }
+
+    let mainActorPing = ThreadSafeFlag()
+    let pingTask = Task {
+        await MainActor.run {
+            mainActorPing.set()
+        }
+    }
+    try await Task.sleep(for: .milliseconds(50))
+
+    #expect(mainActorPing.isSet)
+
+    opener.complete()
+    await openTask.value
+    await pingTask.value
 }
 
 @Test func inspectorProjectionOnlyIncludesVisibleTasks() throws {
@@ -515,6 +554,56 @@ private final class FailingCodexAppOpener: CodexAppOpening, @unchecked Sendable 
     func open(_ target: CodexOpenTarget) throws {
         openedTargets.append(target)
         throw CodexAppOpenError.openFailed
+    }
+}
+
+private final class HoldingCodexAppOpener: CodexAppOpening, @unchecked Sendable {
+    private let lock = NSLock()
+    private let semaphore = DispatchSemaphore(value: 0)
+    private var startedOpening = false
+
+    var didStartOpening: Bool {
+        lock.withLock {
+            startedOpening
+        }
+    }
+
+    func open(_ target: CodexOpenTarget) throws {
+        lock.withLock {
+            startedOpening = true
+        }
+        semaphore.wait()
+    }
+
+    func complete() {
+        semaphore.signal()
+    }
+}
+
+private final class ThreadSafeFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.withLock {
+            value
+        }
+    }
+
+    func set() {
+        lock.withLock {
+            value = true
+        }
+    }
+}
+
+private func waitUntil(
+    timeout: Duration = .seconds(1),
+    condition: @escaping @Sendable () -> Bool
+) async {
+    let start = ContinuousClock.now
+    while !condition(), start.duration(to: .now) < timeout {
+        await Task.yield()
     }
 }
 

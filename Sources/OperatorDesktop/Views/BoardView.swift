@@ -7,7 +7,7 @@ public struct BoardView: View {
     public init(
         store: OperatorStore,
         codexTrigger: (any CodexTaskSending)? = nil,
-        codexOpener: (any CodexAppOpening)? = NSWorkspaceCodexAppOpener()
+        codexOpener: (any CodexAppOpening)? = OSCodexAppOpener()
     ) {
         self.store = store
         _model = StateObject(wrappedValue: TaskBoardModel(
@@ -210,7 +210,9 @@ private struct BoardColumnView: View {
 
                             if card.canOpenInCodexApp {
                                 Button {
-                                    model.openTaskInCodexAppReportingErrors(taskID: card.id)
+                                    Task {
+                                        await model.openTaskInCodexAppReportingErrors(taskID: card.id)
+                                    }
                                 } label: {
                                     Label(card.codexOpenLabel, systemImage: "arrow.up.forward.app")
                                         .frame(maxWidth: .infinity)
@@ -355,7 +357,9 @@ private struct TaskInspectorView: View {
 
                 if inspector.canOpenInCodexApp {
                     Button {
-                        model.openTaskInCodexAppReportingErrors(taskID: inspector.id)
+                        Task {
+                            await model.openTaskInCodexAppReportingErrors(taskID: inspector.id)
+                        }
                     } label: {
                         Label(inspector.codexOpenLabel, systemImage: "arrow.up.forward.app")
                     }

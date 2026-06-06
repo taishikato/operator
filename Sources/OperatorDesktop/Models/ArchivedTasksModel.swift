@@ -49,8 +49,8 @@ public struct ArchivedTaskProjection: Equatable, Identifiable, Sendable {
         title = task.title
         repositoryBadge = repositoryName
         reasoningBadge = task.reasoningEffort.displayLabel
-        codexOpenTarget = latestRun.flatMap(CodexOpenTarget.init(run:))
-        codexOpenLabel = "Open in Codex App"
+        codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.archived])
+        codexOpenLabel = CodexAppOpenAction.label
     }
 }
 
@@ -62,7 +62,7 @@ public final class ArchivedTasksModel: ObservableObject {
     private let store: OperatorStore
     private let codexOpener: (any CodexAppOpening)?
 
-    public init(store: OperatorStore, codexOpener: (any CodexAppOpening)? = NSWorkspaceCodexAppOpener()) {
+    public init(store: OperatorStore, codexOpener: (any CodexAppOpening)? = OSCodexAppOpener()) {
         self.store = store
         self.codexOpener = codexOpener
         projection = ArchivedTasksProjection(repositories: [], tasks: [])
@@ -81,28 +81,12 @@ public final class ArchivedTasksModel: ObservableObject {
         }
     }
 
-    public func openTaskInCodexAppReportingErrors(taskID: UUID) {
-        guard
-            let target = projection.tasks.first(where: { $0.id == taskID })?.codexOpenTarget,
-            let codexOpener
-        else {
-            errorMessage = CodexAppOpenError.openFailed.errorDescription
-            return
-        }
-
-        do {
-            try codexOpener.open(target)
-            errorMessage = nil
-        } catch {
-            errorMessage = Self.userFacingMessage(for: error)
-        }
+    public func openTaskInCodexAppReportingErrors(taskID: UUID) async {
+        let target = projection.tasks.first(where: { $0.id == taskID })?.codexOpenTarget
+        errorMessage = await CodexAppOpenAction.errorMessageAfterOpening(target, with: codexOpener)
     }
 
     nonisolated private static func userFacingMessage(for error: Error) -> String {
-        if let localizedError = error as? LocalizedError,
-           let errorDescription = localizedError.errorDescription {
-            return errorDescription
-        }
-        return "Unable to open Codex App."
+        CodexAppOpenAction.userFacingMessage(for: error)
     }
 }

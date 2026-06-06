@@ -31,7 +31,7 @@ import Testing
     #expect(projection.tasks[1].codexOpenTarget == nil)
 }
 
-@Test @MainActor func archivedTasksModelOpensArchivedCodexTarget() throws {
+@Test @MainActor func archivedTasksModelOpensArchivedCodexTarget() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let task = try store.createTask(repositoryID: repository.id, title: "Archived", prompt: "Prompt")
@@ -48,10 +48,33 @@ import Testing
     let model = ArchivedTasksModel(store: store, codexOpener: opener)
     try model.load()
 
-    model.openTaskInCodexAppReportingErrors(taskID: task.id)
+    await model.openTaskInCodexAppReportingErrors(taskID: task.id)
 
     #expect(opener.openedTargets == [.worktree(URL(filePath: "/tmp/worktrees/archived", directoryHint: .isDirectory))])
     #expect(model.errorMessage == nil)
+}
+
+@Test @MainActor func archivedTasksModelReportsShortErrorWhenCodexOpenFails() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Archived", prompt: "Prompt")
+    _ = try store.recordSuccessfulRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/archived",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-archived",
+        codexThreadURL: nil
+    )
+    _ = try store.archiveTask(id: task.id)
+    let opener = FailingArchivedCodexAppOpener()
+    let model = ArchivedTasksModel(store: store, codexOpener: opener)
+    try model.load()
+
+    await model.openTaskInCodexAppReportingErrors(taskID: task.id)
+
+    #expect(opener.openedTargets == [.worktree(URL(filePath: "/tmp/worktrees/archived", directoryHint: .isDirectory))])
+    #expect(model.errorMessage == "Unable to open Codex App.")
 }
 
 private final class RecordingArchivedCodexAppOpener: CodexAppOpening, @unchecked Sendable {
@@ -59,6 +82,15 @@ private final class RecordingArchivedCodexAppOpener: CodexAppOpening, @unchecked
 
     func open(_ target: CodexOpenTarget) throws {
         openedTargets.append(target)
+    }
+}
+
+private final class FailingArchivedCodexAppOpener: CodexAppOpening, @unchecked Sendable {
+    private(set) var openedTargets: [CodexOpenTarget] = []
+
+    func open(_ target: CodexOpenTarget) throws {
+        openedTargets.append(target)
+        throw CodexAppOpenError.openFailed
     }
 }
 

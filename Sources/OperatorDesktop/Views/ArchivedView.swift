@@ -4,7 +4,7 @@ public struct ArchivedView: View {
     @StateObject private var model: ArchivedTasksModel
     private let store: OperatorStore
 
-    public init(store: OperatorStore, codexOpener: (any CodexAppOpening)? = NSWorkspaceCodexAppOpener()) {
+    public init(store: OperatorStore, codexOpener: (any CodexAppOpening)? = OSCodexAppOpener()) {
         self.store = store
         _model = StateObject(wrappedValue: ArchivedTasksModel(store: store, codexOpener: codexOpener))
     }
@@ -41,7 +41,9 @@ public struct ArchivedView: View {
 
                         if task.canOpenInCodexApp {
                             Button {
-                                model.openTaskInCodexAppReportingErrors(taskID: task.id)
+                                Task {
+                                    await model.openTaskInCodexAppReportingErrors(taskID: task.id)
+                                }
                             } label: {
                                 Label(task.codexOpenLabel, systemImage: "arrow.up.forward.app")
                             }

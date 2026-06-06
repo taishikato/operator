@@ -12,7 +12,7 @@ public struct OperatorRootView: View {
         store: OperatorStore,
         shell: OperatorShellSpec = .mvp,
         codexTrigger: (any CodexTaskSending)? = nil,
-        codexOpener: (any CodexAppOpening)? = NSWorkspaceCodexAppOpener()
+        codexOpener: (any CodexAppOpening)? = OSCodexAppOpener()
     ) {
         self.store = store
         self.shell = shell
