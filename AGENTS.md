@@ -1,6 +1,5 @@
 ## Do
-- Use `sg` command for Code Search and Structural Search instead of `rg`. fallback to `rg` when `sg` isn't available.
-- Don't be bias with me or my ideas. Be logical
+- Do not squash commits when merging pull requests.
 
 ## Agent skills
 
