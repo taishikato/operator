@@ -173,6 +173,12 @@ public struct TaskBoardColumnProjection: Equatable, Identifiable, Sendable {
     public let cards: [TaskCardProjection]
 }
 
+private enum TaskCodexSendEligibility {
+    static func canSend(taskStatus: TaskStatus, latestRun: OperatorRun?, isSending: Bool) -> Bool {
+        taskStatus == .ready && latestRun?.status != .triggered && !isSending
+    }
+}
+
 public struct TaskCardProjection: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let title: String
@@ -196,7 +202,11 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
         reasoningBadge = task.reasoningEffort.displayLabel
         triggerStateBadge = latestRun?.triggerStateBadge
         promptPreview = nil
-        canSendToCodex = task.status == .ready && latestRun?.status != .triggered && !isSending
+        canSendToCodex = TaskCodexSendEligibility.canSend(
+            taskStatus: task.status,
+            latestRun: latestRun,
+            isSending: isSending
+        )
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
         codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.review, .done])
         codexOpenLabel = CodexAppOpenAction.label
@@ -226,7 +236,11 @@ public struct TaskInspectorProjection: Equatable, Identifiable, Sendable {
         prompt = task.prompt
         reasoningEffort = task.reasoningEffort
         isEditable = task.status == .ready
-        canSendToCodex = task.status == .ready && !isSending
+        canSendToCodex = TaskCodexSendEligibility.canSend(
+            taskStatus: task.status,
+            latestRun: latestRun,
+            isSending: isSending
+        )
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
         codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.review, .done])
         codexOpenLabel = CodexAppOpenAction.label

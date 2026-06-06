@@ -148,6 +148,43 @@ import Testing
     #expect(card.codexSendLabel == "Send to Codex")
 }
 
+@Test func boardProjectionAlignsInspectorAndCardSendSuppressionWhenLatestRunIsTriggered() throws {
+    let repositoryID = UUID()
+    let task = OperatorTask.new(
+        id: UUID(),
+        repositoryID: repositoryID,
+        title: "Ready with triggered run",
+        prompt: "Prompt"
+    )
+    let repository = OperatorRepository(
+        id: repositoryID,
+        name: "operator",
+        path: "/tmp/operator",
+        defaultBranch: "main",
+        createdAt: Date(),
+        updatedAt: Date()
+    )
+    let latestRun = OperatorRun(
+        id: UUID(),
+        taskID: task.id,
+        repositoryID: repositoryID,
+        status: .triggered,
+        worktreePath: "/tmp/worktrees/sent",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-legacy",
+        codexThreadURL: nil,
+        errorMessage: nil,
+        createdAt: Date(),
+        completedAt: Date()
+    )
+    let card = TaskCardProjection(task: task, repositoryName: repository.name, latestRun: latestRun)
+    let inspector = TaskInspectorProjection(task: task, repository: repository, latestRun: latestRun)
+
+    #expect(card.canSendToCodex == false)
+    #expect(inspector.canSendToCodex == false)
+}
+
 @Test func inspectorProjectionShowsPromptAndEditabilityOnlyForReadyTasks() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
