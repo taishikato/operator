@@ -154,6 +154,59 @@ import Testing
 }
 
 @MainActor
+@Test func repositorySettingsModelIgnoresStaleCodexStatusRefreshResults() async throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let binaryStore = InMemorySettingsBinaryStore()
+    let binarySettings = CodexBinarySettings(
+        store: binaryStore,
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let statusRunner = SequencedSettingsCodexStatusRunner(results: [
+        (.milliseconds(300), .success(.ready), URL(filePath: "/opt/homebrew/bin/codex")),
+        (.milliseconds(0), .success(.ready), URL(filePath: "/custom/bin/codex"))
+    ])
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        codexStatusChecker: CodexStatusChecker(runner: statusRunner)
+    )
+
+    try model.loadSettings()
+    model.refreshCodexStatus()
+    try model.setCodexBinaryOverride("/custom/bin/codex")
+    model.refreshCodexStatus()
+
+    try await waitUntil(timeout: .seconds(3)) {
+        model.codexStatus == .ready(URL(filePath: "/custom/bin/codex"))
+    }
+    try await Task.sleep(for: .milliseconds(400))
+    #expect(model.codexStatus == .ready(URL(filePath: "/custom/bin/codex")))
+}
+
+@MainActor
+@Test func repositorySettingsModelReportsCodexConfigurationErrorDuringStatusRefresh() async throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let binarySettings = CodexBinarySettings(
+        store: InMemorySettingsBinaryStore(overridePath: "relative/codex"),
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        codexStatusChecker: CodexStatusChecker(runner: StubSettingsCodexStatusRunner(result: .success(.ready)))
+    )
+
+    model.refreshCodexStatus()
+
+    try await waitUntil {
+        model.codexErrorMessage == "Codex binary override must be an absolute path."
+    }
+    #expect(model.codexStatus == .notFound)
+}
+
+@MainActor
 @Test func repositorySettingsModelStartsRepositoryRegistrationWithoutBlockingMainActor() async throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let repositoryURL = URL(filePath: "/tmp/operator")
@@ -272,6 +325,10 @@ private struct StubRepositoryInspector: RepositoryInspecting {
 private final class InMemorySettingsBinaryStore: CodexBinarySettingsStoring, @unchecked Sendable {
     var overridePath: String?
 
+    init(overridePath: String? = nil) {
+        self.overridePath = overridePath
+    }
+
     func codexBinaryOverridePath() -> String? {
         overridePath
     }
@@ -294,6 +351,26 @@ private struct StubSettingsCodexStatusRunner: CodexStatusRunning {
 
     func runCodexStatus(binaryURL: URL) async -> Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure> {
         result
+    }
+}
+
+private final class SequencedSettingsCodexStatusRunner: CodexStatusRunning, @unchecked Sendable {
+    private let lock = NSLock()
+    private var scheduledResults: [(Duration, Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>, URL)]
+
+    init(results: [(Duration, Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>, URL)]) {
+        scheduledResults = results
+    }
+
+    func runCodexStatus(binaryURL: URL) async -> Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure> {
+        let scheduledResult: (Duration, Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>, URL) = lock.withLock {
+            scheduledResults.removeFirst()
+        }
+        try? await Task.sleep(for: scheduledResult.0)
+        guard scheduledResult.2 == binaryURL else {
+            return .failure(.notAuthenticatedOrUnavailable("Unexpected binary URL"))
+        }
+        return scheduledResult.1
     }
 }
 

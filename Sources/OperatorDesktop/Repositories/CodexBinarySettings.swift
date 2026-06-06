@@ -84,10 +84,7 @@ public struct CodexBinarySettings: CodexBinarySettingsManaging, Sendable {
             return
         }
 
-        guard URL(filePath: trimmedPath).path == trimmedPath, trimmedPath.hasPrefix("/") else {
-            throw CodexBinarySettingsError.overrideMustBeAbsolute
-        }
-        store.setCodexBinaryOverridePath(trimmedPath)
+        store.setCodexBinaryOverridePath(try Self.validatedAbsolutePath(trimmedPath))
     }
 
     private func overrideBinaryURL() throws -> URL? {
@@ -95,10 +92,14 @@ public struct CodexBinarySettings: CodexBinarySettingsManaging, Sendable {
               !overridePath.isEmpty else {
             return nil
         }
-        guard overridePath.hasPrefix("/") else {
+        return URL(filePath: try Self.validatedAbsolutePath(overridePath))
+    }
+
+    private static func validatedAbsolutePath(_ path: String) throws -> String {
+        guard path.hasPrefix("/") else {
             throw CodexBinarySettingsError.overrideMustBeAbsolute
         }
-        return URL(filePath: overridePath)
+        return URL(filePath: path).standardizedFileURL.path
     }
 }
 

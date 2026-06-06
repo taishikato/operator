@@ -57,6 +57,30 @@ import Testing
     #expect(try settings.configuration().effectiveBinaryURL == URL(filePath: "/usr/local/bin/codex"))
 }
 
+@Test func codexBinarySettingsAcceptsAbsoluteOverridePathWithTrailingSlash() throws {
+    let store = InMemoryCodexBinarySettingsStore()
+    let settings = CodexBinarySettings(
+        store: store,
+        detector: StubCodexBinaryDetector(detectedURL: URL(filePath: "/usr/local/bin/codex"))
+    )
+
+    try settings.setOverridePath("/opt/homebrew/bin/codex/")
+
+    #expect(store.overridePath == "/opt/homebrew/bin/codex")
+    #expect(try settings.configuration().overrideBinaryURL == URL(filePath: "/opt/homebrew/bin/codex"))
+}
+
+@Test func codexBinarySettingsRejectsStoredRelativeOverridePathOnRead() throws {
+    let settings = CodexBinarySettings(
+        store: InMemoryCodexBinarySettingsStore(overridePath: "relative/codex"),
+        detector: StubCodexBinaryDetector(detectedURL: URL(filePath: "/usr/local/bin/codex"))
+    )
+
+    #expect(throws: CodexBinarySettingsError.overrideMustBeAbsolute) {
+        _ = try settings.configuration()
+    }
+}
+
 private final class InMemoryCodexBinarySettingsStore: CodexBinarySettingsStoring, @unchecked Sendable {
     var overridePath: String?
 

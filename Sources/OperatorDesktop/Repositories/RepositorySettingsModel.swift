@@ -28,6 +28,7 @@ public final class RepositorySettingsModel: ObservableObject {
     private let codexBinarySettings: any CodexBinarySettingsManaging
     private let codexStatusChecker: any CodexStatusChecking
     private var defaultBranchDrafts: [UUID: String] = [:]
+    private var codexStatusRefreshGeneration = 0
 
     public init(
         store: OperatorStore,
@@ -144,11 +145,26 @@ public final class RepositorySettingsModel: ObservableObject {
     }
 
     public func refreshCodexStatus() {
-        let binaryURL = (try? codexBinarySettings.configuration())?.effectiveBinaryURL
+        codexStatusRefreshGeneration += 1
+        let generation = codexStatusRefreshGeneration
+        let binaryURL: URL?
+        do {
+            binaryURL = try codexBinarySettings.configuration().effectiveBinaryURL
+        } catch {
+            let message = Self.userFacingMessage(for: error)
+            errorMessage = message
+            codexErrorMessage = message
+            codexStatus = .notFound
+            return
+        }
+
         let codexStatusChecker = codexStatusChecker
         Task { [weak self, codexStatusChecker] in
             let status = await codexStatusChecker.checkStatus(binaryURL: binaryURL)
-            self?.codexStatus = status
+            guard let self, self.codexStatusRefreshGeneration == generation else {
+                return
+            }
+            self.codexStatus = status
         }
     }
 
