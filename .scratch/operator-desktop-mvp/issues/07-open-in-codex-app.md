@@ -1,6 +1,6 @@
 # Open in Codex App
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: AFK
 
 ## Parent
@@ -19,16 +19,16 @@ Operator remains a trigger/navigation surface only. This issue must not add Code
 
 ## Acceptance criteria
 
-- [ ] Review tasks with a successful Run show "Open in Codex App".
-- [ ] Done tasks with a successful Run show "Open in Codex App".
-- [ ] Archived tasks with a successful Run show "Open in Codex App".
-- [ ] Ready tasks do not show "Open in Codex App".
-- [ ] The preferred open target uses the saved Codex thread URL/reference.
-- [ ] A fallback open target uses the run worktree path.
-- [ ] Opening is implemented as an OS-level app/deep-link action.
-- [ ] If opening fails, the app shows a short user-facing error.
-- [ ] The feature does not read thread contents, completion status, transcript, diff, or Codex progress.
-- [ ] Deep link construction is covered by tests separately from OS opening behavior.
+- [x] Review tasks with a successful Run show "Open in Codex App".
+- [x] Done tasks with a successful Run show "Open in Codex App".
+- [x] Archived tasks with a successful Run show "Open in Codex App".
+- [x] Ready tasks do not show "Open in Codex App".
+- [x] The preferred open target uses the saved Codex thread URL/reference.
+- [x] A fallback open target uses the run worktree path.
+- [x] Opening is implemented as an OS-level app/deep-link action.
+- [x] If opening fails, the app shows a short user-facing error.
+- [x] The feature does not read thread contents, completion status, transcript, diff, or Codex progress.
+- [x] Deep link construction is covered by tests separately from OS opening behavior.
 
 ## Implementation notes
 

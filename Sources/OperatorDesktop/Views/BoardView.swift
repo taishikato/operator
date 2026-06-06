@@ -4,9 +4,17 @@ public struct BoardView: View {
     @StateObject private var model: TaskBoardModel
     private let store: OperatorStore
 
-    public init(store: OperatorStore, codexTrigger: (any CodexTaskSending)? = nil) {
+    public init(
+        store: OperatorStore,
+        codexTrigger: (any CodexTaskSending)? = nil,
+        codexOpener: (any CodexAppOpening)? = NSWorkspaceCodexAppOpener()
+    ) {
         self.store = store
-        _model = StateObject(wrappedValue: TaskBoardModel(store: store, codexTrigger: codexTrigger))
+        _model = StateObject(wrappedValue: TaskBoardModel(
+            store: store,
+            codexTrigger: codexTrigger,
+            codexOpener: codexOpener
+        ))
     }
 
     public var body: some View {
@@ -199,6 +207,16 @@ private struct BoardColumnView: View {
                                 .buttonStyle(.bordered)
                                 .disabled(!card.canSendToCodex)
                             }
+
+                            if card.canOpenInCodexApp {
+                                Button {
+                                    model.openTaskInCodexAppReportingErrors(taskID: card.id)
+                                } label: {
+                                    Label(card.codexOpenLabel, systemImage: "arrow.up.forward.app")
+                                        .frame(maxWidth: .infinity)
+                                }
+                                .buttonStyle(.bordered)
+                            }
                         }
                     }
                 }
@@ -334,6 +352,15 @@ private struct TaskInspectorView: View {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(.quaternary)
                     }
+
+                if inspector.canOpenInCodexApp {
+                    Button {
+                        model.openTaskInCodexAppReportingErrors(taskID: inspector.id)
+                    } label: {
+                        Label(inspector.codexOpenLabel, systemImage: "arrow.up.forward.app")
+                    }
+                    .buttonStyle(.borderedProminent)
+                }
             }
 
             Spacer()

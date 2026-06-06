@@ -151,6 +151,7 @@ public struct TaskBoardProjection: Equatable, Sendable {
                 return (task.id, TaskInspectorProjection(
                     task: task,
                     repository: repository,
+                    latestRun: latestRunsByTaskID[task.id],
                     isSending: sendingTaskIDs.contains(task.id)
                 ))
             }
@@ -181,6 +182,12 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
     public let promptPreview: String?
     public let canSendToCodex: Bool
     public let codexSendLabel: String
+    public let codexOpenTarget: CodexOpenTarget?
+    public let codexOpenLabel: String
+
+    public var canOpenInCodexApp: Bool {
+        codexOpenTarget != nil
+    }
 
     public init(task: OperatorTask, repositoryName: String, latestRun: OperatorRun? = nil, isSending: Bool = false) {
         id = task.id
@@ -191,6 +198,12 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
         promptPreview = nil
         canSendToCodex = task.status == .ready && latestRun?.status != .triggered && !isSending
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
+        if [.review, .done].contains(task.status) {
+            codexOpenTarget = latestRun.flatMap(CodexOpenTarget.init(run:))
+        } else {
+            codexOpenTarget = nil
+        }
+        codexOpenLabel = "Open in Codex App"
     }
 }
 
@@ -203,8 +216,14 @@ public struct TaskInspectorProjection: Equatable, Identifiable, Sendable {
     public let isEditable: Bool
     public let canSendToCodex: Bool
     public let codexSendLabel: String
+    public let codexOpenTarget: CodexOpenTarget?
+    public let codexOpenLabel: String
 
-    public init(task: OperatorTask, repository: OperatorRepository, isSending: Bool = false) {
+    public var canOpenInCodexApp: Bool {
+        codexOpenTarget != nil
+    }
+
+    public init(task: OperatorTask, repository: OperatorRepository, latestRun: OperatorRun? = nil, isSending: Bool = false) {
         id = task.id
         repositoryName = repository.name
         title = task.title
@@ -213,6 +232,12 @@ public struct TaskInspectorProjection: Equatable, Identifiable, Sendable {
         isEditable = task.status == .ready
         canSendToCodex = task.status == .ready && !isSending
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
+        if [.review, .done].contains(task.status) {
+            codexOpenTarget = latestRun.flatMap(CodexOpenTarget.init(run:))
+        } else {
+            codexOpenTarget = nil
+        }
+        codexOpenLabel = "Open in Codex App"
     }
 }
 
@@ -265,10 +290,16 @@ public final class TaskBoardModel: ObservableObject {
 
     private let store: OperatorStore
     private let codexTrigger: (any CodexTaskSending)?
+    private let codexOpener: (any CodexAppOpening)?
 
-    public init(store: OperatorStore, codexTrigger: (any CodexTaskSending)? = nil) {
+    public init(
+        store: OperatorStore,
+        codexTrigger: (any CodexTaskSending)? = nil,
+        codexOpener: (any CodexAppOpening)? = NSWorkspaceCodexAppOpener()
+    ) {
         self.store = store
         self.codexTrigger = codexTrigger
+        self.codexOpener = codexOpener
         projection = TaskBoardProjection(repositories: [], tasks: [])
         creationDraft = TaskCreationDraft()
         sendingTaskIDs = []
@@ -381,6 +412,23 @@ public final class TaskBoardModel: ObservableObject {
         await sendTaskToCodexReportingErrors(taskID: selectedTaskID)
     }
 
+    public func openTaskInCodexAppReportingErrors(taskID: UUID) {
+        guard
+            let target = openTarget(taskID: taskID),
+            let codexOpener
+        else {
+            errorMessage = CodexAppOpenError.openFailed.errorDescription
+            return
+        }
+
+        do {
+            try codexOpener.open(target)
+            errorMessage = nil
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
     private func reloadProjectionPreservingError() {
         let previousError = errorMessage
         do {
@@ -410,6 +458,17 @@ public final class TaskBoardModel: ObservableObject {
         if inspectorDraft == nil {
             inspectorDraft = TaskInspectorDraft(inspector: inspector)
         }
+    }
+
+    private func openTarget(taskID: UUID) -> CodexOpenTarget? {
+        if let inspectorTarget = projection.inspector(taskID: taskID)?.codexOpenTarget {
+            return inspectorTarget
+        }
+
+        return projection.columns
+            .flatMap(\.cards)
+            .first { $0.id == taskID }?
+            .codexOpenTarget
     }
 
     nonisolated private static func userFacingMessage(for error: Error) -> String {
