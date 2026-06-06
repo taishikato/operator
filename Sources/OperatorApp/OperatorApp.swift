@@ -15,7 +15,7 @@ struct OperatorApp: App {
 
     var body: some Scene {
         WindowGroup("Operator") {
-            OperatorRootView(shell: .mvp)
+            OperatorRootView(store: store, shell: .mvp)
                 .frame(minWidth: 1_040, minHeight: 680)
         }
         .windowResizability(.contentMinSize)

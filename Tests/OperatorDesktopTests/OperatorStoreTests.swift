@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import GRDB
 import Testing
 @testable import OperatorDesktop
@@ -41,6 +42,51 @@ import Testing
     #expect(try reloadedStore.task(id: task.id)?.status == .review)
     #expect(try reloadedStore.runs(taskID: task.id).map(\.status) == [.triggerFailed, .triggered])
     #expect(try reloadedStore.runs(taskID: task.id).last?.id == successfulRun.id)
+}
+
+@Test func storeReturnsLatestRunsForAllTasksInOneCall() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let taskWithRuns = try store.createTask(repositoryID: repository.id, title: "With runs", prompt: "Prompt")
+    let taskWithoutRuns = try store.createTask(repositoryID: repository.id, title: "Without runs", prompt: "Prompt")
+    let firstRun = try store.recordFailedRun(
+        taskID: taskWithRuns.id,
+        worktreePath: "/tmp/worktrees/failed",
+        baseBranch: "main",
+        baseRef: "abc123",
+        errorMessage: "failed",
+        now: Date(timeIntervalSince1970: 1_700_000_000)
+    )
+    let latestRun = try store.recordSuccessfulRun(
+        taskID: taskWithRuns.id,
+        worktreePath: "/tmp/worktrees/success",
+        baseBranch: "main",
+        baseRef: "def456",
+        codexThreadID: "thread-1",
+        codexThreadURL: nil,
+        now: Date(timeIntervalSince1970: 1_700_000_100)
+    )
+
+    let latestRuns = try store.latestRunsByTaskID()
+
+    #expect(latestRuns[taskWithRuns.id]?.id == latestRun.id)
+    #expect(latestRuns[taskWithRuns.id]?.id != firstRun.id)
+    #expect(latestRuns[taskWithoutRuns.id] == nil)
+}
+
+@Test func storePublishesChangesForBoardReloadsAfterMutations() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    var changeCount = 0
+    let cancellable = store.changes.sink {
+        changeCount += 1
+    }
+    defer { cancellable.cancel() }
+
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Task", prompt: "Prompt")
+    _ = try store.updateTaskContent(id: task.id, title: "Edited", prompt: "Prompt", reasoningEffort: .high)
+
+    #expect(changeCount == 3)
 }
 
 @Test func storeEnforcesManualLifecycleTransitions() throws {

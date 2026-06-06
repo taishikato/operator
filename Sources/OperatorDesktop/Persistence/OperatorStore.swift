@@ -1,4 +1,5 @@
 import Foundation
+import Combine
 import GRDB
 
 public struct OperatorRepository: Equatable, Identifiable, Sendable {
@@ -52,6 +53,11 @@ public enum OperatorStoreError: Error, Equatable, LocalizedError, Sendable {
 
 public final class OperatorStore: @unchecked Sendable {
     private let dbQueue: DatabaseQueue
+    private let changeSubject = PassthroughSubject<Void, Never>()
+
+    public var changes: AnyPublisher<Void, Never> {
+        changeSubject.eraseToAnyPublisher()
+    }
 
     public init(databaseURL: URL) throws {
         try FileManager.default.createDirectory(
@@ -89,7 +95,7 @@ public final class OperatorStore: @unchecked Sendable {
         defaultBranch: String,
         now: Date = Date()
     ) throws -> OperatorRepository {
-        try dbQueue.write { db in
+        let createdRepository = try dbQueue.write { db in
             if let existingRepository = try repository(path: path, db: db) {
                 throw OperatorStoreError.repositoryPathAlreadyRegistered(existingID: existingRepository.id)
             }
@@ -118,6 +124,8 @@ public final class OperatorStore: @unchecked Sendable {
             )
             return repository
         }
+        publishChange()
+        return createdRepository
     }
 
     public func repositories() throws -> [OperatorRepository] {
@@ -132,7 +140,7 @@ public final class OperatorStore: @unchecked Sendable {
         defaultBranch: String,
         now: Date = Date()
     ) throws -> OperatorRepository {
-        try dbQueue.write { db in
+        let repository = try dbQueue.write { db in
             let repository = try requiredRepository(id: id, db: db)
             let updatedRepository = OperatorRepository(
                 id: repository.id,
@@ -158,6 +166,8 @@ public final class OperatorStore: @unchecked Sendable {
 
             return updatedRepository
         }
+        publishChange()
+        return repository
     }
 
     public func createTask(
@@ -168,7 +178,7 @@ public final class OperatorStore: @unchecked Sendable {
         reasoningEffort: ReasoningEffort = .medium,
         now: Date = Date()
     ) throws -> OperatorTask {
-        try dbQueue.write { db in
+        let task = try dbQueue.write { db in
             guard try repositoryExists(id: repositoryID, db: db) else {
                 throw OperatorStoreError.repositoryNotFound
             }
@@ -185,6 +195,8 @@ public final class OperatorStore: @unchecked Sendable {
             try insert(task: task, db: db)
             return task
         }
+        publishChange()
+        return task
     }
 
     public func tasks() throws -> [OperatorTask] {
@@ -208,7 +220,7 @@ public final class OperatorStore: @unchecked Sendable {
         reasoningEffort: ReasoningEffort,
         now: Date = Date()
     ) throws -> OperatorTask {
-        try dbQueue.write { db in
+        let task = try dbQueue.write { db in
             var task = try requiredTask(id: id, db: db)
             try TaskLifecyclePolicy.ensureEditable(task)
 
@@ -219,6 +231,8 @@ public final class OperatorStore: @unchecked Sendable {
             try update(task: task, db: db)
             return task
         }
+        publishChange()
+        return task
     }
 
     public func archiveTask(id: UUID, now: Date = Date()) throws -> OperatorTask {
@@ -249,7 +263,7 @@ public final class OperatorStore: @unchecked Sendable {
         errorMessage: String,
         now: Date = Date()
     ) throws -> OperatorRun {
-        try dbQueue.write { db in
+        let run = try dbQueue.write { db in
             let task = try TaskLifecyclePolicy.recordFailedRun(for: requiredTask(id: taskID, db: db))
             let run = OperatorRun(
                 id: id,
@@ -268,6 +282,8 @@ public final class OperatorStore: @unchecked Sendable {
             try insert(run: run, db: db)
             return run
         }
+        publishChange()
+        return run
     }
 
     public func recordSuccessfulRun(
@@ -280,7 +296,7 @@ public final class OperatorStore: @unchecked Sendable {
         codexThreadURL: URL?,
         now: Date = Date()
     ) throws -> OperatorRun {
-        try dbQueue.write { db in
+        let run = try dbQueue.write { db in
             let task = try requiredTask(id: taskID, db: db)
             guard try successfulRunCount(taskID: task.id, db: db) == 0 else {
                 throw TaskLifecycleError.taskAlreadyHasSuccessfulRun
@@ -306,6 +322,8 @@ public final class OperatorStore: @unchecked Sendable {
             try insert(run: run, db: db)
             return run
         }
+        publishChange()
+        return run
     }
 
     public func runs(taskID: UUID) throws -> [OperatorRun] {
@@ -319,15 +337,33 @@ public final class OperatorStore: @unchecked Sendable {
         }
     }
 
+    public func latestRunsByTaskID() throws -> [UUID: OperatorRun] {
+        try dbQueue.read { db in
+            let runs = try Row.fetchAll(db, sql: "SELECT * FROM runs ORDER BY taskID, createdAt, id")
+                .map(Self.run(from:))
+            var latestRuns: [UUID: OperatorRun] = [:]
+            for run in runs {
+                latestRuns[run.taskID] = run
+            }
+            return latestRuns
+        }
+    }
+
     private func updateTask(
         id: UUID,
         transform: (OperatorTask) throws -> OperatorTask
     ) throws -> OperatorTask {
-        try dbQueue.write { db in
+        let task = try dbQueue.write { db in
             let task = try transform(requiredTask(id: id, db: db))
             try update(task: task, db: db)
             return task
         }
+        publishChange()
+        return task
+    }
+
+    private func publishChange() {
+        changeSubject.send(())
     }
 
     private func repositoryExists(id: UUID, db: Database) throws -> Bool {

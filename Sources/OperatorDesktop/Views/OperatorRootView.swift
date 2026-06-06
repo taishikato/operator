@@ -1,11 +1,13 @@
 import SwiftUI
 
 public struct OperatorRootView: View {
+    private let store: OperatorStore
     private let shell: OperatorShellSpec
 
     @State private var selection: OperatorSidebarSelection
 
-    public init(shell: OperatorShellSpec = .mvp) {
+    public init(store: OperatorStore, shell: OperatorShellSpec = .mvp) {
+        self.store = store
         self.shell = shell
         _selection = State(initialValue: OperatorSidebarSelection(destination: shell.launchDestination) ?? .board)
     }
@@ -16,7 +18,7 @@ public struct OperatorRootView: View {
         } detail: {
             switch selection {
             case .board:
-                BoardView(board: shell.board)
+                BoardView(store: store)
                     .navigationTitle("Board")
             case .archived:
                 ArchivedView()
