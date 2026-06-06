@@ -44,24 +44,13 @@ public struct WorktreePreparer {
     public func prepareWorktree(for repository: OperatorRepository) throws -> PreparedWorktree {
         let repositoryURL = URL(filePath: repository.path).standardizedFileURL
         let baseBranch = repository.defaultBranch
-        let baseRef: String
-        do {
-            baseRef = try commandRunner
-                .runGit(repositoryURL: repositoryURL, arguments: ["rev-parse", "refs/heads/\(baseBranch)"])
-                .trimmedForWorktreePreparation
-        } catch {
-            throw WorktreePreparationError.unableToResolveBaseBranch(branch: baseBranch)
-        }
-
-        guard !baseRef.isEmpty else {
-            throw WorktreePreparationError.unableToResolveBaseBranch(branch: baseBranch)
-        }
-
+        let baseRef = try resolveBaseRef(repositoryURL: repositoryURL, branch: baseBranch)
         let worktreeURL = appDataURL
             .appending(path: "worktrees", directoryHint: .isDirectory)
             .appending(path: repository.id.uuidString, directoryHint: .isDirectory)
             .appending(path: attemptIDGenerator().uuidString, directoryHint: .isDirectory)
 
+        var didCreateWorktree = false
         do {
             try FileManager.default.createDirectory(
                 at: worktreeURL.deletingLastPathComponent(),
@@ -71,29 +60,52 @@ public struct WorktreePreparer {
                 repositoryURL: repositoryURL,
                 arguments: ["worktree", "add", "--detach", worktreeURL.path, baseRef]
             )
+            didCreateWorktree = true
 
             let branchName = try commandRunner
                 .runGit(repositoryURL: worktreeURL, arguments: ["rev-parse", "--abbrev-ref", "HEAD"])
-                .trimmedForWorktreePreparation
+                .trimmed
             let actualHead = try commandRunner
                 .runGit(repositoryURL: worktreeURL, arguments: ["rev-parse", "HEAD"])
-                .trimmedForWorktreePreparation
+                .trimmed
 
             guard branchName == "HEAD", actualHead == baseRef else {
                 throw WorktreePreparationError.unableToCreateWorktree
             }
         } catch let error as WorktreePreparationError {
+            if didCreateWorktree {
+                cleanupCreatedWorktree(repositoryURL: repositoryURL, worktreeURL: worktreeURL)
+            }
             throw error
         } catch {
+            if didCreateWorktree {
+                cleanupCreatedWorktree(repositoryURL: repositoryURL, worktreeURL: worktreeURL)
+            }
             throw WorktreePreparationError.unableToCreateWorktree
         }
 
         return PreparedWorktree(worktreeURL: worktreeURL, baseBranch: baseBranch, baseRef: baseRef)
     }
-}
 
-private extension String {
-    var trimmedForWorktreePreparation: String {
-        trimmingCharacters(in: .whitespacesAndNewlines)
+    private func resolveBaseRef(repositoryURL: URL, branch: String) throws -> String {
+        for refName in ["refs/heads/\(branch)", "refs/remotes/origin/\(branch)"] {
+            if let baseRef = try? commandRunner
+                .runGit(repositoryURL: repositoryURL, arguments: ["rev-parse", refName])
+                .trimmed,
+                !baseRef.isEmpty {
+                return baseRef
+            }
+        }
+        throw WorktreePreparationError.unableToResolveBaseBranch(branch: branch)
+    }
+
+    private func cleanupCreatedWorktree(repositoryURL: URL, worktreeURL: URL) {
+        _ = try? commandRunner.runGit(
+            repositoryURL: repositoryURL,
+            arguments: ["worktree", "remove", "--force", worktreeURL.path]
+        )
+        if FileManager.default.fileExists(atPath: worktreeURL.path) {
+            try? FileManager.default.removeItem(at: worktreeURL)
+        }
     }
 }

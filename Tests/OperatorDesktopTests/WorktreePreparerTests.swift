@@ -70,6 +70,27 @@ import Testing
     )
 }
 
+@Test func worktreePreparerFallsBackToRemoteDefaultBranchWhenLocalBranchIsMissing() throws {
+    let remoteURL = try temporaryDirectory(named: "origin")
+    try runGit(["init", "--bare", "-b", "main"], in: remoteURL)
+    let repositoryURL = try temporaryDirectory(named: "repo")
+    try runGit(["init", "-b", "main"], in: repositoryURL)
+    try commitFile(named: "README.md", contents: "base\n", in: repositoryURL)
+    try runGit(["remote", "add", "origin", remoteURL.path], in: repositoryURL)
+    try runGit(["push", "-u", "origin", "main"], in: repositoryURL)
+    try runGit(["switch", "-c", "feature"], in: repositoryURL)
+    try runGit(["branch", "-D", "main"], in: repositoryURL)
+    let expectedBaseRef = try runGitOutput(["rev-parse", "refs/remotes/origin/main"], in: repositoryURL).trimmed
+    let repository = operatorRepository(path: repositoryURL.path, defaultBranch: "main")
+
+    let prepared = try WorktreePreparer(appDataURL: temporaryDirectory(named: "app-data"))
+        .prepareWorktree(for: repository)
+
+    #expect(prepared.baseRef == expectedBaseRef)
+    #expect(try runGitOutput(["rev-parse", "--abbrev-ref", "HEAD"], in: prepared.worktreeURL).trimmed == "HEAD")
+    #expect(try runGitOutput(["rev-parse", "HEAD"], in: prepared.worktreeURL).trimmed == expectedBaseRef)
+}
+
 @Test func worktreePreparerDoesNotRunNetworkHistoryMutationOrSetupCommands() throws {
     let runner = RecordingWorktreeGitCommandRunner(outputs: [
         ["rev-parse", "refs/heads/main"]: "abc123\n",
@@ -90,6 +111,30 @@ import Testing
     #expect(runner.commands.allSatisfy { command in
         command.arguments.allSatisfy { !forbidden.contains($0) }
     })
+}
+
+@Test func worktreePreparerRemovesCreatedWorktreeWhenVerificationFails() throws {
+    let worktreePath = "/tmp/operator/worktrees/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/11111111-1111-1111-1111-111111111111"
+    let runner = RecordingWorktreeGitCommandRunner(outputs: [
+        ["rev-parse", "refs/heads/main"]: "abc123\n",
+        ["worktree", "add", "--detach", worktreePath, "abc123"]: "",
+        ["rev-parse", "--abbrev-ref", "HEAD"]: "main\n",
+        ["worktree", "remove", "--force", worktreePath]: ""
+    ])
+    let repository = operatorRepository(id: UUID(uuidString: "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")!, path: "/tmp/repo", defaultBranch: "main")
+
+    #expect(throws: WorktreePreparationError.unableToCreateWorktree) {
+        try WorktreePreparer(
+            appDataURL: URL(filePath: "/tmp/operator"),
+            commandRunner: runner,
+            attemptIDGenerator: { UUID(uuidString: "11111111-1111-1111-1111-111111111111")! }
+        )
+        .prepareWorktree(for: repository)
+    }
+
+    #expect(runner.commands.contains(.init(repositoryURL: URL(filePath: "/tmp/repo"), arguments: [
+        "worktree", "remove", "--force", worktreePath
+    ])))
 }
 
 private final class RecordingWorktreeGitCommandRunner: GitCommandRunning, @unchecked Sendable {
