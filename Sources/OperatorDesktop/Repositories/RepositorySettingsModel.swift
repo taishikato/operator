@@ -12,25 +12,58 @@ public final class RepositorySettingsModel: ObservableObject {
     @Published public private(set) var repositories: [OperatorRepository] = []
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var isAddingRepository = false
+    @Published public private(set) var appDataPath: String
+    @Published public private(set) var codexBinaryPath = "Not found"
+    @Published public private(set) var codexDetectedBinaryPath = "Not found"
+    @Published public var codexBinaryOverrideDraft = ""
+    @Published public private(set) var codexStatus: CodexStatus = .notChecked
+
+    public let aboutAppName = "Operator Desktop"
+    public let aboutMinimumMacOS = "15 Sequoia"
 
     private let store: any RepositorySettingsStoring
     private let registrationService: RepositoryRegistrationService
+    private let appDataURL: URL
+    private let codexBinarySettings: any CodexBinarySettingsManaging
+    private let codexStatusChecker: any CodexStatusChecking
     private var defaultBranchDrafts: [UUID: String] = [:]
 
     public init(
         store: OperatorStore,
-        registrationService: RepositoryRegistrationService? = nil
+        registrationService: RepositoryRegistrationService? = nil,
+        appDataURL: URL? = nil,
+        codexBinarySettings: (any CodexBinarySettingsManaging)? = nil,
+        codexStatusChecker: any CodexStatusChecking = CodexStatusChecker()
     ) {
         self.store = store
         self.registrationService = registrationService ?? RepositoryRegistrationService(store: store)
+        let resolvedAppDataURL = appDataURL
+            ?? ((try? OperatorAppBootstrap.applicationDataURL()) ?? URL(filePath: NSHomeDirectory()))
+        self.appDataURL = resolvedAppDataURL
+        self.appDataPath = resolvedAppDataURL.path
+        self.codexBinarySettings = codexBinarySettings ?? CodexBinarySettings()
+        self.codexStatusChecker = codexStatusChecker
     }
 
     init(
         store: any RepositorySettingsStoring,
-        registrationService: RepositoryRegistrationService
+        registrationService: RepositoryRegistrationService,
+        appDataURL: URL = URL(filePath: NSHomeDirectory()),
+        codexBinarySettings: any CodexBinarySettingsManaging = CodexBinarySettings(),
+        codexStatusChecker: any CodexStatusChecking = CodexStatusChecker()
     ) {
         self.store = store
         self.registrationService = registrationService
+        self.appDataURL = appDataURL
+        self.appDataPath = appDataURL.path
+        self.codexBinarySettings = codexBinarySettings
+        self.codexStatusChecker = codexStatusChecker
+    }
+
+    public func loadSettings() throws {
+        try loadRepositories()
+        try loadCodexBinarySettings()
+        appDataPath = appDataURL.path
     }
 
     public func loadRepositories() throws {
@@ -42,7 +75,7 @@ public final class RepositorySettingsModel: ObservableObject {
 
     public func loadRepositoriesReportingErrors() {
         do {
-            try loadRepositories()
+            try loadSettings()
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }
@@ -91,6 +124,30 @@ public final class RepositorySettingsModel: ObservableObject {
         }
     }
 
+    public func saveCodexBinaryOverrideReportingErrors() {
+        do {
+            try setCodexBinaryOverride(codexBinaryOverrideDraft)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func setCodexBinaryOverride(_ path: String) throws {
+        try codexBinarySettings.setOverridePath(path)
+        try loadCodexBinarySettings()
+        codexStatus = .notChecked
+        errorMessage = nil
+    }
+
+    public func refreshCodexStatus() {
+        let binaryURL = (try? codexBinarySettings.configuration())?.effectiveBinaryURL
+        let codexStatusChecker = codexStatusChecker
+        Task { [weak self, codexStatusChecker] in
+            let status = await codexStatusChecker.checkStatus(binaryURL: binaryURL)
+            self?.codexStatus = status
+        }
+    }
+
     func defaultBranchDraft(for repositoryID: UUID) -> String {
         defaultBranchDrafts[repositoryID]
             ?? repositories.first(where: { $0.id == repositoryID })?.defaultBranch
@@ -108,6 +165,13 @@ public final class RepositorySettingsModel: ObservableObject {
                 (repository.id, repository.defaultBranch)
             }
         )
+    }
+
+    private func loadCodexBinarySettings() throws {
+        let configuration = try codexBinarySettings.configuration()
+        codexDetectedBinaryPath = configuration.detectedBinaryURL?.path ?? "Not found"
+        codexBinaryPath = configuration.displayPath
+        codexBinaryOverrideDraft = configuration.overrideBinaryURL?.path ?? ""
     }
 
     private func mergeRepository(_ repository: OperatorRepository) {

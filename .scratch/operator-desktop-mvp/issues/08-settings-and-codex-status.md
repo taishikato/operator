@@ -1,6 +1,6 @@
 # Settings and Codex Status
 
-Status: ready-for-agent
+Status: ready-for-human
 Type: AFK
 
 ## Parent
@@ -19,18 +19,18 @@ Operator remains a local Codex trigger/navigation surface. This issue should imp
 
 ## Acceptance criteria
 
-- [ ] Settings includes repository management.
-- [ ] Repository settings allow viewing and editing default branch.
-- [ ] Settings shows the detected Codex binary path.
-- [ ] Settings allows overriding the Codex binary path with an absolute path.
-- [ ] Settings shows Codex status such as not checked, ready, not found, or not authenticated/unavailable.
-- [ ] Send uses the configured Codex binary path.
-- [ ] Settings shows the Operator app data path.
-- [ ] Settings includes basic About information.
-- [ ] Operator does not collect or persist Codex credentials.
-- [ ] Missing Codex binary is surfaced as a clear status and send failure.
-- [ ] Codex authentication failure is surfaced as a clear status and send failure.
-- [ ] Tests cover binary-path selection and status classification where practical.
+- [x] Settings includes repository management.
+- [x] Repository settings allow viewing and editing default branch.
+- [x] Settings shows the detected Codex binary path.
+- [x] Settings allows overriding the Codex binary path with an absolute path.
+- [x] Settings shows Codex status such as not checked, ready, not found, or not authenticated/unavailable.
+- [x] Send uses the configured Codex binary path.
+- [x] Settings shows the Operator app data path.
+- [x] Settings includes basic About information.
+- [x] Operator does not collect or persist Codex credentials.
+- [x] Missing Codex binary is surfaced as a clear status and send failure.
+- [x] Codex authentication failure is surfaced as a clear status and send failure.
+- [x] Tests cover binary-path selection and status classification where practical.
 - [ ] Implementation branch is published with a non-draft PR after the feature is complete.
 
 ## Implementation notes

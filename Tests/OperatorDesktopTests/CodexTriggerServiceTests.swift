@@ -82,6 +82,91 @@ import Testing
     #expect(worktreePreparer.repositories.map(\.id) == [repository.id, repository.id])
 }
 
+@Test func codexTriggerBuildsAppServerClientWithConfiguredBinaryPath() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Configured", prompt: "Use configured binary")
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-configured")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+    ])
+    let binarySettings = StaticCodexBinarySettingsProvider(
+        configuration: CodexBinaryConfiguration(
+            detectedBinaryURL: URL(filePath: "/usr/local/bin/codex"),
+            overrideBinaryURL: URL(filePath: "/custom/bin/codex")
+        )
+    )
+    let builtClient = FakeCodexAppServerClient(results: [
+        .success(CodexThreadReference(id: "thread-configured", url: nil))
+    ])
+    let factory = ConfiguredCodexAppServerClientFactory(settings: binarySettings) { binaryURL in
+        RecordingCodexAppServerClient(binaryURL: binaryURL, client: builtClient)
+    }
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClientFactory: factory
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .triggered)
+    #expect(factory.createdBinaryURLs == [URL(filePath: "/custom/bin/codex")])
+    #expect(builtClient.requests.map(\.cwd) == [worktreeURL])
+}
+
+@Test func codexTriggerRecordsClearFailureWhenConfiguredBinaryIsMissing() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Missing binary", prompt: "Send")
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-missing-binary")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+    ])
+    let factory = ConfiguredCodexAppServerClientFactory(
+        settings: StaticCodexBinarySettingsProvider(
+            configuration: CodexBinaryConfiguration(detectedBinaryURL: nil, overrideBinaryURL: nil)
+        )
+    ) { _ in
+        FakeCodexAppServerClient(results: [])
+    }
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClientFactory: factory
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .triggerFailed)
+    #expect(run.errorMessage == "Codex binary not found. Configure an absolute Codex binary path in Settings.")
+    #expect(try store.task(id: task.id)?.status == .ready)
+}
+
+@Test func codexTriggerRecordsClearFailureWhenCodexAuthenticationIsUnavailable() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Auth missing", prompt: "Send")
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-auth-missing")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+    ])
+    let appServer = FakeCodexAppServerClient(results: [
+        .failure(CodexAppServerClientError.serverRejected(message: "Codex is not authenticated. Open Codex CLI or App and sign in."))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .triggerFailed)
+    #expect(run.errorMessage == "Codex is not authenticated. Open Codex CLI or App and sign in.")
+    #expect(try store.task(id: task.id)?.status == .ready)
+}
+
 @Test func codexTriggerDoesNotPrepareOrSendSuccessfulTaskAgain() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -142,6 +227,32 @@ private struct FakeCodexAppServerError: Error, LocalizedError {
 
     var errorDescription: String? {
         message
+    }
+}
+
+private final class StaticCodexBinarySettingsProvider: CodexBinarySettingsProviding, @unchecked Sendable {
+    let configurationValue: CodexBinaryConfiguration
+
+    init(configuration: CodexBinaryConfiguration) {
+        self.configurationValue = configuration
+    }
+
+    func configuration() throws -> CodexBinaryConfiguration {
+        configurationValue
+    }
+}
+
+private final class RecordingCodexAppServerClient: CodexAppServerClient, @unchecked Sendable {
+    let binaryURL: URL
+    let client: FakeCodexAppServerClient
+
+    init(binaryURL: URL, client: FakeCodexAppServerClient) {
+        self.binaryURL = binaryURL
+        self.client = client
+    }
+
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+        try await client.startThreadAndTurn(request)
     }
 }
 

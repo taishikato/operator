@@ -5,14 +5,16 @@ import SwiftUI
 struct OperatorApp: App {
     private let store: OperatorStore
     private let codexTrigger: CodexTriggerService
+    private let appDataURL: URL
 
     init() {
         do {
-            store = try OperatorAppBootstrap.initializeStore()
+            appDataURL = try OperatorAppBootstrap.applicationDataURL()
+            store = try OperatorAppBootstrap.initializeStore(databaseURL: appDataURL.appending(path: "operator.sqlite"))
             codexTrigger = CodexTriggerService(
                 store: store,
-                worktreePreparer: WorktreePreparer(appDataURL: try OperatorAppBootstrap.applicationDataURL()),
-                appServerClient: CodexAppServerStdioClient()
+                worktreePreparer: WorktreePreparer(appDataURL: appDataURL),
+                appServerClientFactory: ConfiguredCodexAppServerClientFactory()
             )
         } catch {
             fatalError("Unable to initialize Operator store: \(error)")
@@ -27,7 +29,7 @@ struct OperatorApp: App {
         .windowResizability(.contentMinSize)
 
         Settings {
-            OperatorSettingsView(store: store)
+            OperatorSettingsView(store: store, appDataURL: appDataURL)
                 .frame(width: 480)
         }
     }

@@ -11,6 +11,10 @@ public final class CodexAppServerStdioClient: CodexAppServerClient, @unchecked S
         transport = CodexAppServerStdioTransport(executableURL: executableURL, arguments: arguments)
     }
 
+    public convenience init(codexBinaryURL: URL) {
+        self.init(executableURL: codexBinaryURL, arguments: ["app-server", "--listen", "stdio://"])
+    }
+
     deinit {
         let transport = transport
         Task {
@@ -131,7 +135,11 @@ private actor CodexAppServerStdioTransport {
         process.standardOutput = outputPipe
         process.standardError = errorPipe
 
-        try process.run()
+        do {
+            try process.run()
+        } catch {
+            throw CodexAppServerClientError.binaryNotFound(path: executableURL.path)
+        }
         self.process = process
         stdin = inputPipe.fileHandleForWriting
         stdout = outputPipe.fileHandleForReading
@@ -301,6 +309,7 @@ private actor AsyncGate {
 }
 
 public enum CodexAppServerClientError: Error, Equatable, LocalizedError, Sendable {
+    case binaryNotFound(path: String)
     case notConnected
     case connectionClosed
     case invalidResponse
@@ -308,6 +317,8 @@ public enum CodexAppServerClientError: Error, Equatable, LocalizedError, Sendabl
 
     public var errorDescription: String? {
         switch self {
+        case let .binaryNotFound(path):
+            "Codex binary not found at \(path). Configure an absolute Codex binary path in Settings."
         case .notConnected:
             "Unable to connect to codex app-server."
         case .connectionClosed:
