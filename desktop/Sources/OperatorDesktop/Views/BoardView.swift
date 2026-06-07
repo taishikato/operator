@@ -3,6 +3,7 @@ import SwiftUI
 public struct BoardView: View {
     @StateObject private var model: TaskBoardModel
     @State private var showInspector = true
+    @State private var showCreateSheet = false
     private let store: OperatorStore
 
     public init(
@@ -21,9 +22,7 @@ public struct BoardView: View {
     public var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                BoardToolbarView(model: model)
-
-                TaskCreationFormView(model: model)
+                BoardToolbarView(model: model, onNewTicket: { showCreateSheet = true })
 
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(model.projection.columns) { column in
@@ -49,6 +48,9 @@ public struct BoardView: View {
                 .keyboardShortcut("b", modifiers: [.command, .option])
                 .hidden()
         }
+        .sheet(isPresented: $showCreateSheet) {
+            TaskCreationSheet(model: model, isPresented: $showCreateSheet)
+        }
         .onAppear {
             model.loadReportingErrors()
         }
@@ -66,6 +68,7 @@ public struct BoardView: View {
 
 private struct BoardToolbarView: View {
     @ObservedObject var model: TaskBoardModel
+    let onNewTicket: () -> Void
 
     var body: some View {
         HStack(spacing: 12) {
@@ -76,13 +79,18 @@ private struct BoardToolbarView: View {
             }
             .frame(width: 240)
 
-            Spacer()
-
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
                     .font(.callout)
                     .foregroundStyle(.red)
             }
+
+            Spacer()
+
+            Button(action: onNewTicket) {
+                Label("New Ticket", systemImage: "plus")
+            }
+            .buttonStyle(.borderedProminent)
         }
     }
 
@@ -95,52 +103,76 @@ private struct BoardToolbarView: View {
     }
 }
 
-private struct TaskCreationFormView: View {
+private struct TaskCreationSheet: View {
     @ObservedObject var model: TaskBoardModel
+    @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("New Ticket")
+                .font(.title2.weight(.semibold))
+
+            VStack(alignment: .leading, spacing: 12) {
                 TextField("Task title", text: creationTitle)
                     .textFieldStyle(.roundedBorder)
 
-                Picker("Task repository", selection: creationRepository) {
-                    Text("Choose Repository").tag(Optional<UUID>.none)
-                    ForEach(model.projection.repositoryFilters.filter { $0.id != nil }) { filter in
-                        Text(filter.name).tag(filter.id)
+                HStack(spacing: 12) {
+                    Picker("Task repository", selection: creationRepository) {
+                        Text("Choose Repository").tag(Optional<UUID>.none)
+                        ForEach(model.projection.repositoryFilters.filter { $0.id != nil }) { filter in
+                            Text(filter.name).tag(filter.id)
+                        }
                     }
-                }
-                .frame(width: 220)
+                    .frame(maxWidth: .infinity)
 
-                Picker("Reasoning", selection: creationReasoning) {
-                    ForEach(ReasoningEffortOption.all) { option in
-                        Text(option.label).tag(option.effort)
+                    Picker("Reasoning", selection: creationReasoning) {
+                        ForEach(ReasoningEffortOption.all) { option in
+                            Text(option.label).tag(option.effort)
+                        }
                     }
+                    .frame(width: 180)
                 }
-                .frame(width: 160)
+
+                TextEditor(text: creationPrompt)
+                    .font(.body)
+                    .scrollContentBackground(.hidden)
+                    .padding(8)
+                    .frame(minHeight: 160)
+                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(.quaternary)
+                    }
+                    .accessibilityLabel("Task prompt")
+            }
+
+            HStack {
+                if let errorMessage = model.errorMessage {
+                    Text(errorMessage)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                }
+
+                Spacer()
+
+                Button("Cancel") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.cancelAction)
 
                 Button {
-                    model.createTaskReportingErrors()
+                    if model.createTaskReportingErrors() {
+                        isPresented = false
+                    }
                 } label: {
                     Label("Create Task", systemImage: "plus")
                 }
                 .buttonStyle(.borderedProminent)
+                .keyboardShortcut(.defaultAction)
             }
-
-            TextEditor(text: creationPrompt)
-                .font(.body)
-                .scrollContentBackground(.hidden)
-                .padding(8)
-                .frame(minHeight: 96)
-                .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(.quaternary)
-                }
-                .accessibilityLabel("Task prompt")
         }
-        .padding(12)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .padding(20)
+        .frame(width: 520)
     }
 
     private var creationTitle: Binding<String> {

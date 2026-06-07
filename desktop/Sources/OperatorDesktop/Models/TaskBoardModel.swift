@@ -337,11 +337,14 @@ public final class TaskBoardModel: ObservableObject {
         try load()
     }
 
-    public func createTaskReportingErrors() {
+    @discardableResult
+    public func createTaskReportingErrors() -> Bool {
         do {
             try createTask()
+            return true
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
+            return false
         }
     }
 
