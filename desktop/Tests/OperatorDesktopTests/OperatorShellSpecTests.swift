@@ -10,7 +10,7 @@ import Testing
 @Test func defaultBoardShowsOnlyActiveMVPColumns() {
     let shell = OperatorShellSpec.mvp
 
-    #expect(shell.board.columns.map(\.title) == ["Ready", "Review", "Done"])
+    #expect(shell.board.columns.map(\.title) == ["Ready", "Running", "Done"])
     #expect(!shell.board.columns.map(\.id).contains(.archived))
 }
 
@@ -33,6 +33,6 @@ import Testing
     let shell = OperatorShellSpec.mvp
 
     #expect(shell.board.emptyState.title == "No repositories or tasks yet")
-    #expect(shell.board.emptyState.message == "Ready, Review, and Done are empty right now.")
+    #expect(shell.board.emptyState.message == "Ready, Running, and Done are empty right now.")
     #expect(shell.board.reservesInspectorPanel)
 }

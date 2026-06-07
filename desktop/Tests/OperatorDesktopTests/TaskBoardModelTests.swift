@@ -73,6 +73,14 @@ import Testing
     #expect(projection.columns.flatMap(\.cards).map(\.title).contains("Archived work") == false)
 }
 
+@Test func boardProjectionLabelsTheInProgressColumnRunning() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+
+    let projection = try TaskBoardProjection.load(from: store)
+
+    #expect(projection.columns.map(\.title) == ["Ready", "Running", "Done"])
+}
+
 @Test func boardProjectionExposesOpenInCodexForReviewAndDoneButNotReadyTasks() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")

@@ -11,7 +11,6 @@ import Testing
         .triggerQueue,
         .concurrencyControl,
         .backlogColumn,
-        .runningColumn,
         .reviewToReadyMovement,
         .rerunAfterSuccessfulSend,
         .hardDelete,

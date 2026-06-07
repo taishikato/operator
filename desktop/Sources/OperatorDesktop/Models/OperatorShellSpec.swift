@@ -8,12 +8,12 @@ public struct OperatorShellSpec: Equatable, Sendable {
         board: BoardSpec(
             columns: [
                 BoardColumnSpec(id: .ready, title: "Ready"),
-                BoardColumnSpec(id: .review, title: "Review"),
+                BoardColumnSpec(id: .review, title: "Running"),
                 BoardColumnSpec(id: .done, title: "Done")
             ],
             emptyState: BoardEmptyState(
                 title: "No repositories or tasks yet",
-                message: "Ready, Review, and Done are empty right now."
+                message: "Ready, Running, and Done are empty right now."
             ),
             reservesInspectorPanel: true
         ),

@@ -517,7 +517,7 @@ private extension TaskStatus {
         case .ready:
             "Ready"
         case .review:
-            "Review"
+            "Running"
         case .done:
             "Done"
         case .archived:

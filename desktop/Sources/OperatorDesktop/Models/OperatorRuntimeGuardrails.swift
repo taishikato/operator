@@ -34,7 +34,6 @@ public struct OperatorRuntimeGuardrails: Equatable, Sendable {
             .triggerQueue,
             .concurrencyControl,
             .backlogColumn,
-            .runningColumn,
             .reviewToReadyMovement,
             .rerunAfterSuccessfulSend,
             .hardDelete,
@@ -88,7 +87,6 @@ public struct OperatorRuntimeGuardrails: Equatable, Sendable {
         ],
         forbiddenVisibleLabels: [
             "Backlog",
-            "Running",
             "Schedule",
             "Cron",
             "Timezone",
