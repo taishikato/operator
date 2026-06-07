@@ -226,7 +226,7 @@ private struct BoardColumnView: View {
                                 .disabled(!card.canSendToCodex)
                             }
 
-                            if card.canOpenInCodexApp {
+                            if card.codexOpenTarget != nil {
                                 Button {
                                     Task {
                                         await model.openTaskInCodexAppReportingErrors(taskID: card.id)
@@ -236,6 +236,7 @@ private struct BoardColumnView: View {
                                         .frame(maxWidth: .infinity)
                                 }
                                 .buttonStyle(.bordered)
+                                .disabled(!card.canOpenInCodexApp)
                             }
                         }
                     }
@@ -374,7 +375,7 @@ private struct TaskInspectorView: View {
                             .stroke(.quaternary)
                     }
 
-                if inspector.canOpenInCodexApp {
+                if inspector.codexOpenTarget != nil {
                     Button {
                         Task {
                             await model.openTaskInCodexAppReportingErrors(taskID: inspector.id)
@@ -383,6 +384,7 @@ private struct TaskInspectorView: View {
                         Label(inspector.codexOpenLabel, systemImage: "arrow.up.forward.app")
                     }
                     .buttonStyle(.borderedProminent)
+                    .disabled(!inspector.canOpenInCodexApp)
                 }
             }
 

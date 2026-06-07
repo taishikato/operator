@@ -22,7 +22,6 @@ import Testing
         .changedFileCount,
         .testResultTracking,
         .commitStatusTracking,
-        .codexCompletionTracking,
         .appServerRawEventPersistence,
         .codexTranscriptPersistence
     ])
@@ -104,7 +103,7 @@ import Testing
     let storedRuns = try store.runs(taskID: task.id)
 
     #expect(storedRuns.map(\.id) == [run.id])
-    #expect(storedRuns.map(\.status) == [.triggered])
+    #expect(storedRuns.map(\.status) == [.running])
     #expect(run.codexThreadID == "thread-guardrail")
     #expect(run.codexThreadURL == URL(string: "codex://threads/thread-guardrail"))
     #expect(run.errorMessage == nil)
@@ -162,7 +161,7 @@ private final class FailingGuardrailAppServerClient: CodexAppServerClient, @unch
         self.message = message
     }
 
-    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         throw CodexAppServerClientError.serverRejected(message: message)
     }
 }
@@ -174,8 +173,11 @@ private final class GuardrailAppServerClient: CodexAppServerClient, @unchecked S
         self.thread = thread
     }
 
-    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
-        thread
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
+        CodexStartedThread(
+            reference: thread,
+            turnCompletion: CodexTurnCompletionSignal()
+        )
     }
 }
 

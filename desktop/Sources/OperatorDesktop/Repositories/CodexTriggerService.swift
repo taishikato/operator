@@ -39,12 +39,57 @@ public struct CodexThreadReference: Equatable, Sendable {
     }
 }
 
+public protocol CodexTurnCompletionWatching: Sendable {
+    func waitUntilCompleted() async
+}
+
+public actor CodexTurnCompletionSignal: CodexTurnCompletionWatching {
+    private var isCompleted: Bool
+    private var continuations: [CheckedContinuation<Void, Never>] = []
+
+    public init(isCompleted: Bool = false) {
+        self.isCompleted = isCompleted
+    }
+
+    public func waitUntilCompleted() async {
+        if isCompleted {
+            return
+        }
+
+        await withCheckedContinuation { continuation in
+            continuations.append(continuation)
+        }
+    }
+
+    public func complete() {
+        guard !isCompleted else {
+            return
+        }
+        isCompleted = true
+        let continuations = continuations
+        self.continuations.removeAll()
+        for continuation in continuations {
+            continuation.resume()
+        }
+    }
+}
+
+public struct CodexStartedThread: Sendable {
+    public let reference: CodexThreadReference
+    public let turnCompletion: any CodexTurnCompletionWatching
+
+    public init(reference: CodexThreadReference, turnCompletion: any CodexTurnCompletionWatching) {
+        self.reference = reference
+        self.turnCompletion = turnCompletion
+    }
+}
+
 public protocol CodexWorktreePreparing {
     func prepareWorktree(for repository: OperatorRepository) throws -> PreparedWorktree
 }
 
 public protocol CodexAppServerClient: Sendable {
-    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread
 }
 
 public protocol CodexAppServerClientFactory: Sendable {
@@ -104,7 +149,7 @@ public struct CodexTriggerService: @unchecked Sendable {
         let preparedWorktree = try worktreePreparer.prepareWorktree(for: repository)
         do {
             let appServerClient = try appServerClientFactory.makeAppServerClient()
-            let thread = try await appServerClient.startThreadAndTurn(
+            let startedThread = try await appServerClient.startThreadAndTurn(
                 CodexThreadStartRequest(
                     cwd: preparedWorktree.worktreeURL,
                     threadCwd: URL(filePath: repository.path, directoryHint: .isDirectory),
@@ -114,14 +159,21 @@ public struct CodexTriggerService: @unchecked Sendable {
                     displayName: task.title
                 )
             )
-            return try store.recordSuccessfulRun(
+            let run = try store.recordStartedRun(
                 taskID: task.id,
                 worktreePath: preparedWorktree.worktreeURL.path,
                 baseBranch: preparedWorktree.baseBranch,
                 baseRef: preparedWorktree.baseRef,
-                codexThreadID: thread.id,
-                codexThreadURL: thread.url
+                codexThreadID: startedThread.reference.id,
+                codexThreadURL: startedThread.reference.url
             )
+            let store = store
+            let turnCompletion = startedThread.turnCompletion
+            Task {
+                await turnCompletion.waitUntilCompleted()
+                _ = try? store.completeStartedRun(id: run.id)
+            }
+            return run
         } catch {
             return try store.recordFailedRun(
                 taskID: task.id,

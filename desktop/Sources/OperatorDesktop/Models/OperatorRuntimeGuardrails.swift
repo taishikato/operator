@@ -14,7 +14,6 @@ public enum OperatorRuntimeResponsibility: Equatable, Sendable {
     case changedFileCount
     case testResultTracking
     case commitStatusTracking
-    case codexCompletionTracking
     case appServerRawEventPersistence
     case codexTranscriptPersistence
 }
@@ -46,7 +45,6 @@ public struct OperatorRuntimeGuardrails: Equatable, Sendable {
             .changedFileCount,
             .testResultTracking,
             .commitStatusTracking,
-            .codexCompletionTracking,
             .appServerRawEventPersistence,
             .codexTranscriptPersistence
         ],

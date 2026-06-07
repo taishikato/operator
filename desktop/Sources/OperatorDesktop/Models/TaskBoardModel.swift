@@ -189,11 +189,8 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
     public let canSendToCodex: Bool
     public let codexSendLabel: String
     public let codexOpenTarget: CodexOpenTarget?
+    public let canOpenInCodexApp: Bool
     public let codexOpenLabel: String
-
-    public var canOpenInCodexApp: Bool {
-        codexOpenTarget != nil
-    }
 
     public init(task: OperatorTask, repositoryName: String, latestRun: OperatorRun? = nil, isSending: Bool = false) {
         id = task.id
@@ -209,6 +206,7 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
         )
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
         codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.review, .done])
+        canOpenInCodexApp = latestRun?.isCodexOpenReady == true && codexOpenTarget != nil
         codexOpenLabel = CodexAppOpenAction.label
     }
 }
@@ -223,11 +221,8 @@ public struct TaskInspectorProjection: Equatable, Identifiable, Sendable {
     public let canSendToCodex: Bool
     public let codexSendLabel: String
     public let codexOpenTarget: CodexOpenTarget?
+    public let canOpenInCodexApp: Bool
     public let codexOpenLabel: String
-
-    public var canOpenInCodexApp: Bool {
-        codexOpenTarget != nil
-    }
 
     public init(task: OperatorTask, repository: OperatorRepository, latestRun: OperatorRun? = nil, isSending: Bool = false) {
         id = task.id
@@ -243,6 +238,7 @@ public struct TaskInspectorProjection: Equatable, Identifiable, Sendable {
         )
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
         codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.review, .done])
+        canOpenInCodexApp = latestRun?.isCodexOpenReady == true && codexOpenTarget != nil
         codexOpenLabel = CodexAppOpenAction.label
     }
 }
@@ -457,10 +453,13 @@ public final class TaskBoardModel: ObservableObject {
     }
 
     private func openTarget(taskID: UUID) -> CodexOpenTarget? {
-        projection.columns
+        let card = projection.columns
             .flatMap(\.cards)
-            .first { $0.id == taskID }?
-            .codexOpenTarget
+            .first { $0.id == taskID }
+        guard card?.canOpenInCodexApp == true else {
+            return nil
+        }
+        return card?.codexOpenTarget
     }
 
     nonisolated private static func userFacingMessage(for error: Error) -> String {
@@ -512,10 +511,16 @@ private extension TaskStatus {
 }
 
 private extension OperatorRun {
+    var isCodexOpenReady: Bool {
+        status == .triggered
+    }
+
     var triggerStateBadge: String {
         switch status {
         case .triggerFailed:
             "Failed to send"
+        case .running:
+            "Running"
         case .triggered:
             "Sent to Codex"
         }

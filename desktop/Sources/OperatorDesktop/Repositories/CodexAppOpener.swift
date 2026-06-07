@@ -5,7 +5,7 @@ public enum CodexOpenTarget: Equatable, Sendable {
     case worktree(URL)
 
     public init?(run: OperatorRun) {
-        guard run.status == .triggered else {
+        guard run.status != .triggerFailed else {
             return nil
         }
 

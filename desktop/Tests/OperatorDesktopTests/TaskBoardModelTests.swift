@@ -117,6 +117,30 @@ import Testing
     #expect(doneCard.codexOpenTarget == .url(doneURL))
 }
 
+@Test func boardProjectionDisablesCodexOpenWhileRunIsWorking() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Working", prompt: "Prompt")
+    _ = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/working",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-working",
+        codexThreadURL: URL(string: "codex://threads/thread-working")
+    )
+
+    let projection = try TaskBoardProjection.load(from: store)
+    let card = try #require(projection.column(.review).cards.first)
+    let inspector = try #require(projection.inspector(taskID: task.id))
+
+    #expect(card.triggerStateBadge == "Running")
+    #expect(card.canOpenInCodexApp == false)
+    #expect(card.codexOpenTarget == .url(URL(string: "codex://threads/thread-working")!))
+    #expect(inspector.canOpenInCodexApp == false)
+    #expect(inspector.codexOpenTarget == .url(URL(string: "codex://threads/thread-working")!))
+}
+
 @Test func boardProjectionFiltersByRepositoryAndIncludesCardBadges() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let operatorRepo = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")

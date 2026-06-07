@@ -10,6 +10,7 @@ import Testing
         """
         import json
         import pathlib
+        import select
         import sys
 
         done = pathlib.Path(sys.argv[1])
@@ -46,7 +47,7 @@ import Testing
         arguments: ["python3", scriptURL.path, completionURL.path]
     )
 
-    let thread = try await client.startThreadAndTurn(
+    let startedThread = try await client.startThreadAndTurn(
         CodexThreadStartRequest(
             cwd: directory,
             model: "gpt-5.5",
@@ -55,8 +56,132 @@ import Testing
         )
     )
 
-    #expect(thread.id == "thread-drain")
-    #expect(thread.url == URL(string: "codex://threads/thread-drain"))
+    #expect(startedThread.reference.id == "thread-drain")
+    #expect(startedThread.reference.url == URL(string: "codex://threads/thread-drain"))
+    #expect(await fileExists(at: completionURL, withinMilliseconds: 5_000))
+}
+
+@Test func codexAppServerStdioClientCompletesTurnWatcherFromCompletedNotification() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientTurnCompleted")
+    let scriptURL = directory.appending(path: "server.py")
+    let completionURL = directory.appending(path: "turn-completed")
+    try writeScript(
+        """
+        import json
+        import sys
+
+        def read_request():
+            line = sys.stdin.readline()
+            if not line:
+                sys.exit(1)
+            return json.loads(line)
+
+        def send(message):
+            sys.stdout.write(json.dumps(message) + "\\n")
+            sys.stdout.flush()
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-complete"}}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        send({
+            "jsonrpc": "2.0",
+            "method": "turn/completed",
+            "params": {
+                "threadId": "thread-complete",
+                "turn": {"id": "turn-complete"}
+            }
+        })
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path]
+    )
+
+    let startedThread = try await client.startThreadAndTurn(
+        CodexThreadStartRequest(
+            cwd: directory,
+            model: "gpt-5.5",
+            reasoningEffort: .medium,
+            prompt: "Complete watcher"
+        )
+    )
+
+    Task {
+        await startedThread.turnCompletion.waitUntilCompleted()
+        try? "done".write(to: completionURL, atomically: true, encoding: .utf8)
+    }
+
+    #expect(startedThread.reference.id == "thread-complete")
+    #expect(await fileExists(at: completionURL, withinMilliseconds: 5_000))
+}
+
+@Test func codexAppServerStdioClientCompletesTurnWatcherFromAbortedNotification() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientTurnAborted")
+    let scriptURL = directory.appending(path: "server.py")
+    let completionURL = directory.appending(path: "turn-aborted")
+    try writeScript(
+        """
+        import json
+        import sys
+
+        def read_request():
+            line = sys.stdin.readline()
+            if not line:
+                sys.exit(1)
+            return json.loads(line)
+
+        def send(message):
+            sys.stdout.write(json.dumps(message) + "\\n")
+            sys.stdout.flush()
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-abort"}}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        send({
+            "jsonrpc": "2.0",
+            "method": "codex/event",
+            "params": {
+                "threadId": "thread-abort",
+                "event": {"type": "turn_aborted"}
+            }
+        })
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path]
+    )
+
+    let startedThread = try await client.startThreadAndTurn(
+        CodexThreadStartRequest(
+            cwd: directory,
+            model: "gpt-5.5",
+            reasoningEffort: .medium,
+            prompt: "Abort watcher"
+        )
+    )
+
+    Task {
+        await startedThread.turnCompletion.waitUntilCompleted()
+        try? "done".write(to: completionURL, atomically: true, encoding: .utf8)
+    }
+
+    #expect(startedThread.reference.id == "thread-abort")
     #expect(await fileExists(at: completionURL, withinMilliseconds: 5_000))
 }
 
@@ -150,6 +275,7 @@ import Testing
         """
         import json
         import pathlib
+        import select
         import sys
 
         input_path = pathlib.Path(sys.argv[1])
@@ -198,7 +324,7 @@ import Testing
     #expect((textInput["text_elements"] as? [Any])?.isEmpty == true)
 }
 
-@Test func codexAppServerStdioClientSetsThreadNameBeforeStartingTurn() async throws {
+@Test func codexAppServerStdioClientDoesNotArchiveActiveThread() async throws {
     let directory = try temporaryDirectory(named: "CodexAppServerStdioClientThreadName")
     let scriptURL = directory.appending(path: "server.py")
     let methodsURL = directory.appending(path: "methods.json")
@@ -206,6 +332,7 @@ import Testing
         """
         import json
         import pathlib
+        import select
         import sys
 
         methods_path = pathlib.Path(sys.argv[1])
@@ -230,7 +357,14 @@ import Testing
         send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-named"}}})
 
         request = read_request()
+        methods_path.write_text(json.dumps(methods))
         send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        readable, _, _ = select.select([sys.stdin], [], [], 0.5)
+        if readable:
+            request = read_request()
+            methods_path.write_text(json.dumps(methods))
+            send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
 
         request = read_request()
         methods_path.write_text(json.dumps(methods))
@@ -253,14 +387,17 @@ import Testing
         )
     )
 
-    let methodsData = try Data(contentsOf: methodsURL)
-    let methods = try #require(JSONSerialization.jsonObject(with: methodsData) as? [[String: Any]])
+    let methods = try await recordedMethods(at: methodsURL, minimumCount: 4)
     #expect(methods.map { $0["method"] as? String } == [
         "initialize",
         "thread/start",
         "thread/name/set",
         "turn/start"
     ])
+    #expect(methods.count >= 4)
+    guard methods.count >= 4 else {
+        return
+    }
     let nameParams = try #require(methods[2]["params"] as? [String: Any])
     #expect(nameParams["threadId"] as? String == "thread-named")
     #expect(nameParams["name"] as? String == "Operator task title")
@@ -303,6 +440,9 @@ import Testing
         request = read_request()
         captured["turn_start_cwd"] = request["params"]["cwd"]
         cwd_path.write_text(json.dumps(captured))
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
         send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
         """,
         to: scriptURL
@@ -365,4 +505,21 @@ private func fileExists(at url: URL, withinMilliseconds timeout: Int) async -> B
         try? await Task.sleep(for: .milliseconds(50))
     }
     return FileManager.default.fileExists(atPath: url.path)
+}
+
+private func recordedMethods(at url: URL, minimumCount: Int) async throws -> [[String: Any]] {
+    let deadline = Date().addingTimeInterval(5)
+    while Date() < deadline {
+        if
+            let data = try? Data(contentsOf: url),
+            let methods = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]],
+            methods.count >= minimumCount
+        {
+            return methods
+        }
+        try? await Task.sleep(for: .milliseconds(50))
+    }
+
+    let data = try Data(contentsOf: url)
+    return try #require(JSONSerialization.jsonObject(with: data) as? [[String: Any]])
 }

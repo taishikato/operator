@@ -16,7 +16,7 @@ import Testing
         PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
     ])
     let appServer = FakeCodexAppServerClient(results: [
-        .success(CodexThreadReference(id: "thread-1", url: URL(string: "codex://threads/thread-1")))
+        .success(startedThread(id: "thread-1", url: URL(string: "codex://threads/thread-1")))
     ])
     let service = CodexTriggerService(
         store: store,
@@ -26,7 +26,7 @@ import Testing
 
     let run = try await service.sendTaskToCodex(taskID: task.id)
 
-    #expect(run.status == .triggered)
+    #expect(run.status == .running)
     #expect(run.worktreePath == worktreeURL.path)
     #expect(run.baseBranch == "main")
     #expect(run.baseRef == "abc123")
@@ -47,6 +47,44 @@ import Testing
     ])
 }
 
+@Test func codexTriggerMarksStartedRunTriggeredAfterTurnCompletion() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Wait for turn", prompt: "Prompt")
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-running")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-running", url: URL(string: "codex://threads/thread-running")),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .running)
+    #expect(run.completedAt == nil)
+    #expect(try store.runs(taskID: task.id).map(\.status) == [.running])
+
+    await turnCompletion.complete()
+    await waitUntil {
+        ((try? store.runs(taskID: task.id).first?.status) ?? nil) == .triggered
+    }
+
+    let completedRun = try #require(store.runs(taskID: task.id).first)
+    #expect(completedRun.id == run.id)
+    #expect(completedRun.status == .triggered)
+    #expect(completedRun.completedAt != nil)
+}
+
 @Test func codexTriggerRecordsFailureAndRetryUsesFreshWorktreeAndRun() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -59,7 +97,7 @@ import Testing
     ])
     let appServer = FakeCodexAppServerClient(results: [
         .failure(FakeCodexAppServerError(message: String(repeating: "app-server rejected ", count: 20))),
-        .success(CodexThreadReference(id: "thread-retry", url: nil))
+        .success(startedThread(id: "thread-retry", url: nil))
     ])
     let service = CodexTriggerService(
         store: store,
@@ -77,9 +115,9 @@ import Testing
 
     let successfulRun = try await service.sendTaskToCodex(taskID: task.id)
 
-    #expect(successfulRun.status == .triggered)
+    #expect(successfulRun.status == .running)
     #expect(successfulRun.worktreePath == secondWorktreeURL.path)
-    #expect(try store.runs(taskID: task.id).map(\.status) == [.triggerFailed, .triggered])
+    #expect(try store.runs(taskID: task.id).map(\.status) == [.triggerFailed, .running])
     #expect(try store.runs(taskID: task.id).map(\.worktreePath) == [firstWorktreeURL.path, secondWorktreeURL.path])
     #expect(worktreePreparer.repositories.map(\.id) == [repository.id, repository.id])
 }
@@ -99,7 +137,7 @@ import Testing
         )
     )
     let builtClient = FakeCodexAppServerClient(results: [
-        .success(CodexThreadReference(id: "thread-configured", url: nil))
+        .success(startedThread(id: "thread-configured", url: nil))
     ])
     let createdBinaryURLs = CreatedBinaryURLRecorder()
     let factory = ConfiguredCodexAppServerClientFactory(settings: binarySettings) { binaryURL in
@@ -114,7 +152,7 @@ import Testing
 
     let run = try await service.sendTaskToCodex(taskID: task.id)
 
-    #expect(run.status == .triggered)
+    #expect(run.status == .running)
     #expect(createdBinaryURLs.urls == [URL(filePath: "/custom/bin/codex")])
     #expect(builtClient.requests.map(\.cwd) == [worktreeURL])
 }
@@ -270,14 +308,14 @@ private final class FakeCodexWorktreePreparer: CodexWorktreePreparing, @unchecke
 }
 
 private final class FakeCodexAppServerClient: CodexAppServerClient, @unchecked Sendable {
-    private var results: [Result<CodexThreadReference, Error>]
+    private var results: [Result<CodexStartedThread, Error>]
     private(set) var requests: [CodexThreadStartRequest] = []
 
-    init(results: [Result<CodexThreadReference, Error>]) {
+    init(results: [Result<CodexStartedThread, Error>]) {
         self.results = results
     }
 
-    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         requests.append(request)
         return try results.removeFirst().get()
     }
@@ -327,7 +365,7 @@ private final class RecordingCodexAppServerClient: CodexAppServerClient, @unchec
         self.client = client
     }
 
-    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         try await client.startThreadAndTurn(request)
     }
 }
@@ -343,8 +381,8 @@ private final class LifetimeRecordingCodexAppServerClient: CodexAppServerClient,
         onDeinit()
     }
 
-    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
-        CodexThreadReference(id: "thread-lifetime", url: nil)
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
+        startedThread(id: "thread-lifetime", url: nil)
     }
 }
 
@@ -371,6 +409,23 @@ private final class ClientLifetimeRecorder: @unchecked Sendable {
         lock.withLock {
             deinitializedCountValue += 1
         }
+    }
+}
+
+private func startedThread(id: String, url: URL?) -> CodexStartedThread {
+    CodexStartedThread(
+        reference: CodexThreadReference(id: id, url: url),
+        turnCompletion: CodexTurnCompletionSignal()
+    )
+}
+
+private func waitUntil(
+    timeout: Duration = .seconds(1),
+    condition: @escaping @Sendable () -> Bool
+) async {
+    let start = ContinuousClock.now
+    while !condition(), start.duration(to: .now) < timeout {
+        await Task.yield()
     }
 }
 

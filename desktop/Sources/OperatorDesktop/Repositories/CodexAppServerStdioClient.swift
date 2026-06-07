@@ -22,12 +22,12 @@ public final class CodexAppServerStdioClient: CodexAppServerClient, @unchecked S
         }
     }
 
-    public func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+    public func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         await gate.wait()
         do {
-            let thread = try await transport.startThreadAndTurn(request)
+            let startedThread = try await transport.startThreadAndTurn(request)
             await gate.signal()
-            return thread
+            return startedThread
         } catch {
             await gate.signal()
             throw error
@@ -46,6 +46,7 @@ private actor CodexAppServerStdioTransport {
     private var nextRequestID = 1
     private var initialized = false
     private var pendingResponses: [Int: CheckedContinuation<CodexAppServerRPCResponse, Error>] = [:]
+    private var pendingTurnCompletionsByThreadID: [String: CodexTurnCompletionSignal] = [:]
 
     init(executableURL: URL, arguments: [String]) {
         self.executableURL = executableURL
@@ -56,7 +57,7 @@ private actor CodexAppServerStdioTransport {
         process?.terminate()
     }
 
-    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexThreadReference {
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         do {
             try await ensureInitialized()
 
@@ -71,7 +72,8 @@ private actor CodexAppServerStdioTransport {
             let thread = try threadReference(fromThreadStartResponse: threadResponse)
 
             try await setThreadNameIfPresent(threadID: thread.id, displayName: request.displayName)
-
+            let turnCompletion = CodexTurnCompletionSignal()
+            pendingTurnCompletionsByThreadID[thread.id] = turnCompletion
             _ = try await sendRequest(
                 method: "turn/start",
                 params: [
@@ -89,7 +91,7 @@ private actor CodexAppServerStdioTransport {
                 ]
             )
 
-            return thread
+            return CodexStartedThread(reference: thread, turnCompletion: turnCompletion)
         } catch {
             resetProcessState()
             throw error
@@ -97,7 +99,7 @@ private actor CodexAppServerStdioTransport {
     }
 
     private func setThreadNameIfPresent(threadID: String, displayName: String?) async throws {
-        guard let displayName, !displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard let displayName = normalizedThreadName(displayName) else {
             return
         }
 
@@ -112,6 +114,17 @@ private actor CodexAppServerStdioTransport {
         } catch CodexAppServerClientError.serverRejected {
             return
         }
+    }
+
+    private func normalizedThreadName(_ displayName: String?) -> String? {
+        guard let displayName else {
+            return nil
+        }
+        let name = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            return nil
+        }
+        return name
     }
 
     func close() {
@@ -237,6 +250,7 @@ private actor CodexAppServerStdioTransport {
         }
 
         if response.method != nil {
+            handleServerNotification(response)
             return
         }
         guard let requestID = response.id else {
@@ -256,6 +270,31 @@ private actor CodexAppServerStdioTransport {
         continuation.resume(returning: response)
     }
 
+    private func handleServerNotification(_ response: CodexAppServerRPCResponse) {
+        guard let threadID = terminalTurnThreadID(from: response) else {
+            return
+        }
+        guard
+            let completion = pendingTurnCompletionsByThreadID.removeValue(forKey: threadID)
+        else {
+            return
+        }
+        Task {
+            await completion.complete()
+        }
+    }
+
+    private func terminalTurnThreadID(from response: CodexAppServerRPCResponse) -> String? {
+        if response.method == "turn/completed" || response.method == "turn/aborted" {
+            return response.params?.threadId
+        }
+
+        guard response.method == "codex/event", response.params?.isTerminalTurnEvent == true else {
+            return nil
+        }
+        return response.params?.threadId
+    }
+
     private func resetProcessState(terminate: Bool = true) {
         stdout?.readabilityHandler = nil
         stderr?.readabilityHandler = nil
@@ -268,6 +307,7 @@ private actor CodexAppServerStdioTransport {
         stderr = nil
         stdoutBuffer.removeAll()
         initialized = false
+        pendingTurnCompletionsByThreadID.removeAll()
     }
 
     private func failPendingResponses(with error: Error) {
@@ -291,8 +331,26 @@ private actor CodexAppServerStdioTransport {
 private struct CodexAppServerRPCResponse: Decodable, Sendable {
     let id: Int?
     let method: String?
+    let params: CodexAppServerRPCParams?
     let result: CodexAppServerRPCResult?
     let error: CodexAppServerRPCError?
+}
+
+private struct CodexAppServerRPCParams: Decodable, Sendable {
+    let threadId: String?
+    let event: CodexAppServerRPCEvent?
+    let msg: CodexAppServerRPCEvent?
+
+    var isTerminalTurnEvent: Bool {
+        let eventType = event?.type ?? msg?.type
+        return eventType == "task_complete"
+            || eventType == "turn_aborted"
+            || eventType == "interrupted"
+    }
+}
+
+private struct CodexAppServerRPCEvent: Decodable, Sendable {
+    let type: String?
 }
 
 private struct CodexAppServerRPCResult: Decodable, Sendable {

@@ -13,6 +13,7 @@ public struct OperatorRepository: Equatable, Identifiable, Sendable {
 
 public enum RunStatus: String, Codable, CaseIterable, Sendable {
     case triggerFailed
+    case running
     case triggered
 }
 
@@ -293,6 +294,84 @@ public final class OperatorStore: @unchecked Sendable {
         return run
     }
 
+    public func recordStartedRun(
+        id: UUID = UUID(),
+        taskID: UUID,
+        worktreePath: String,
+        baseBranch: String,
+        baseRef: String,
+        codexThreadID: String,
+        codexThreadURL: URL?,
+        now: Date = Date()
+    ) throws -> OperatorRun {
+        let run = try dbQueue.write { db in
+            let task = try requiredTask(id: taskID, db: db)
+            guard try activeRunCount(taskID: task.id, db: db) == 0 else {
+                throw TaskLifecycleError.taskAlreadyHasSuccessfulRun
+            }
+
+            let updatedTask = try TaskLifecyclePolicy.recordSuccessfulRun(for: task, now: now)
+            try update(task: updatedTask, db: db)
+
+            let run = OperatorRun(
+                id: id,
+                taskID: task.id,
+                repositoryID: task.repositoryID,
+                status: .running,
+                worktreePath: worktreePath,
+                baseBranch: baseBranch,
+                baseRef: baseRef,
+                codexThreadID: codexThreadID,
+                codexThreadURL: codexThreadURL,
+                errorMessage: nil,
+                createdAt: now,
+                completedAt: nil
+            )
+            try insert(run: run, db: db)
+            return run
+        }
+        publishChange()
+        return run
+    }
+
+    public func completeStartedRun(id: UUID, now: Date = Date()) throws -> OperatorRun {
+        let run = try dbQueue.write { db in
+            let currentRun = try requiredRun(id: id, db: db)
+            guard currentRun.status == .running else {
+                return currentRun
+            }
+            let completedRun = OperatorRun(
+                id: currentRun.id,
+                taskID: currentRun.taskID,
+                repositoryID: currentRun.repositoryID,
+                status: .triggered,
+                worktreePath: currentRun.worktreePath,
+                baseBranch: currentRun.baseBranch,
+                baseRef: currentRun.baseRef,
+                codexThreadID: currentRun.codexThreadID,
+                codexThreadURL: currentRun.codexThreadURL,
+                errorMessage: currentRun.errorMessage,
+                createdAt: currentRun.createdAt,
+                completedAt: now
+            )
+            try db.execute(
+                sql: """
+                    UPDATE runs
+                    SET status = ?, completedAt = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    completedRun.status.rawValue,
+                    completedRun.completedAt?.storageValue,
+                    completedRun.id.uuidString
+                ]
+            )
+            return completedRun
+        }
+        publishChange()
+        return run
+    }
+
     public func recordSuccessfulRun(
         id: UUID = UUID(),
         taskID: UUID,
@@ -305,7 +384,7 @@ public final class OperatorStore: @unchecked Sendable {
     ) throws -> OperatorRun {
         let run = try dbQueue.write { db in
             let task = try requiredTask(id: taskID, db: db)
-            guard try successfulRunCount(taskID: task.id, db: db) == 0 else {
+            guard try activeRunCount(taskID: task.id, db: db) == 0 else {
                 throw TaskLifecycleError.taskAlreadyHasSuccessfulRun
             }
 
@@ -400,11 +479,18 @@ public final class OperatorStore: @unchecked Sendable {
         return try Self.task(from: row)
     }
 
-    private func successfulRunCount(taskID: UUID, db: Database) throws -> Int {
+    private func requiredRun(id: UUID, db: Database) throws -> OperatorRun {
+        guard let row = try Row.fetchOne(db, sql: "SELECT * FROM runs WHERE id = ?", arguments: [id.uuidString]) else {
+            throw OperatorStoreError.invalidStoredValue("run")
+        }
+        return try Self.run(from: row)
+    }
+
+    private func activeRunCount(taskID: UUID, db: Database) throws -> Int {
         try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM runs WHERE taskID = ? AND status = ?",
-            arguments: [taskID.uuidString, RunStatus.triggered.rawValue]
+            sql: "SELECT COUNT(*) FROM runs WHERE taskID = ? AND status IN (?, ?)",
+            arguments: [taskID.uuidString, RunStatus.running.rawValue, RunStatus.triggered.rawValue]
         ) ?? 0
     }
 
@@ -507,12 +593,17 @@ private extension OperatorStore {
 
             try db.create(index: "tasks_on_repositoryID", on: "tasks", columns: ["repositoryID"])
             try db.create(index: "runs_on_taskID", on: "runs", columns: ["taskID"])
-            // Keep this predicate aligned with RunStatus.triggered.rawValue.
-            try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status = 'triggered'")
+            // Keep this predicate aligned with active run statuses.
+            try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status IN ('running', 'triggered')")
         }
 
         migrator.registerMigration("addUniqueRepositoryPathIndex") { db in
             try db.create(index: "repositories_on_path", on: "repositories", columns: ["path"], unique: true)
+        }
+
+        migrator.registerMigration("includeRunningRunsInActiveRunIndex") { db in
+            try db.execute(sql: "DROP INDEX runs_one_success_per_task")
+            try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status IN ('running', 'triggered')")
         }
 
         return migrator
