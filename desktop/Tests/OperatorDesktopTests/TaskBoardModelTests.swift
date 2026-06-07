@@ -555,6 +555,52 @@ import Testing
     #expect(model.projection.column(.review).cards.map(\.id) == [task.id])
 }
 
+@Test @MainActor func taskBoardModelArchivesTaskAndRemovesItFromTheBoard() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Archive me", prompt: "Prompt")
+    let model = TaskBoardModel(store: store)
+    try model.load()
+    model.selectTask(task.id)
+
+    try model.archiveTask(taskID: task.id)
+
+    #expect(try store.task(id: task.id)?.status == .archived)
+    #expect(model.projection.column(.ready).cards.isEmpty)
+    #expect(model.selectedTaskID == nil)
+    #expect(model.inspectorDraft == nil)
+    #expect(model.errorMessage == nil)
+}
+
+@Test @MainActor func taskBoardModelKeepsOtherSelectionWhenArchivingDifferentTask() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let keptTask = try store.createTask(repositoryID: repository.id, title: "Keep me", prompt: "Prompt")
+    let archivedTask = try store.createTask(repositoryID: repository.id, title: "Archive me", prompt: "Prompt")
+    let model = TaskBoardModel(store: store)
+    try model.load()
+    model.selectTask(keptTask.id)
+
+    try model.archiveTask(taskID: archivedTask.id)
+
+    #expect(try store.task(id: archivedTask.id)?.status == .archived)
+    #expect(model.projection.column(.ready).cards.map(\.id) == [keptTask.id])
+    #expect(model.selectedTaskID == keptTask.id)
+}
+
+@Test @MainActor func taskBoardModelReportsErrorWhenArchivingIsNotAllowed() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Already archived", prompt: "Prompt")
+    _ = try store.archiveTask(id: task.id)
+    let model = TaskBoardModel(store: store)
+    try model.load()
+
+    model.archiveTaskReportingErrors(taskID: task.id)
+
+    #expect(model.errorMessage != nil)
+}
+
 private final class HoldingCodexTaskSender: CodexTaskSending, @unchecked Sendable {
     private(set) var requestedTaskIDs: [UUID] = []
     private var continuation: CheckedContinuation<OperatorRun, Error>?

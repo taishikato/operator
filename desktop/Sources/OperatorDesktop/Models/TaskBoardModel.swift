@@ -371,6 +371,19 @@ public final class TaskBoardModel: ObservableObject {
         }
     }
 
+    public func archiveTask(taskID: UUID) throws {
+        _ = try store.archiveTask(id: taskID)
+        try load()
+    }
+
+    public func archiveTaskReportingErrors(taskID: UUID) {
+        do {
+            try archiveTask(taskID: taskID)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
     public func sendTaskToCodexReportingErrors(taskID: UUID) async {
         guard !sendingTaskIDs.contains(taskID) else {
             return

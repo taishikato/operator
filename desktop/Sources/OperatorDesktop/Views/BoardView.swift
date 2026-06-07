@@ -206,12 +206,7 @@ private struct BoardColumnView: View {
                     } else {
                         ForEach(column.cards) { card in
                         VStack(spacing: 6) {
-                            Button {
-                                model.selectTask(card.id)
-                            } label: {
-                                TaskCardView(card: card, isSelected: model.selectedTaskID == card.id)
-                            }
-                            .buttonStyle(.plain)
+                            BoardCardView(model: model, card: card)
 
                             if card.canSendToCodex || card.codexSendLabel == "Sending..." {
                                 Button {
@@ -248,6 +243,67 @@ private struct BoardColumnView: View {
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct BoardCardView: View {
+    @ObservedObject var model: TaskBoardModel
+    let card: TaskCardProjection
+    @State private var isHovering = false
+    @State private var isConfirmingArchive = false
+
+    var body: some View {
+        Button {
+            model.selectTask(card.id)
+        } label: {
+            TaskCardView(card: card, isSelected: model.selectedTaskID == card.id)
+        }
+        .buttonStyle(.plain)
+        .overlay(alignment: .topTrailing) {
+            archiveControl
+                .padding(8)
+        }
+        .onHover { hovering in
+            isHovering = hovering
+            // Reset the confirmation prompt once the pointer leaves the card.
+            if !hovering {
+                isConfirmingArchive = false
+            }
+        }
+        .contextMenu {
+            Button {
+                model.archiveTaskReportingErrors(taskID: card.id)
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var archiveControl: some View {
+        if isConfirmingArchive {
+            Button {
+                model.archiveTaskReportingErrors(taskID: card.id)
+                isConfirmingArchive = false
+            } label: {
+                Text("Confirm")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(ArchiveConfirmStyle.foreground)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 4)
+                    .background(ArchiveConfirmStyle.background, in: Capsule())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Confirm archive")
+        } else if isHovering {
+            Button {
+                isConfirmingArchive = true
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Archive task")
+        }
     }
 }
 
@@ -388,6 +444,15 @@ private struct TaskInspectorView: View {
                 }
             }
 
+            Divider()
+
+            Button(role: .destructive) {
+                model.archiveTaskReportingErrors(taskID: inspector.id)
+            } label: {
+                Label("Archive", systemImage: "archivebox")
+            }
+            .buttonStyle(.bordered)
+
             Spacer()
         }
     }
@@ -415,6 +480,11 @@ private struct TaskInspectorView: View {
             model.inspectorDraft?.reasoningEffort = effort
         }
     }
+}
+
+private enum ArchiveConfirmStyle {
+    static let foreground = Color(red: 0.93, green: 0.50, blue: 0.46)
+    static let background = Color(red: 0.55, green: 0.24, blue: 0.23).opacity(0.42)
 }
 
 private struct BadgeView: View {
