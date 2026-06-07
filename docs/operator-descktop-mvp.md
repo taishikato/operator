@@ -10,7 +10,7 @@ The user wants Operator to focus on one job: trigger Codex from a local task boa
 
 Build a native SwiftUI macOS app, targeting macOS 15 Sequoia or later, that lets the user create tasks, associate each task with one local Git repository, and send each ready task to Codex through `codex app-server`.
 
-The app uses a mixed-repository Kanban board with repo filtering. A task starts in Ready. When the user sends it to Codex, Operator creates a new detached Git worktree from the repository's local default branch, starts a new Codex thread through app-server with that worktree as the working directory, sends the task prompt as-is, stores the Codex thread reference, and moves the task to Review. From Review, the user opens the task in Codex App to inspect or continue the real work.
+The app uses a mixed-repository Kanban board with repo filtering. A task starts in Ready. When the user sends it to Codex, Operator creates a new detached Git worktree from the repository's local default branch, starts a new Codex thread through app-server with that worktree as the working directory, sends the task prompt as-is, stores the Codex thread reference, and moves the task to Running. From Running, the user opens the task in Codex App to inspect or continue the real work.
 
 Operator does not track Codex completion, does not judge whether Codex succeeded, does not inspect diffs, does not save Codex logs, and does not create PRs in the MVP.
 
@@ -31,7 +31,7 @@ Operator does not track Codex completion, does not judge whether Codex succeeded
 13. As a developer, I want to choose reasoning effort from Low, Medium, High, and Extra High, so that I can tune how much effort Codex spends on a task.
 14. As a developer, I want Medium reasoning effort by default, so that new tasks use the same balanced default as Codex App.
 15. As a developer, I want each new task to start in Ready, so that the board has no unnecessary Backlog column.
-16. As a developer, I want the board columns to be Ready, Review, and Done, so that the lifecycle stays simple.
+16. As a developer, I want the board columns to be Ready, Running, and Done, so that the lifecycle stays simple.
 17. As a developer, I want Archived tasks hidden from the main board, so that completed or discarded work does not clutter active planning.
 18. As a developer, I want a Ready task card to show title, repo badge, reasoning badge, and status badges, so that I can scan the board quickly.
 19. As a developer, I want prompt details in a right-side inspector, so that the board remains compact.
@@ -44,12 +44,12 @@ Operator does not track Codex completion, does not judge whether Codex succeeded
 26. As a developer, I want trigger failure to leave the task in Ready, so that I can fix the issue and retry.
 27. As a developer, I want each failed trigger retry to create a new run record, so that failed attempts remain auditable.
 28. As a developer, I want each trigger attempt to create a fresh detached worktree, so that failed attempts do not contaminate later attempts.
-29. As a developer, I want a successful task to move to Review immediately after Codex is triggered, so that I know it is now waiting for Codex App review.
+29. As a developer, I want a successful task to move to Running immediately after Codex is triggered, so that I know it is now waiting for Codex App review.
 30. As a developer, I want a successful task to be sent only once, so that Operator does not support rerunning the same task in the MVP.
-31. As a developer, I want Review tasks to be immutable, so that the recorded prompt and settings cannot drift after being sent.
+31. As a developer, I want Running tasks to be immutable, so that the recorded prompt and settings cannot drift after being sent.
 32. As a developer, I want Done and Archived tasks to be immutable, so that completed records remain stable.
-33. As a developer, I want to move a Review task to Done manually, so that Operator does not infer Codex completion.
-34. As a developer, I want to archive Ready, Review, or Done tasks, so that I can remove them from the active board without deleting history.
+33. As a developer, I want a Running task to move to Done automatically when its Codex turn completes, so that the enabled "Open in Codex App" action surfaces in the Done column. Operator tracks the turn lifecycle only to drive this UX and does not inspect Codex output, diffs, or success.
+34. As a developer, I want to archive Ready, Running, or Done tasks, so that I can remove them from the active board without deleting history.
 35. As a developer, I want no hard delete in the MVP, so that local task history is not accidentally destroyed.
 36. As a developer, I want no automatic worktree cleanup, so that Operator never deletes local work without explicit user action.
 37. As a developer, I want Operator to create worktrees outside the repository, so that nested worktrees do not confuse repo tooling.
@@ -68,7 +68,7 @@ Operator does not track Codex completion, does not judge whether Codex succeeded
 50. As a developer, I want Operator not to inspect changed files or diffs, so that review stays in Codex App.
 51. As a developer, I want Operator not to require commits, so that Codex App remains responsible for Git follow-up.
 52. As a developer, I want Operator not to create PRs in the MVP, so that GitHub workflow complexity stays out of scope.
-53. As a developer, I want Review, Done, and Archived successful tasks to expose "Open in Codex App", so that I can continue or inspect the real thread.
+53. As a developer, I want Running, Done, and Archived successful tasks to expose "Open in Codex App", so that I can continue or inspect the real thread.
 54. As a developer, I want "Open in Codex App" to prefer the saved Codex thread URL, so that the correct conversation opens when possible.
 55. As a developer, I want "Open in Codex App" to fall back to opening the worktree in Codex, so that I still have a path into Codex if thread deep linking changes.
 56. As a developer, I want Codex binary auto-detection, so that setup works when `codex` is already on my PATH.
@@ -88,19 +88,20 @@ Operator does not track Codex completion, does not judge whether Codex succeeded
 - GRDB is the preferred Swift SQLite access layer.
 - The main screen is the board. There is no landing page or marketing screen.
 - The board is mixed-repository by default and supports a repo filter.
-- Main board columns are Ready, Review, and Done.
+- Main board columns are Ready, Running, and Done.
 - Archived tasks are available through a separate view or filter and are not shown on the default board.
 - New tasks start in Ready.
 - Ready is the only state from which a task can be sent to Codex.
-- Review, Done, and Archived tasks cannot be sent to Codex.
-- Review, Done, and Archived task content is immutable.
+- Running, Done, and Archived tasks cannot be sent to Codex.
+- Running, Done, and Archived task content is immutable.
 - Hard delete is out of scope; archive is the only removal action.
 - A task can have at most one successful run.
 - Trigger failures can be retried while the task remains Ready.
 - Each trigger retry creates a new run record.
 - Each trigger attempt creates a new detached worktree.
-- A successful trigger moves the task to Review.
-- Review to Ready is not allowed in the MVP.
+- A successful trigger moves the task to Running.
+- A completed Codex turn moves the task from Running to Done automatically and enables "Open in Codex App"; Operator tracks the turn lifecycle only for this UX and does not judge Codex output or success.
+- Running to Ready is not allowed in the MVP.
 - Rerun is not allowed in the MVP.
 - A task belongs to exactly one repository.
 - A task stores title, prompt, repository, reasoning effort, status, and timestamps.
@@ -133,7 +134,7 @@ Operator does not track Codex completion, does not judge whether Codex succeeded
 - Operator stores only trigger-level run metadata: task, repository, worktree path, base branch, base ref, Codex thread reference, trigger status, timestamps, and a short error message when sending fails.
 - Trigger status values are limited to the trigger lifecycle, such as queued, preparing worktree, triggering, triggered, trigger failed, and canceled.
 - Short trigger errors are stored; raw app-server stderr, full JSON-RPC events, and Codex transcripts are not stored.
-- "Open in Codex App" is shown for successful Review, Done, and Archived tasks.
+- "Open in Codex App" is shown for successful Running, Done, and Archived tasks.
 - "Open in Codex App" prefers a saved Codex thread deep link.
 - If direct thread deep linking is unavailable, Operator falls back to opening Codex with the worktree path.
 - Codex binary path is auto-detected and can be overridden in Settings.
@@ -143,14 +144,14 @@ Operator does not track Codex completion, does not judge whether Codex succeeded
 Decision-rich state model:
 
 ```text
-Ready --send accepted--> Review --manual--> Done
+Ready --send accepted--> Running --turn completed--> Done
 Ready --send failed----> Ready + failed badge
 Ready --manual archive-> Archived
-Review --manual archive-> Archived
+Running --manual archive-> Archived
 Done --manual archive--> Archived
 
 Disallowed:
-Review -> Ready
+Running -> Ready
 Done -> Ready
 Archived -> Ready
 successful task -> send again
@@ -176,11 +177,11 @@ Successful Run
 - Worktree preparation should be tested as a deep module with a simple interface that creates a detached worktree from a repository and branch and returns provenance metadata.
 - Worktree preparation tests should verify that no branch is created for the worktree and that base ref metadata is captured.
 - Task lifecycle tests should verify allowed and disallowed state transitions.
-- Task lifecycle tests should verify that Review, Done, and Archived tasks cannot be edited.
+- Task lifecycle tests should verify that Running, Done, and Archived tasks cannot be edited.
 - Send orchestration should be tested with a fake app-server client, so tests can verify trigger behavior without running Codex.
 - Send orchestration tests should verify that the task prompt is passed exactly as written.
 - Send orchestration tests should verify that `gpt-5.5`, the selected reasoning effort, and the worktree cwd are passed as app-server parameters rather than prompt text.
-- Send orchestration tests should verify trigger success moves the task to Review.
+- Send orchestration tests should verify trigger success moves the task to Running.
 - Send orchestration tests should verify trigger failure leaves the task in Ready with a short error.
 - Send orchestration tests should verify failed retry creates a new run record and a new worktree.
 - Send orchestration tests should verify successful tasks cannot be sent again.
@@ -188,7 +189,7 @@ Successful Run
 - App-server notification draining should be tested enough to ensure the process output is consumed without persisting transcript or event content.
 - Deep link construction should be tested separately from OS opening behavior.
 - SQLite/GRDB persistence should be tested around migrations, task creation, repository creation, run creation, and immutable post-send task records.
-- UI tests should focus on high-value flows: add repository, create task, send to Codex with fake runtime, see Review card, open inspector, and archive.
+- UI tests should focus on high-value flows: add repository, create task, send to Codex with fake runtime, see Running card, open inspector, and archive.
 - Prior art exists in the current web app around task/repo/run concepts and right-side task detail behavior, but the native app should not copy the old runtime assumptions.
 
 ## Out of Scope
@@ -199,9 +200,8 @@ Successful Run
 - Trigger concurrency limits.
 - Trigger queues beyond immediate send attempts.
 - Backlog column.
-- Running column.
 - Rerun after a successful trigger.
-- Review to Ready movement.
+- Running to Ready movement.
 - Multiple successful runs per task.
 - Multi-repository tasks.
 - Model selector.
