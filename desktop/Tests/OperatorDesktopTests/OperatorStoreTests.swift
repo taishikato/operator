@@ -122,6 +122,27 @@ import Testing
     #expect(try store.archiveTask(id: archivedFromReview.id).status == .archived)
 }
 
+@Test func completingStartedRunMovesTaskIntoDone() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Auto done", prompt: "Prompt")
+
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/auto-done",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-auto-done",
+        codexThreadURL: nil
+    )
+    #expect(try store.task(id: task.id)?.status == .review)
+    #expect(run.status == .running)
+
+    let completedRun = try store.completeStartedRun(id: run.id)
+    #expect(completedRun.status == .triggered)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
 @Test func storeRejectsReadyReversalAndImmutableTaskContent() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")

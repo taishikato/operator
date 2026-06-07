@@ -366,6 +366,13 @@ public final class OperatorStore: @unchecked Sendable {
                     completedRun.id.uuidString
                 ]
             )
+
+            // Surface the finished turn by advancing the task into Done so the
+            // enabled "Open in Codex App" action lives in the Done column.
+            let task = try requiredTask(id: completedRun.taskID, db: db)
+            if task.status == .review {
+                try update(task: TaskLifecyclePolicy.moveToDone(task, now: now), db: db)
+            }
             return completedRun
         }
         publishChange()
