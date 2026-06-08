@@ -117,18 +117,26 @@ private struct BoardToolbarView: View {
 
             Spacer()
 
-            Button(action: onAddRepository) {
-                Label("Add Repository", systemImage: "plus")
-            }
-            .buttonStyle(.bordered)
-            .disabled(repositorySettingsModel.isAddingRepository)
+            GlassEffectContainer(spacing: 12) {
+                HStack(spacing: 12) {
+                    Button(action: onAddRepository) {
+                        Label("Add Repository", systemImage: "plus")
+                    }
+                    .buttonStyle(.glass)
+                    .glassEffectID("add-repository", in: toolbarGlass)
+                    .disabled(repositorySettingsModel.isAddingRepository)
 
-            Button(action: onNewTicket) {
-                Label("New Ticket", systemImage: "plus")
+                    Button(action: onNewTicket) {
+                        Label("New Ticket", systemImage: "plus")
+                    }
+                    .buttonStyle(.glassProminent)
+                    .glassEffectID("new-ticket", in: toolbarGlass)
+                }
             }
-            .buttonStyle(.borderedProminent)
         }
     }
+
+    @Namespace private var toolbarGlass
 
     private var repositorySelection: Binding<UUID?> {
         Binding {
@@ -203,7 +211,7 @@ private struct TaskCreationSheet: View {
                 } label: {
                     Label("Create Task", systemImage: "plus")
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -285,7 +293,7 @@ private struct BoardColumnView: View {
                                     Label(card.codexSendLabel, systemImage: "paperplane")
                                         .frame(maxWidth: .infinity)
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(.glass)
                                 .disabled(!card.canSendToCodex)
                             }
 
@@ -298,7 +306,7 @@ private struct BoardColumnView: View {
                                     Label(card.codexOpenLabel, systemImage: "arrow.up.forward.app")
                                         .frame(maxWidth: .infinity)
                                 }
-                                .buttonStyle(.bordered)
+                                .buttonStyle(.glass)
                             }
                         }
                     }
@@ -309,7 +317,7 @@ private struct BoardColumnView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .glassEffect(.regular, in: .rect(cornerRadius: 12))
     }
 }
 
@@ -424,7 +432,7 @@ private struct InspectorPanelView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(.bar)
+        .glassEffect(.regular, in: .rect)
     }
 }
 
@@ -432,6 +440,7 @@ private struct TaskInspectorView: View {
     @ObservedObject var model: TaskBoardModel
     let inspector: TaskInspectorProjection
     @State private var isConfirmingArchive = false
+    @Namespace private var inspectorGlass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -461,23 +470,27 @@ private struct TaskInspectorView: View {
                     }
                     .accessibilityLabel("Inspector prompt")
 
-                HStack {
-                    Button {
-                        model.saveSelectedInspectorTaskReportingErrors()
-                    } label: {
-                        Label("Save", systemImage: "checkmark")
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        Task {
-                            await model.sendSelectedInspectorTaskToCodexReportingErrors()
+                GlassEffectContainer(spacing: 10) {
+                    HStack(spacing: 10) {
+                        Button {
+                            model.saveSelectedInspectorTaskReportingErrors()
+                        } label: {
+                            Label("Save", systemImage: "checkmark")
                         }
-                    } label: {
-                        Label(inspector.codexSendLabel, systemImage: "paperplane")
+                        .buttonStyle(.glass)
+                        .glassEffectID("inspector-save", in: inspectorGlass)
+
+                        Button {
+                            Task {
+                                await model.sendSelectedInspectorTaskToCodexReportingErrors()
+                            }
+                        } label: {
+                            Label(inspector.codexSendLabel, systemImage: "paperplane")
+                        }
+                        .buttonStyle(.glassProminent)
+                        .glassEffectID("inspector-send", in: inspectorGlass)
+                        .disabled(!inspector.canSendToCodex)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(!inspector.canSendToCodex)
                 }
             } else {
                 Text(inspector.title)
@@ -508,7 +521,7 @@ private struct TaskInspectorView: View {
                     } label: {
                         Label(inspector.codexOpenLabel, systemImage: "arrow.up.forward.app")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.glassProminent)
                 }
             }
 
@@ -532,7 +545,7 @@ private struct TaskInspectorView: View {
             } label: {
                 Label("Confirm", systemImage: "archivebox")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
             .tint(ArchiveConfirmStyle.foreground)
             .accessibilityLabel("Confirm archive")
         } else {
@@ -541,7 +554,7 @@ private struct TaskInspectorView: View {
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
-            .buttonStyle(.bordered)
+            .buttonStyle(.glass)
             .accessibilityLabel("Archive task")
         }
     }

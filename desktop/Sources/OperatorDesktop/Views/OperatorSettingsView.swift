@@ -46,6 +46,7 @@ public struct OperatorSettingsView: View {
                     } label: {
                         Label("Refresh", systemImage: "arrow.clockwise")
                     }
+                    .buttonStyle(.glass)
                     .accessibilityLabel(RepositorySettingsAccessibility.refreshCodexStatusLabel)
                 }
 
@@ -107,6 +108,7 @@ private struct RepositorySettingsRow: View {
                 } label: {
                     Label("Save", systemImage: "checkmark")
                 }
+                .buttonStyle(.glass)
                 .accessibilityLabel(RepositorySettingsAccessibility.saveDefaultBranchLabel(for: repository))
             }
         }

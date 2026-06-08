@@ -47,7 +47,7 @@ public struct ArchivedView: View {
                             } label: {
                                 Label(task.codexOpenLabel, systemImage: "arrow.up.forward.app")
                             }
-                            .buttonStyle(.bordered)
+                            .buttonStyle(.glass)
                         }
                     }
                     .padding(.vertical, 4)
