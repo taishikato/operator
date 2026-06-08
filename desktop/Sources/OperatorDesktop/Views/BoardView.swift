@@ -431,6 +431,7 @@ private struct InspectorPanelView: View {
 private struct TaskInspectorView: View {
     @ObservedObject var model: TaskBoardModel
     let inspector: TaskInspectorProjection
+    @State private var isConfirmingArchive = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -484,19 +485,20 @@ private struct TaskInspectorView: View {
 
                 HStack(spacing: 6) {
                     BadgeView(text: inspector.reasoningEffort.displayLabel)
-                    BadgeView(text: "Read-only")
                 }
 
                 Text(inspector.prompt)
                     .font(.body)
+                    .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .padding(10)
                     .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
+                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
                     .overlay {
                         RoundedRectangle(cornerRadius: 8)
                             .stroke(.quaternary)
                     }
+                    .accessibilityLabel("Read-only inspector prompt")
 
                 if inspector.canOpenInCodexApp {
                     Button {
@@ -512,14 +514,35 @@ private struct TaskInspectorView: View {
 
             Divider()
 
+            archiveButton
+
+            Spacer()
+        }
+        .onChange(of: inspector.id) {
+            isConfirmingArchive = false
+        }
+    }
+
+    @ViewBuilder
+    private var archiveButton: some View {
+        if isConfirmingArchive {
             Button(role: .destructive) {
                 model.archiveTaskReportingErrors(taskID: inspector.id)
+                isConfirmingArchive = false
+            } label: {
+                Label("Confirm", systemImage: "archivebox")
+            }
+            .buttonStyle(.bordered)
+            .tint(ArchiveConfirmStyle.foreground)
+            .accessibilityLabel("Confirm archive")
+        } else {
+            Button(role: .destructive) {
+                isConfirmingArchive = true
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
             .buttonStyle(.bordered)
-
-            Spacer()
+            .accessibilityLabel("Archive task")
         }
     }
 
