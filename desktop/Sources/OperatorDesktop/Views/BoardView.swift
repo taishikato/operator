@@ -96,12 +96,18 @@ private struct BoardToolbarView: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Picker("Filter by repository", selection: repositorySelection) {
+            Menu {
                 ForEach(model.projection.repositoryFilters) { filter in
-                    Text(filter.name).tag(filter.id)
+                    Button(filter.name) {
+                        model.selectRepository(filter.id)
+                    }
                 }
+            } label: {
+                DropdownLabel(title: selectedRepositoryName)
             }
-            .frame(width: 240)
+            .menuStyle(.button)
+            .buttonStyle(AddRepositoryButtonStyle())
+            .frame(width: 200)
 
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
@@ -117,33 +123,25 @@ private struct BoardToolbarView: View {
 
             Spacer()
 
-            GlassEffectContainer(spacing: 12) {
-                HStack(spacing: 12) {
-                    Button(action: onAddRepository) {
-                        Label("Add Repository", systemImage: "plus")
-                    }
-                    .buttonStyle(.glass)
-                    .glassEffectID("add-repository", in: toolbarGlass)
-                    .disabled(repositorySettingsModel.isAddingRepository)
-
-                    Button(action: onNewTicket) {
-                        Label("New Ticket", systemImage: "plus")
-                    }
-                    .buttonStyle(.glassProminent)
-                    .glassEffectID("new-ticket", in: toolbarGlass)
+            HStack(spacing: 12) {
+                Button(action: onAddRepository) {
+                    Label("Add Repository", systemImage: "plus")
                 }
+                .buttonStyle(AddRepositoryButtonStyle())
+                .disabled(repositorySettingsModel.isAddingRepository)
+
+                Button(action: onNewTicket) {
+                    Label("New Ticket", systemImage: "plus")
+                }
+                .buttonStyle(NewTicketButtonStyle())
             }
         }
     }
 
-    @Namespace private var toolbarGlass
-
-    private var repositorySelection: Binding<UUID?> {
-        Binding {
-            model.selectedRepositoryID
-        } set: { repositoryID in
-            model.selectRepository(repositoryID)
-        }
+    private var selectedRepositoryName: String {
+        model.projection.repositoryFilters
+            .first { $0.id == model.selectedRepositoryID }?
+            .name ?? RepositoryFilterOption.allRepositories.name
     }
 }
 
@@ -161,19 +159,33 @@ private struct TaskCreationSheet: View {
                     .textFieldStyle(.roundedBorder)
 
                 HStack(spacing: 12) {
-                    Picker("Task repository", selection: creationRepository) {
-                        Text("Choose Repository").tag(Optional<UUID>.none)
-                        ForEach(model.projection.repositoryFilters.filter { $0.id != nil }) { filter in
-                            Text(filter.name).tag(filter.id)
+                    Menu {
+                        Button("Choose Repository") {
+                            model.creationDraft.repositoryID = nil
                         }
+                        ForEach(model.projection.repositoryFilters.filter { $0.id != nil }) { filter in
+                            Button(filter.name) {
+                                model.creationDraft.repositoryID = filter.id
+                            }
+                        }
+                    } label: {
+                        DropdownLabel(title: creationRepositoryName)
                     }
+                    .menuStyle(.button)
+                    .buttonStyle(AddRepositoryButtonStyle())
                     .frame(maxWidth: .infinity)
 
-                    Picker("Reasoning", selection: creationReasoning) {
+                    Menu {
                         ForEach(ReasoningEffortOption.all) { option in
-                            Text(option.label).tag(option.effort)
+                            Button(option.label) {
+                                model.creationDraft.reasoningEffort = option.effort
+                            }
                         }
+                    } label: {
+                        DropdownLabel(title: creationReasoningLabel)
                     }
+                    .menuStyle(.button)
+                    .buttonStyle(AddRepositoryButtonStyle())
                     .frame(width: 180)
                 }
 
@@ -202,6 +214,7 @@ private struct TaskCreationSheet: View {
                 Button("Cancel") {
                     isPresented = false
                 }
+                .buttonStyle(AddRepositoryButtonStyle())
                 .keyboardShortcut(.cancelAction)
 
                 Button {
@@ -211,7 +224,7 @@ private struct TaskCreationSheet: View {
                 } label: {
                     Label("Create Task", systemImage: "plus")
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(NewTicketButtonStyle())
                 .keyboardShortcut(.defaultAction)
             }
         }
@@ -227,14 +240,6 @@ private struct TaskCreationSheet: View {
         }
     }
 
-    private var creationRepository: Binding<UUID?> {
-        Binding {
-            model.creationDraft.repositoryID
-        } set: { repositoryID in
-            model.creationDraft.repositoryID = repositoryID
-        }
-    }
-
     private var creationPrompt: Binding<String> {
         Binding {
             model.creationDraft.prompt
@@ -243,12 +248,17 @@ private struct TaskCreationSheet: View {
         }
     }
 
-    private var creationReasoning: Binding<ReasoningEffort> {
-        Binding {
-            model.creationDraft.reasoningEffort
-        } set: { effort in
-            model.creationDraft.reasoningEffort = effort
+    private var creationRepositoryName: String {
+        guard let repositoryID = model.creationDraft.repositoryID else {
+            return "Choose Repository"
         }
+        return model.projection.repositoryFilters
+            .first { $0.id == repositoryID }?
+            .name ?? "Choose Repository"
+    }
+
+    private var creationReasoningLabel: String {
+        model.creationDraft.reasoningEffort.displayLabel
     }
 }
 
@@ -317,7 +327,9 @@ private struct BoardColumnView: View {
         }
         .padding(12)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .glassEffect(.regular, in: .rect(cornerRadius: 12))
+        // Deepen the glass with a faint dark tint so the column reads as a
+        // distinct surface against the window background without glaring.
+        .glassEffect(.regular.tint(.black.opacity(0.18)), in: .rect(cornerRadius: 12))
     }
 }
 
@@ -432,7 +444,7 @@ private struct InspectorPanelView: View {
         }
         .padding(20)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .glassEffect(.regular, in: .rect)
+        .glassEffect(.regular.tint(.black.opacity(0.18)), in: .rect)
     }
 }
 
@@ -587,6 +599,67 @@ private struct TaskInspectorView: View {
 private enum ArchiveConfirmStyle {
     static let foreground = Color(red: 0.93, green: 0.50, blue: 0.46)
     static let background = Color(red: 0.55, green: 0.24, blue: 0.23).opacity(0.42)
+}
+
+private enum NewTicketButtonColors {
+    // oklch(97% 0.001 106.424)
+    static let background = Color(red: 0.960863, green: 0.960863, blue: 0.957902)
+    // oklch(14.7% 0.004 49.25)
+    static let foreground = Color(red: 0.046959, green: 0.039356, blue: 0.035544)
+}
+
+private struct NewTicketButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body.weight(.medium))
+            .foregroundStyle(NewTicketButtonColors.foreground)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(
+                        NewTicketButtonColors.background.opacity(configuration.isPressed ? 0.85 : 1)
+                    )
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+private struct DropdownLabel: View {
+    let title: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(title)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 0)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct AddRepositoryButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.body.weight(.medium))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .fill(Color.black.opacity(configuration.isPressed ? 0.35 : 0.25))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .strokeBorder(.separator, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
 }
 
 private struct BadgeView: View {

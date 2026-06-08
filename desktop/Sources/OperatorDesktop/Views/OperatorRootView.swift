@@ -54,14 +54,28 @@ private struct SidebarView: View {
     @Binding var selection: OperatorSidebarSelection
 
     var body: some View {
-        List(selection: $selection) {
-            Label("Board", systemImage: "rectangle.grid.3x2")
-                .tag(OperatorSidebarSelection.board)
+        VStack(alignment: .leading, spacing: 2) {
+            SidebarItemButton(
+                title: "Board",
+                systemImage: "rectangle.grid.3x2",
+                isSelected: selection == .board
+            ) {
+                selection = .board
+            }
 
-            Label("Archived", systemImage: "archivebox")
-                .tag(OperatorSidebarSelection.archived)
+            SidebarItemButton(
+                title: "Archived",
+                systemImage: "archivebox",
+                isSelected: selection == .archived
+            ) {
+                selection = .archived
+            }
+
+            Spacer(minLength: 0)
         }
-        .listStyle(.sidebar)
+        .padding(.horizontal, 8)
+        .padding(.top, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .safeAreaInset(edge: .bottom) {
             SettingsLink {
                 Label("Settings", systemImage: "gearshape")
@@ -74,5 +88,40 @@ private struct SidebarView: View {
             .padding(.bottom, 8)
         }
         .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+    }
+}
+
+private struct SidebarItemButton: View {
+    let title: String
+    let systemImage: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(SidebarItemButtonStyle(isSelected: isSelected))
+    }
+}
+
+private struct SidebarItemButtonStyle: ButtonStyle {
+    let isSelected: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.quaternary)
+                } else if configuration.isPressed {
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(.quaternary.opacity(0.5))
+                }
+            }
     }
 }
