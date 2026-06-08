@@ -30,19 +30,6 @@ public struct OperatorSettingsView: View {
                 LabeledContent("Detected binary", value: model.codexDetectedBinaryPath)
                 LabeledContent("Active binary", value: model.codexBinaryPath)
 
-                HStack(spacing: 8) {
-                    TextField("Absolute Codex binary path", text: $model.codexBinaryOverrideDraft)
-                        .textFieldStyle(.roundedBorder)
-                        .accessibilityLabel(RepositorySettingsAccessibility.codexBinaryOverrideLabel)
-
-                    Button {
-                        model.saveCodexBinaryOverrideReportingErrors()
-                    } label: {
-                        Label("Save", systemImage: "checkmark")
-                    }
-                    .accessibilityLabel(RepositorySettingsAccessibility.saveCodexBinaryOverrideLabel)
-                }
-
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(model.codexStatus.title)
@@ -136,8 +123,6 @@ private struct RepositorySettingsRow: View {
 }
 
 enum RepositorySettingsAccessibility {
-    static let codexBinaryOverrideLabel = "Codex binary override"
-    static let saveCodexBinaryOverrideLabel = "Save Codex binary override"
     static let refreshCodexStatusLabel = "Refresh Codex status"
     static let appDataPathLabel = "Operator app data path"
     static let aboutLabel = "About Operator"

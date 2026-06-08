@@ -16,7 +16,6 @@ public final class RepositorySettingsModel: ObservableObject {
     @Published public private(set) var appDataPath: String
     @Published public private(set) var codexBinaryPath = "Not found"
     @Published public private(set) var codexDetectedBinaryPath = "Not found"
-    @Published public var codexBinaryOverrideDraft = ""
     @Published public private(set) var codexStatus: CodexStatus = .notChecked
 
     public let aboutAppName = "Operator Desktop"
@@ -126,16 +125,6 @@ public final class RepositorySettingsModel: ObservableObject {
         }
     }
 
-    public func saveCodexBinaryOverrideReportingErrors() {
-        do {
-            try setCodexBinaryOverride(codexBinaryOverrideDraft)
-        } catch {
-            let message = Self.userFacingMessage(for: error)
-            errorMessage = message
-            codexErrorMessage = message
-        }
-    }
-
     public func setCodexBinaryOverride(_ path: String) throws {
         try codexBinarySettings.setOverridePath(path)
         try loadCodexBinarySettings()
@@ -191,7 +180,6 @@ public final class RepositorySettingsModel: ObservableObject {
         let configuration = try codexBinarySettings.configuration()
         codexDetectedBinaryPath = configuration.detectedBinaryURL?.path ?? "Not found"
         codexBinaryPath = configuration.displayPath
-        codexBinaryOverrideDraft = configuration.overrideBinaryURL?.path ?? ""
     }
 
     private func mergeRepository(_ repository: OperatorRepository) {

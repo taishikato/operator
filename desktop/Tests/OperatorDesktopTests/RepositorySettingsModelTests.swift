@@ -94,14 +94,13 @@ import Testing
 
     #expect(model.appDataPath == "/tmp/Operator")
     #expect(model.codexBinaryPath == "/opt/homebrew/bin/codex")
-    #expect(model.codexBinaryOverrideDraft == "")
     #expect(model.codexStatus == .notChecked)
     #expect(model.aboutAppName == "Operator Desktop")
     #expect(model.aboutMinimumMacOS == "15 Sequoia")
 }
 
 @MainActor
-@Test func repositorySettingsModelSavesAbsoluteCodexOverrideAndReportsRelativeOverrideError() throws {
+@Test func repositorySettingsModelAppliesAbsoluteCodexOverrideAndRejectsRelativeOverride() throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let binaryStore = InMemorySettingsBinaryStore()
     let binarySettings = CodexBinarySettings(
@@ -116,18 +115,16 @@ import Testing
     )
 
     try model.loadSettings()
-    model.codexBinaryOverrideDraft = "/custom/bin/codex"
-    model.saveCodexBinaryOverrideReportingErrors()
+    try model.setCodexBinaryOverride("/custom/bin/codex")
 
     #expect(binaryStore.overridePath == "/custom/bin/codex")
     #expect(model.codexBinaryPath == "/custom/bin/codex")
     #expect(model.errorMessage == nil)
 
-    model.codexBinaryOverrideDraft = "relative/codex"
-    model.saveCodexBinaryOverrideReportingErrors()
+    #expect(throws: CodexBinarySettingsError.overrideMustBeAbsolute) {
+        try model.setCodexBinaryOverride("relative/codex")
+    }
 
-    #expect(model.errorMessage == "Codex binary override must be an absolute path.")
-    #expect(model.codexErrorMessage == "Codex binary override must be an absolute path.")
     #expect(binaryStore.overridePath == "/custom/bin/codex")
 }
 
