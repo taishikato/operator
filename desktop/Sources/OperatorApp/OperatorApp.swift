@@ -13,7 +13,10 @@ struct OperatorApp: App {
             store = try OperatorAppBootstrap.initializeStore(databaseURL: appDataURL.appending(path: "operator.sqlite"))
             codexTrigger = CodexTriggerService(
                 store: store,
-                worktreePreparer: WorktreePreparer(appDataURL: appDataURL),
+                worktreePreparer: WorktreePreparer(
+                    appDataURL: appDataURL,
+                    worktreeRootURL: OperatorAppBootstrap.codexWorktreesURL()
+                ),
                 appServerClientFactory: ConfiguredCodexAppServerClientFactory()
             )
         } catch {

@@ -71,6 +71,7 @@ private actor CodexAppServerStdioTransport {
             )
             let thread = try threadReference(fromThreadStartResponse: threadResponse)
 
+            try await updateThreadGitMetadataIfPresent(threadID: thread.id, gitInfo: request.gitInfo)
             try await setThreadNameIfPresent(threadID: thread.id, displayName: request.displayName)
             let turnCompletion = CodexTurnCompletionSignal()
             pendingTurnCompletionsByThreadID[thread.id] = turnCompletion
@@ -95,6 +96,28 @@ private actor CodexAppServerStdioTransport {
         } catch {
             resetProcessState()
             throw error
+        }
+    }
+
+    private func updateThreadGitMetadataIfPresent(threadID: String, gitInfo: CodexThreadGitInfo?) async throws {
+        guard let gitInfo else {
+            return
+        }
+
+        do {
+            _ = try await sendRequest(
+                method: "thread/metadata/update",
+                params: [
+                    "threadId": threadID,
+                    "gitInfo": [
+                        "sha": gitInfo.sha,
+                        "branch": gitInfo.branch,
+                        "originUrl": gitInfo.originURL
+                    ]
+                ]
+            )
+        } catch CodexAppServerClientError.serverRejected {
+            return
         }
     }
 

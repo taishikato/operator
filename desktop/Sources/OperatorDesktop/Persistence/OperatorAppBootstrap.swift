@@ -18,4 +18,10 @@ public enum OperatorAppBootstrap {
         )
         return baseURL.appending(path: "Operator", directoryHint: .isDirectory)
     }
+
+    public static func codexWorktreesURL(fileManager: FileManager = .default) -> URL {
+        fileManager.homeDirectoryForCurrentUser
+            .appending(path: ".codex", directoryHint: .isDirectory)
+            .appending(path: "worktrees", directoryHint: .isDirectory)
+    }
 }

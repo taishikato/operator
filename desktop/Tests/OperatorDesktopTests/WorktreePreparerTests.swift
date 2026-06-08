@@ -18,6 +18,7 @@ import Testing
 
     #expect(prepared.baseBranch == "main")
     #expect(prepared.baseRef == expectedBaseRef)
+    #expect(prepared.gitOriginURL == repositoryURL.path)
     #expect(prepared.worktreeURL.path.hasPrefix(appDataURL.appending(path: "worktrees").path))
     #expect(!prepared.worktreeURL.path.hasPrefix(repositoryURL.path + "/"))
     #expect(FileManager.default.fileExists(atPath: prepared.worktreeURL.appending(path: "README.md").path))
@@ -51,6 +52,30 @@ import Testing
     #expect(first.worktreeURL != second.worktreeURL)
     #expect(FileManager.default.fileExists(atPath: first.worktreeURL.path))
     #expect(FileManager.default.fileExists(atPath: second.worktreeURL.path))
+}
+
+@Test func worktreePreparerCanUseCodexCompatibleWorktreeRoot() throws {
+    let repositoryURL = try temporaryDirectory(named: "repo")
+    try runGit(["init", "-b", "main"], in: repositoryURL)
+    try commitFile(named: "README.md", contents: "base\n", in: repositoryURL)
+    let appDataURL = try temporaryDirectory(named: "app-data")
+    let codexWorktreeRootURL = try temporaryDirectory(named: "codex-worktrees")
+    let repository = operatorRepository(path: repositoryURL.path, defaultBranch: "main")
+
+    let prepared = try WorktreePreparer(
+        appDataURL: appDataURL,
+        worktreeRootURL: codexWorktreeRootURL,
+        attemptIDGenerator: { UUID(uuidString: "12345678-1111-2222-3333-444444444444")! }
+    )
+    .prepareWorktree(for: repository)
+
+    #expect(prepared.worktreeURL == codexWorktreeRootURL
+        .appending(path: "1234", directoryHint: .isDirectory)
+        .appending(path: "repo", directoryHint: .isDirectory))
+    #expect(FileManager.default.fileExists(atPath: prepared.worktreeURL.appending(path: "README.md").path))
+    let gitTopLevel = try runGitOutput(["rev-parse", "--show-toplevel"], in: prepared.worktreeURL).trimmed
+    #expect(URL(filePath: gitTopLevel).standardizedFileURL.path == prepared.worktreeURL.standardizedFileURL.path)
+    #expect(!prepared.worktreeURL.path.hasPrefix(appDataURL.path + "/"))
 }
 
 @Test func worktreePreparerReturnsShortPreparationErrorForMissingBaseBranch() throws {
@@ -87,6 +112,7 @@ import Testing
         .prepareWorktree(for: repository)
 
     #expect(prepared.baseRef == expectedBaseRef)
+    #expect(prepared.gitOriginURL == remoteURL.path)
     #expect(try runGitOutput(["rev-parse", "--abbrev-ref", "HEAD"], in: prepared.worktreeURL).trimmed == "HEAD")
     #expect(try runGitOutput(["rev-parse", "HEAD"], in: prepared.worktreeURL).trimmed == expectedBaseRef)
 }
@@ -94,7 +120,8 @@ import Testing
 @Test func worktreePreparerDoesNotRunNetworkHistoryMutationOrSetupCommands() throws {
     let runner = RecordingWorktreeGitCommandRunner(outputs: [
         ["rev-parse", "refs/heads/main"]: "abc123\n",
-        ["worktree", "add", "--detach", "/tmp/operator/worktrees/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/11111111-1111-1111-1111-111111111111", "abc123"]: "",
+        ["remote", "get-url", "origin"]: "git@github.com:taishikato/operator.git\n",
+        ["worktree", "add", "--detach", "/tmp/operator/worktrees/1111/repo", "abc123"]: "",
         ["rev-parse", "--abbrev-ref", "HEAD"]: "HEAD\n",
         ["rev-parse", "HEAD"]: "abc123\n"
     ])
@@ -114,7 +141,7 @@ import Testing
 }
 
 @Test func worktreePreparerRemovesCreatedWorktreeWhenVerificationFails() throws {
-    let worktreePath = "/tmp/operator/worktrees/AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA/11111111-1111-1111-1111-111111111111"
+    let worktreePath = "/tmp/operator/worktrees/1111/repo"
     let runner = RecordingWorktreeGitCommandRunner(outputs: [
         ["rev-parse", "refs/heads/main"]: "abc123\n",
         ["worktree", "add", "--detach", worktreePath, "abc123"]: "",

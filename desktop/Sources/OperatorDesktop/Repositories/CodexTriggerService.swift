@@ -1,8 +1,21 @@
 import Foundation
 
+public struct CodexThreadGitInfo: Equatable, Sendable {
+    public let sha: String
+    public let branch: String
+    public let originURL: String
+
+    public init(sha: String, branch: String, originURL: String) {
+        self.sha = sha
+        self.branch = branch
+        self.originURL = originURL
+    }
+}
+
 public struct CodexThreadStartRequest: Equatable, Sendable {
     public let cwd: URL
     public let threadCwd: URL
+    public let gitInfo: CodexThreadGitInfo?
     public let model: String
     public let reasoningEffort: ReasoningEffort
     public let prompt: String
@@ -11,6 +24,7 @@ public struct CodexThreadStartRequest: Equatable, Sendable {
     public init(
         cwd: URL,
         threadCwd: URL? = nil,
+        gitInfo: CodexThreadGitInfo? = nil,
         model: String,
         reasoningEffort: ReasoningEffort,
         prompt: String,
@@ -18,6 +32,7 @@ public struct CodexThreadStartRequest: Equatable, Sendable {
     ) {
         self.cwd = cwd
         self.threadCwd = threadCwd ?? cwd
+        self.gitInfo = gitInfo
         self.model = model
         self.reasoningEffort = reasoningEffort
         self.prompt = prompt
@@ -152,7 +167,13 @@ public struct CodexTriggerService: @unchecked Sendable {
             let startedThread = try await appServerClient.startThreadAndTurn(
                 CodexThreadStartRequest(
                     cwd: preparedWorktree.worktreeURL,
-                    threadCwd: URL(filePath: repository.path, directoryHint: .isDirectory),
+                    gitInfo: preparedWorktree.gitOriginURL.map {
+                        CodexThreadGitInfo(
+                            sha: preparedWorktree.baseRef,
+                            branch: preparedWorktree.baseBranch,
+                            originURL: $0
+                        )
+                    },
                     model: Self.fixedModel,
                     reasoningEffort: task.reasoningEffort,
                     prompt: task.prompt,

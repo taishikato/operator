@@ -468,6 +468,80 @@ import Testing
     #expect(captured["turn_start_cwd"] == turnCwd.path)
 }
 
+@Test func codexAppServerStdioClientUpdatesThreadGitMetadataBeforeTurnStarts() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientGitMetadata")
+    let scriptURL = directory.appending(path: "server.py")
+    let metadataURL = directory.appending(path: "metadata.json")
+    try writeScript(
+        """
+        import json
+        import pathlib
+        import sys
+
+        metadata_path = pathlib.Path(sys.argv[1])
+        captured = {}
+
+        def read_request():
+            line = sys.stdin.readline()
+            if not line:
+                sys.exit(1)
+            return json.loads(line)
+
+        def send(message):
+            sys.stdout.write(json.dumps(message) + "\\n")
+            sys.stdout.flush()
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-git"}}})
+
+        request = read_request()
+        captured["metadata_method"] = request["method"]
+        captured["metadata_params"] = request["params"]
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-git"}}})
+
+        request = read_request()
+        captured["turn_method"] = request["method"]
+        metadata_path.write_text(json.dumps(captured))
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path, metadataURL.path]
+    )
+
+    _ = try await client.startThreadAndTurn(
+        CodexThreadStartRequest(
+            cwd: directory,
+            gitInfo: CodexThreadGitInfo(
+                sha: "abc123",
+                branch: "main",
+                originURL: "git@github.com:taishikato/operator.git"
+            ),
+            model: "gpt-5.5",
+            reasoningEffort: .medium,
+            prompt: "Prompt body"
+        )
+    )
+
+    let data = try Data(contentsOf: metadataURL)
+    let captured = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
+    #expect(captured["metadata_method"] as? String == "thread/metadata/update")
+    #expect(captured["turn_method"] as? String == "turn/start")
+    let metadataParams = try #require(captured["metadata_params"] as? [String: Any])
+    #expect(metadataParams["threadId"] as? String == "thread-git")
+    let gitInfo = try #require(metadataParams["gitInfo"] as? [String: String])
+    #expect(gitInfo == [
+        "sha": "abc123",
+        "branch": "main",
+        "originUrl": "git@github.com:taishikato/operator.git"
+    ])
+}
+
 @Test func codexAppServerStdioClientReportsMissingExecutablePathClearly() async throws {
     let directory = try temporaryDirectory(named: "CodexAppServerStdioClientMissingExecutable")
     let missingBinaryURL = directory.appending(path: "missing-codex")

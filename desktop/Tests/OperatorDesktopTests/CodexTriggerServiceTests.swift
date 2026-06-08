@@ -13,7 +13,12 @@ import Testing
     )
     let worktreeURL = URL(filePath: "/tmp/operator-worktree-1")
     let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
-        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+        PreparedWorktree(
+            worktreeURL: worktreeURL,
+            baseBranch: "main",
+            baseRef: "abc123",
+            gitOriginURL: "git@github.com:taishikato/operator.git"
+        )
     ])
     let appServer = FakeCodexAppServerClient(results: [
         .success(startedThread(id: "thread-1", url: URL(string: "codex://threads/thread-1")))
@@ -38,7 +43,11 @@ import Testing
     #expect(appServer.requests == [
         CodexThreadStartRequest(
             cwd: worktreeURL,
-            threadCwd: URL(filePath: "/tmp/operator", directoryHint: .isDirectory),
+            gitInfo: CodexThreadGitInfo(
+                sha: "abc123",
+                branch: "main",
+                originURL: "git@github.com:taishikato/operator.git"
+            ),
             model: "gpt-5.5",
             reasoningEffort: .high,
             prompt: "Implement this exactly.\nDo not add metadata.",
