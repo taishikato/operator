@@ -115,7 +115,7 @@ import Testing
     #expect(readyCard.canOpenInCodexApp == false)
     #expect(readyCard.codexOpenTarget == nil)
     #expect(reviewCard.id == reviewTask.id)
-    #expect(reviewCard.triggerStateBadge == "Sent to Codex")
+    #expect(reviewCard.triggerStateBadge == nil)
     #expect(reviewCard.canOpenInCodexApp == false)
     #expect(reviewCard.codexOpenLabel == "Open in Codex App")
     #expect(reviewCard.codexOpenTarget == nil)

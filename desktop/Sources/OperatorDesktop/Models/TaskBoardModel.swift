@@ -531,14 +531,14 @@ private extension OperatorRun {
         status == .triggered
     }
 
-    var triggerStateBadge: String {
+    var triggerStateBadge: String? {
         switch status {
         case .triggerFailed:
             "Failed to send"
         case .running:
             "Running"
         case .triggered:
-            "Sent to Codex"
+            nil
         }
     }
 }
