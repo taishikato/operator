@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 public struct OperatorSettingsView: View {
@@ -19,13 +18,6 @@ public struct OperatorSettingsView: View {
                         RepositorySettingsRow(model: model, repository: repository)
                     }
                 }
-
-                Button {
-                    selectRepositoryFolder()
-                } label: {
-                    Label("Add Repository", systemImage: "plus")
-                }
-                .disabled(model.isAddingRepository)
 
                 if let errorMessage = model.errorMessage {
                     Text(errorMessage)
@@ -94,20 +86,6 @@ public struct OperatorSettingsView: View {
         .onAppear {
             model.loadRepositoriesReportingErrors()
         }
-    }
-
-    private func selectRepositoryFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-
-        guard panel.runModal() == .OK, let repositoryURL = panel.url else {
-            return
-        }
-
-        model.addRepositoryReportingErrors(at: repositoryURL)
     }
 }
 

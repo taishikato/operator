@@ -1,7 +1,9 @@
+import AppKit
 import SwiftUI
 
 public struct BoardView: View {
     @StateObject private var model: TaskBoardModel
+    @StateObject private var repositorySettingsModel: RepositorySettingsModel
     @State private var showInspector = true
     @State private var showCreateSheet = false
     private let store: OperatorStore
@@ -17,12 +19,18 @@ public struct BoardView: View {
             codexTrigger: codexTrigger,
             codexOpener: codexOpener
         ))
+        _repositorySettingsModel = StateObject(wrappedValue: RepositorySettingsModel(store: store))
     }
 
     public var body: some View {
         HStack(spacing: 0) {
             VStack(alignment: .leading, spacing: 16) {
-                BoardToolbarView(model: model, onNewTicket: { showCreateSheet = true })
+                BoardToolbarView(
+                    model: model,
+                    repositorySettingsModel: repositorySettingsModel,
+                    onAddRepository: selectRepositoryFolder,
+                    onNewTicket: { showCreateSheet = true }
+                )
 
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(model.projection.columns) { column in
@@ -64,10 +72,26 @@ public struct BoardView: View {
             showInspector.toggle()
         }
     }
+
+    private func selectRepositoryFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+
+        guard panel.runModal() == .OK, let repositoryURL = panel.url else {
+            return
+        }
+
+        repositorySettingsModel.addRepositoryReportingErrors(at: repositoryURL)
+    }
 }
 
 private struct BoardToolbarView: View {
     @ObservedObject var model: TaskBoardModel
+    @ObservedObject var repositorySettingsModel: RepositorySettingsModel
+    let onAddRepository: () -> Void
     let onNewTicket: () -> Void
 
     var body: some View {
@@ -85,7 +109,19 @@ private struct BoardToolbarView: View {
                     .foregroundStyle(.red)
             }
 
+            if let errorMessage = repositorySettingsModel.errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+
             Spacer()
+
+            Button(action: onAddRepository) {
+                Label("Add Repository", systemImage: "plus")
+            }
+            .buttonStyle(.bordered)
+            .disabled(repositorySettingsModel.isAddingRepository)
 
             Button(action: onNewTicket) {
                 Label("New Ticket", systemImage: "plus")
