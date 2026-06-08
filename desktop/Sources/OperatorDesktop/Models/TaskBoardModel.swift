@@ -205,7 +205,7 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
             isSending: isSending
         )
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
-        codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.review, .done])
+        codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.done])
         canOpenInCodexApp = latestRun?.isCodexOpenReady == true && codexOpenTarget != nil
         codexOpenLabel = CodexAppOpenAction.label
     }
@@ -237,7 +237,7 @@ public struct TaskInspectorProjection: Equatable, Identifiable, Sendable {
             isSending: isSending
         )
         codexSendLabel = isSending ? "Sending..." : "Send to Codex"
-        codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.review, .done])
+        codexOpenTarget = CodexAppOpenAction.target(for: task, latestRun: latestRun, allowedStatuses: [.done])
         canOpenInCodexApp = latestRun?.isCodexOpenReady == true && codexOpenTarget != nil
         codexOpenLabel = CodexAppOpenAction.label
     }

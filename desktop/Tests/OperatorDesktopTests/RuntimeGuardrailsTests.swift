@@ -53,7 +53,7 @@ import Testing
     #expect(Set(runColumns).isDisjoint(with: OperatorRuntimeGuardrails.mvp.forbiddenRunPersistenceColumns))
 }
 
-@Test func successfulTaskProjectionsExposeOpenButNoSendOrRerunAffordance() throws {
+@Test func doneTaskProjectionsExposeOpenButNoSendOrRerunAffordance() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let task = try store.createTask(repositoryID: repository.id, title: "Already sent", prompt: "Prompt")
@@ -66,9 +66,10 @@ import Testing
         codexThreadID: "thread-guardrail",
         codexThreadURL: threadURL
     )
+    _ = try store.markTaskDone(id: task.id)
 
     let projection = try TaskBoardProjection.load(from: store)
-    let card = try #require(projection.column(.review).cards.first)
+    let card = try #require(projection.column(.done).cards.first)
     let inspector = try #require(projection.inspector(taskID: task.id))
 
     #expect(card.canSendToCodex == false)

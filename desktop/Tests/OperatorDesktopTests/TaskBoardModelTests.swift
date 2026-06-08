@@ -81,13 +81,11 @@ import Testing
     #expect(projection.columns.map(\.title) == ["Ready", "Running", "Done"])
 }
 
-@Test func boardProjectionExposesOpenInCodexForReviewAndDoneButNotReadyTasks() throws {
+@Test func boardProjectionExposesOpenInCodexForDoneButNotReadyOrRunningTasks() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let readyTask = try store.createTask(repositoryID: repository.id, title: "Ready work", prompt: "Prompt")
     let reviewTask = try store.createTask(repositoryID: repository.id, title: "Review work", prompt: "Prompt")
-    let legacyReviewURL = URL(string: "codex://thread/review")!
-    let canonicalReviewURL = URL(string: "codex://threads/thread-review")!
     let doneURL = URL(string: "codex://threads/thread-done")!
     _ = try store.recordSuccessfulRun(
         taskID: reviewTask.id,
@@ -95,7 +93,7 @@ import Testing
         baseBranch: "main",
         baseRef: "abc123",
         codexThreadID: "thread-review",
-        codexThreadURL: legacyReviewURL
+        codexThreadURL: URL(string: "codex://thread/review")
     )
     let doneCandidate = try store.createTask(repositoryID: repository.id, title: "Done work", prompt: "Prompt")
     _ = try store.recordSuccessfulRun(
@@ -117,9 +115,10 @@ import Testing
     #expect(readyCard.canOpenInCodexApp == false)
     #expect(readyCard.codexOpenTarget == nil)
     #expect(reviewCard.id == reviewTask.id)
-    #expect(reviewCard.canOpenInCodexApp)
+    #expect(reviewCard.triggerStateBadge == "Sent to Codex")
+    #expect(reviewCard.canOpenInCodexApp == false)
     #expect(reviewCard.codexOpenLabel == "Open in Codex App")
-    #expect(reviewCard.codexOpenTarget == .url(canonicalReviewURL))
+    #expect(reviewCard.codexOpenTarget == nil)
     #expect(doneCard.id == doneTask.id)
     #expect(doneCard.canOpenInCodexApp)
     #expect(doneCard.codexOpenTarget == .url(doneURL))
@@ -144,9 +143,9 @@ import Testing
 
     #expect(card.triggerStateBadge == "Running")
     #expect(card.canOpenInCodexApp == false)
-    #expect(card.codexOpenTarget == .url(URL(string: "codex://threads/thread-working")!))
+    #expect(card.codexOpenTarget == nil)
     #expect(inspector.canOpenInCodexApp == false)
-    #expect(inspector.codexOpenTarget == .url(URL(string: "codex://threads/thread-working")!))
+    #expect(inspector.codexOpenTarget == nil)
 }
 
 @Test func boardProjectionFiltersByRepositoryAndIncludesCardBadges() throws {
@@ -244,14 +243,14 @@ import Testing
     #expect(reviewInspector.prompt == "Review prompt")
     #expect(reviewInspector.isEditable == false)
     #expect(reviewInspector.canSendToCodex == false)
-    #expect(reviewInspector.canOpenInCodexApp)
+    #expect(reviewInspector.canOpenInCodexApp == false)
     #expect(reviewInspector.codexOpenLabel == "Open in Codex App")
 }
 
-@Test @MainActor func taskBoardModelOpensCodexTargetForReviewTask() async throws {
+@Test @MainActor func taskBoardModelOpensCodexTargetForDoneTask() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
-    let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
+    let task = try store.createTask(repositoryID: repository.id, title: "Done", prompt: "Prompt")
     let legacyThreadURL = URL(string: "codex://thread/thread-1")!
     let canonicalThreadURL = URL(string: "codex://threads/thread-1")!
     _ = try store.recordSuccessfulRun(
@@ -262,6 +261,7 @@ import Testing
         codexThreadID: "thread-1",
         codexThreadURL: legacyThreadURL
     )
+    _ = try store.markTaskDone(id: task.id)
     let opener = RecordingCodexAppOpener()
     let model = TaskBoardModel(store: store, codexOpener: opener)
     try model.load()
@@ -275,7 +275,7 @@ import Testing
 @Test @MainActor func taskBoardModelReportsShortErrorWhenCodexOpenFails() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
-    let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
+    let task = try store.createTask(repositoryID: repository.id, title: "Done", prompt: "Prompt")
     _ = try store.recordSuccessfulRun(
         taskID: task.id,
         worktreePath: "/tmp/worktrees/review",
@@ -284,6 +284,7 @@ import Testing
         codexThreadID: "thread-1",
         codexThreadURL: nil
     )
+    _ = try store.markTaskDone(id: task.id)
     let opener = FailingCodexAppOpener()
     let model = TaskBoardModel(store: store, codexOpener: opener)
     try model.load()
@@ -297,7 +298,7 @@ import Testing
 @Test func taskBoardModelDoesNotBlockMainActorWhileOpeningCodex() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
-    let task = try store.createTask(repositoryID: repository.id, title: "Review", prompt: "Prompt")
+    let task = try store.createTask(repositoryID: repository.id, title: "Done", prompt: "Prompt")
     _ = try store.recordSuccessfulRun(
         taskID: task.id,
         worktreePath: "/tmp/worktrees/review",
@@ -306,6 +307,7 @@ import Testing
         codexThreadID: "thread-1",
         codexThreadURL: nil
     )
+    _ = try store.markTaskDone(id: task.id)
     let opener = HoldingCodexAppOpener()
     let model = await MainActor.run {
         let model = TaskBoardModel(store: store, codexOpener: opener)
