@@ -194,11 +194,7 @@ private struct TaskCreationSheet: View {
                     .scrollContentBackground(.hidden)
                     .padding(8)
                     .frame(minHeight: 160)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(.quaternary)
-                    }
+                    .recessedFieldBackground()
                     .accessibilityLabel("Task prompt")
             }
 
@@ -291,35 +287,8 @@ private struct BoardColumnView: View {
                             .frame(maxWidth: .infinity, minHeight: 120)
                     } else {
                         ForEach(column.cards) { card in
-                        VStack(spacing: 6) {
                             BoardCardView(model: model, card: card)
-
-                            if card.canSendToCodex || card.codexSendLabel == "Sending..." {
-                                Button {
-                                    Task {
-                                        await model.sendTaskToCodexReportingErrors(taskID: card.id)
-                                    }
-                                } label: {
-                                    Label(card.codexSendLabel, systemImage: "paperplane")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.glass)
-                                .disabled(!card.canSendToCodex)
-                            }
-
-                            if card.canOpenInCodexApp {
-                                Button {
-                                    Task {
-                                        await model.openTaskInCodexAppReportingErrors(taskID: card.id)
-                                    }
-                                } label: {
-                                    Label(card.codexOpenLabel, systemImage: "arrow.up.forward.app")
-                                        .frame(maxWidth: .infinity)
-                                }
-                                .buttonStyle(.glass)
-                            }
                         }
-                    }
                     }
                 }
             }
@@ -339,6 +308,7 @@ private struct BoardCardView: View {
     @State private var isHovering = false
     @State private var isConfirmingArchive = false
     @State private var isHoveringArchiveIcon = false
+    @State private var isHoveringCodexIcon = false
 
     var body: some View {
         Button {
@@ -348,8 +318,11 @@ private struct BoardCardView: View {
         }
         .buttonStyle(.plain)
         .overlay(alignment: .topTrailing) {
-            archiveControl
-                .padding(8)
+            HStack(spacing: 4) {
+                codexControl
+                archiveControl
+            }
+            .padding(8)
         }
         .overlay(alignment: .topTrailing) {
             // Tooltip lives on the card (always present) so showing/hiding it
@@ -368,7 +341,25 @@ private struct BoardCardView: View {
                     .transition(.opacity)
             }
         }
+        .overlay(alignment: .topTrailing) {
+            // Codex tooltip mirrors the archive one but sits under the codex
+            // icon, which is one icon-slot to the left of the archive icon.
+            if isHoveringCodexIcon, let codexHint {
+                Text(codexHint)
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
+                    .fixedSize()
+                    .padding(.trailing, 34)
+                    .offset(y: 34)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
         .animation(.easeOut(duration: 0.1), value: isHoveringArchiveIcon)
+        .animation(.easeOut(duration: 0.1), value: isHoveringCodexIcon)
         .onHover { hovering in
             isHovering = hovering
             // Reset the confirmation prompt once the pointer leaves the card.
@@ -383,6 +374,49 @@ private struct BoardCardView: View {
                 Label("Archive", systemImage: "archivebox")
             }
         }
+    }
+
+    @ViewBuilder
+    private var codexControl: some View {
+        // Codex actions live next to the archive icon and reveal on hover,
+        // mirroring the archive control. The "Sending..." spinner stays
+        // visible even after the pointer leaves so progress is never lost.
+        if card.codexSendLabel == "Sending..." {
+            ProgressView()
+                .controlSize(.small)
+        } else if isHovering && card.canSendToCodex {
+            Button {
+                Task {
+                    await model.sendTaskToCodexReportingErrors(taskID: card.id)
+                }
+            } label: {
+                Image(systemName: "paperplane")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Send to Codex")
+            // Tooltip is drawn by the card overlay so toggling it never resets
+            // this button's hover tracking.
+            .onHover { isHoveringCodexIcon = $0 }
+        } else if isHovering && card.canOpenInCodexApp {
+            Button {
+                Task {
+                    await model.openTaskInCodexAppReportingErrors(taskID: card.id)
+                }
+            } label: {
+                Image(systemName: "arrow.up.forward.app")
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(card.codexOpenLabel)
+            .onHover { isHoveringCodexIcon = $0 }
+        }
+    }
+
+    /// Label shown in the codex icon's tooltip, matching whichever action the
+    /// icon currently offers.
+    private var codexHint: String? {
+        if card.canSendToCodex { return card.codexSendLabel }
+        if card.canOpenInCodexApp { return card.codexOpenLabel }
+        return nil
     }
 
     @ViewBuilder
@@ -476,7 +510,6 @@ private struct TaskInspectorView: View {
     @ObservedObject var model: TaskBoardModel
     let inspector: TaskInspectorProjection
     @State private var isConfirmingArchive = false
-    @Namespace private var inspectorGlass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -488,45 +521,44 @@ private struct TaskInspectorView: View {
                 TextField("Task title", text: inspectorTitle)
                     .textFieldStyle(.roundedBorder)
 
-                Picker("Reasoning", selection: inspectorReasoning) {
+                Menu {
                     ForEach(ReasoningEffortOption.all) { option in
-                        Text(option.label).tag(option.effort)
+                        Button(option.label) {
+                            model.inspectorDraft?.reasoningEffort = option.effort
+                        }
                     }
+                } label: {
+                    DropdownLabel(title: inspectorReasoningLabel)
                 }
+                .menuStyle(.button)
+                .buttonStyle(AddRepositoryButtonStyle())
+                .frame(maxWidth: .infinity)
 
                 TextEditor(text: inspectorPrompt)
                     .font(.body)
                     .scrollContentBackground(.hidden)
                     .padding(8)
                     .frame(minHeight: 220)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(.quaternary)
-                    }
+                    .recessedFieldBackground()
                     .accessibilityLabel("Inspector prompt")
 
-                GlassEffectContainer(spacing: 10) {
-                    HStack(spacing: 10) {
-                        Button {
-                            model.saveSelectedInspectorTaskReportingErrors()
-                        } label: {
-                            Label("Save", systemImage: "checkmark")
-                        }
-                        .buttonStyle(.glass)
-                        .glassEffectID("inspector-save", in: inspectorGlass)
-
-                        Button {
-                            Task {
-                                await model.sendSelectedInspectorTaskToCodexReportingErrors()
-                            }
-                        } label: {
-                            Label(inspector.codexSendLabel, systemImage: "paperplane")
-                        }
-                        .buttonStyle(.glassProminent)
-                        .glassEffectID("inspector-send", in: inspectorGlass)
-                        .disabled(!inspector.canSendToCodex)
+                HStack(spacing: 10) {
+                    Button {
+                        model.saveSelectedInspectorTaskReportingErrors()
+                    } label: {
+                        Label("Save", systemImage: "checkmark")
                     }
+                    .buttonStyle(AddRepositoryButtonStyle())
+
+                    Button {
+                        Task {
+                            await model.sendSelectedInspectorTaskToCodexReportingErrors()
+                        }
+                    } label: {
+                        Label(inspector.codexSendLabel, systemImage: "paperplane")
+                    }
+                    .buttonStyle(NewTicketButtonStyle())
+                    .disabled(!inspector.canSendToCodex)
                 }
             } else {
                 Text(inspector.title)
@@ -542,11 +574,7 @@ private struct TaskInspectorView: View {
                     .textSelection(.enabled)
                     .padding(10)
                     .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
-                    .background(Color.secondary.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(.quaternary)
-                    }
+                    .recessedFieldBackground()
                     .accessibilityLabel("Read-only inspector prompt")
 
                 if inspector.canOpenInCodexApp {
@@ -557,7 +585,7 @@ private struct TaskInspectorView: View {
                     } label: {
                         Label(inspector.codexOpenLabel, systemImage: "arrow.up.forward.app")
                     }
-                    .buttonStyle(.glassProminent)
+                    .buttonStyle(NewTicketButtonStyle())
                 }
             }
 
@@ -581,8 +609,7 @@ private struct TaskInspectorView: View {
             } label: {
                 Label("Confirm", systemImage: "archivebox")
             }
-            .buttonStyle(.glass)
-            .tint(ArchiveConfirmStyle.foreground)
+            .buttonStyle(AddRepositoryButtonStyle(foreground: ArchiveConfirmStyle.foreground))
             .accessibilityLabel("Confirm archive")
         } else {
             Button(role: .destructive) {
@@ -590,7 +617,7 @@ private struct TaskInspectorView: View {
             } label: {
                 Label("Archive", systemImage: "archivebox")
             }
-            .buttonStyle(.glass)
+            .buttonStyle(AddRepositoryButtonStyle())
             .accessibilityLabel("Archive task")
         }
     }
@@ -611,18 +638,26 @@ private struct TaskInspectorView: View {
         }
     }
 
-    private var inspectorReasoning: Binding<ReasoningEffort> {
-        Binding {
-            model.inspectorDraft?.reasoningEffort ?? inspector.reasoningEffort
-        } set: { effort in
-            model.inspectorDraft?.reasoningEffort = effort
-        }
+    private var inspectorReasoningLabel: String {
+        (model.inspectorDraft?.reasoningEffort ?? inspector.reasoningEffort).displayLabel
     }
 }
 
 private enum ArchiveConfirmStyle {
     static let foreground = Color(red: 0.93, green: 0.50, blue: 0.46)
     static let background = Color(red: 0.55, green: 0.24, blue: 0.23).opacity(0.42)
+}
+
+private extension View {
+    // A recessed input surface that sits inside the dark glass panels instead
+    // of floating as a bright box.
+    func recessedFieldBackground(cornerRadius: CGFloat = 10) -> some View {
+        background(.black.opacity(0.18), in: RoundedRectangle(cornerRadius: cornerRadius))
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius)
+                    .stroke(.white.opacity(0.08))
+            }
+    }
 }
 
 private enum NewTicketButtonColors {
@@ -667,10 +702,12 @@ private struct DropdownLabel: View {
 }
 
 private struct AddRepositoryButtonStyle: ButtonStyle {
+    var foreground: Color = .primary
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.body.weight(.medium))
-            .foregroundStyle(.primary)
+            .foregroundStyle(foreground)
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
             .background {
