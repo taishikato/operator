@@ -338,6 +338,7 @@ private struct BoardCardView: View {
     let card: TaskCardProjection
     @State private var isHovering = false
     @State private var isConfirmingArchive = false
+    @State private var isHoveringArchiveIcon = false
 
     var body: some View {
         Button {
@@ -350,6 +351,24 @@ private struct BoardCardView: View {
             archiveControl
                 .padding(8)
         }
+        .overlay(alignment: .topTrailing) {
+            // Tooltip lives on the card (always present) so showing/hiding it
+            // doesn't recreate the icon button and flicker its hover tracking.
+            if isHoveringArchiveIcon {
+                Text("Archive")
+                    .font(.caption)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 6))
+                    .fixedSize()
+                    .padding(.trailing, 8)
+                    .offset(y: 34)
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.1), value: isHoveringArchiveIcon)
         .onHover { hovering in
             isHovering = hovering
             // Reset the confirmation prompt once the pointer leaves the card.
@@ -390,6 +409,11 @@ private struct BoardCardView: View {
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Archive task")
+            // Only track hover here; the tooltip itself is drawn by the card
+            // overlay so toggling it never resets this button's hover tracking.
+            .onHover { hovering in
+                isHoveringArchiveIcon = hovering
+            }
         }
     }
 }
