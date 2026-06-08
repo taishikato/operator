@@ -366,7 +366,7 @@ private struct BoardCardView: View {
             Button {
                 isConfirmingArchive = true
             } label: {
-                Image(systemName: "trash")
+                Image(systemName: "archivebox")
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Archive task")
