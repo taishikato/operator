@@ -1,8 +1,10 @@
-# Codex Operator
+# Codex Operator 🪄
 
 Codex Operator (`codex_operator`) is a desktop app for Codex App.
 
 It gives you a local Kanban board for coding tasks. When a task is ready, Codex Operator prepares a detached Git worktree, sends the prompt directly to Codex, and opens the resulting chat session in Codex App so you can continue working there.
+
+![Codex Operator](https://github.com/user-attachments/assets/44917bdf-6960-4bd6-a4d5-d81bed7412c3)
 
 ## What It Does
 
@@ -14,10 +16,30 @@ It gives you a local Kanban board for coding tasks. When a task is ready, Codex 
 - Open finished Codex sessions in Codex App.
 - Keep task and run metadata in a local SQLite database.
 
-## Install
+## Run Locally
 
-Download the latest `Operator.dmg` from GitHub Releases, open it, and drag
-`Operator.app` into Applications.
+From this directory:
+
+```bash
+script/build_and_run.sh
+```
+
+This stops any running `Operator` process, rebuilds the app bundle, and opens
+`dist/Operator.app`.
+
+Other useful script modes:
+
+```bash
+script/build_and_run.sh --bundle
+script/build_and_run.sh --verify
+script/build_and_run.sh --logs
+script/build_and_run.sh --telemetry
+script/build_and_run.sh --debug
+```
+
+A downloadable `.dmg` build is planned for the near future.
+
+## Requirements
 
 Codex Operator requires:
 
@@ -38,64 +60,6 @@ codex app-server --listen stdio://
 ```
 
 If Codex is not found automatically, open Settings in Codex Operator and configure the absolute path to the `codex` binary.
-
-## Build a Release DMG
-
-From this directory:
-
-```bash
-script/package_release.sh
-```
-
-This creates:
-
-```text
-dist/release/Operator.dmg
-dist/release/Operator.dmg.sha256
-```
-
-Set `CODESIGN_IDENTITY` to sign the app bundle before packaging:
-
-```bash
-CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" script/package_release.sh
-```
-
-Set Apple notarization credentials to submit and staple the DMG:
-
-```bash
-APPLE_ID="you@example.com" \
-APPLE_TEAM_ID="TEAMID" \
-APPLE_APP_SPECIFIC_PASSWORD="app-specific-password" \
-CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
-script/package_release.sh
-```
-
-## Run Locally
-
-From this directory:
-
-```bash
-swift build
-swift run Operator
-```
-
-For the app bundle workflow:
-
-```bash
-script/build_and_run.sh
-```
-
-This builds `dist/Operator.app` and opens it.
-
-Other useful script modes:
-
-```bash
-script/build_and_run.sh --bundle
-script/build_and_run.sh --verify
-script/build_and_run.sh --logs
-script/build_and_run.sh --telemetry
-script/build_and_run.sh --debug
-```
 
 ## Basic Workflow
 
