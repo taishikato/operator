@@ -19,7 +19,7 @@ public final class RepositorySettingsModel: ObservableObject {
     @Published public private(set) var codexStatus: CodexStatus = .notChecked
 
     public let aboutAppName = "Operator Desktop"
-    public let aboutMinimumMacOS = "15 Sequoia"
+    public let aboutMinimumMacOS = "26.0 or newer"
 
     private let store: any RepositorySettingsStoring
     private let registrationService: RepositoryRegistrationService

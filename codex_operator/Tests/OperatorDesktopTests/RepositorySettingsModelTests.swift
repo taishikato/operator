@@ -96,7 +96,7 @@ import Testing
     #expect(model.codexBinaryPath == "/opt/homebrew/bin/codex")
     #expect(model.codexStatus == .notChecked)
     #expect(model.aboutAppName == "Operator Desktop")
-    #expect(model.aboutMinimumMacOS == "15 Sequoia")
+    #expect(model.aboutMinimumMacOS == "26.0 or newer")
 }
 
 @MainActor
