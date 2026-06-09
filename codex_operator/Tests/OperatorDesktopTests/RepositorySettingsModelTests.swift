@@ -77,6 +77,26 @@ import Testing
 }
 
 @MainActor
+@Test func repositorySettingsModelRequestsRepositoryOnboardingOnlyAfterLoadingAnEmptyList() throws {
+    let emptyStore = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let emptyModel = RepositorySettingsModel(store: emptyStore)
+
+    #expect(emptyModel.shouldShowRepositoryOnboarding == false)
+
+    try emptyModel.loadRepositories()
+
+    #expect(emptyModel.shouldShowRepositoryOnboarding)
+
+    let populatedStore = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    _ = try populatedStore.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let populatedModel = RepositorySettingsModel(store: populatedStore)
+
+    try populatedModel.loadRepositories()
+
+    #expect(populatedModel.shouldShowRepositoryOnboarding == false)
+}
+
+@MainActor
 @Test func repositorySettingsModelExposesCodexSettingsAppDataPathAndAboutInformation() throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let binarySettings = CodexBinarySettings(

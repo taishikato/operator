@@ -17,9 +17,13 @@ public final class RepositorySettingsModel: ObservableObject {
     @Published public private(set) var codexBinaryPath = "Not found"
     @Published public private(set) var codexDetectedBinaryPath = "Not found"
     @Published public private(set) var codexStatus: CodexStatus = .notChecked
+    @Published private var didLoadRepositories = false
 
     public let aboutAppName = "Operator Desktop"
     public let aboutMinimumMacOS = "26.0 or newer"
+    public var shouldShowRepositoryOnboarding: Bool {
+        didLoadRepositories && repositories.isEmpty
+    }
 
     private let store: any RepositorySettingsStoring
     private let registrationService: RepositoryRegistrationService
@@ -72,6 +76,7 @@ public final class RepositorySettingsModel: ObservableObject {
         repositories = loadedRepositories
         syncDefaultBranchDrafts(with: loadedRepositories)
         errorMessage = nil
+        didLoadRepositories = true
     }
 
     public func loadRepositoriesReportingErrors() {

@@ -6,6 +6,7 @@ public struct BoardView: View {
     @StateObject private var repositorySettingsModel: RepositorySettingsModel
     @State private var showInspector = true
     @State private var showCreateSheet = false
+    @State private var showRepositoryOnboarding = false
     private let store: OperatorStore
 
     public init(
@@ -59,11 +60,19 @@ public struct BoardView: View {
         .sheet(isPresented: $showCreateSheet) {
             TaskCreationSheet(model: model, isPresented: $showCreateSheet)
         }
+        .sheet(isPresented: $showRepositoryOnboarding) {
+            RepositoryOnboardingSheet(
+                isPresented: $showRepositoryOnboarding,
+                onAddRepository: selectRepositoryFolder
+            )
+        }
         .onAppear {
-            model.loadReportingErrors()
+            loadBoardState()
         }
         .onReceive(store.changes) {
             model.loadReportingErrors()
+            repositorySettingsModel.loadRepositoriesReportingErrors()
+            syncRepositoryOnboardingPresentation()
         }
     }
 
@@ -85,6 +94,16 @@ public struct BoardView: View {
         }
 
         repositorySettingsModel.addRepositoryReportingErrors(at: repositoryURL)
+    }
+
+    private func loadBoardState() {
+        model.loadReportingErrors()
+        repositorySettingsModel.loadRepositoriesReportingErrors()
+        syncRepositoryOnboardingPresentation()
+    }
+
+    private func syncRepositoryOnboardingPresentation() {
+        showRepositoryOnboarding = repositorySettingsModel.shouldShowRepositoryOnboarding
     }
 }
 
@@ -142,6 +161,43 @@ private struct BoardToolbarView: View {
         model.projection.repositoryFilters
             .first { $0.id == model.selectedRepositoryID }?
             .name ?? RepositoryFilterOption.allRepositories.name
+    }
+}
+
+private struct RepositoryOnboardingSheet: View {
+    @Binding var isPresented: Bool
+    let onAddRepository: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Add a Repository")
+                .font(.title2.weight(.semibold))
+
+            Text("Register a Git repository before creating tickets or sending work to Codex.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+
+                Button("Later") {
+                    isPresented = false
+                }
+                .buttonStyle(AddRepositoryButtonStyle())
+                .keyboardShortcut(.cancelAction)
+
+                Button {
+                    isPresented = false
+                    onAddRepository()
+                } label: {
+                    Label("Add Repository", systemImage: "plus")
+                }
+                .buttonStyle(NewTicketButtonStyle())
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 420)
     }
 }
 
