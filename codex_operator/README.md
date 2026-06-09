@@ -14,10 +14,14 @@ It gives you a local Kanban board for coding tasks. When a task is ready, Codex 
 - Open finished Codex sessions in Codex App.
 - Keep task and run metadata in a local SQLite database.
 
-## Requirements
+## Install
+
+Download the latest `Operator.dmg` from GitHub Releases, open it, and drag
+`Operator.app` into Applications.
+
+Codex Operator requires:
 
 - macOS 26.0 or newer.
-- Swift 6.2 or newer.
 - Git.
 - Codex App and Codex CLI installed and signed in.
 
@@ -34,6 +38,37 @@ codex app-server --listen stdio://
 ```
 
 If Codex is not found automatically, open Settings in Codex Operator and configure the absolute path to the `codex` binary.
+
+## Build a Release DMG
+
+From this directory:
+
+```bash
+script/package_release.sh
+```
+
+This creates:
+
+```text
+dist/release/Operator.dmg
+dist/release/Operator.dmg.sha256
+```
+
+Set `CODESIGN_IDENTITY` to sign the app bundle before packaging:
+
+```bash
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" script/package_release.sh
+```
+
+Set Apple notarization credentials to submit and staple the DMG:
+
+```bash
+APPLE_ID="you@example.com" \
+APPLE_TEAM_ID="TEAMID" \
+APPLE_APP_SPECIFIC_PASSWORD="app-specific-password" \
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+script/package_release.sh
+```
 
 ## Run Locally
 
