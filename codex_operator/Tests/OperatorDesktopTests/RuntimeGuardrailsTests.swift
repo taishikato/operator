@@ -1,0 +1,226 @@
+import Foundation
+import GRDB
+import Testing
+@testable import OperatorDesktop
+
+@Test func runtimeGuardrailsDeclareForbiddenMVPResponsibilities() {
+    let guardrails = OperatorRuntimeGuardrails.mvp
+
+    #expect(guardrails.forbiddenResponsibilities == [
+        .scheduling,
+        .triggerQueue,
+        .concurrencyControl,
+        .backlogColumn,
+        .reviewToReadyMovement,
+        .rerunAfterSuccessfulSend,
+        .hardDelete,
+        .automaticWorktreeCleanup,
+        .pullRequestCreation,
+        .branchCreation,
+        .diffInspection,
+        .changedFileCount,
+        .testResultTracking,
+        .commitStatusTracking,
+        .appServerRawEventPersistence,
+        .codexTranscriptPersistence
+    ])
+    #expect(guardrails.maximumFailureErrorMessageLength == 160)
+}
+
+@Test func runtimeGuardrailsAlignWithShellNavigationAndBoardColumns() {
+    let guardrails = OperatorRuntimeGuardrails.mvp
+    let shell = OperatorShellSpec.mvp
+
+    #expect(shell.launchDestination == .board)
+    #expect(shell.board.columns.map(\.id) == guardrails.allowedBoardColumns)
+    #expect(shell.navigationDestinations == guardrails.allowedNavigationDestinations)
+    #expect(Set(shell.board.columns.map(\.title)).isDisjoint(with: guardrails.forbiddenVisibleLabels))
+}
+
+@Test func runPersistenceSchemaStoresOnlyTriggerLevelMetadata() throws {
+    let databaseURL = try temporaryDatabaseURL()
+    _ = try OperatorStore(databaseURL: databaseURL)
+    let dbQueue = try DatabaseQueue(path: databaseURL.path)
+
+    let runColumns: [String] = try dbQueue.read { db in
+        try Row.fetchAll(db, sql: "PRAGMA table_info(runs)").map { row in
+            let name: String = row["name"]
+            return name
+        }
+    }
+
+    #expect(runColumns == OperatorRuntimeGuardrails.mvp.allowedRunPersistenceColumns)
+    #expect(Set(runColumns).isDisjoint(with: OperatorRuntimeGuardrails.mvp.forbiddenRunPersistenceColumns))
+}
+
+@Test func doneTaskProjectionsExposeOpenButNoSendOrRerunAffordance() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Already sent", prompt: "Prompt")
+    let threadURL = URL(string: "codex://threads/thread-guardrail")!
+    _ = try store.recordSuccessfulRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/sent",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-guardrail",
+        codexThreadURL: threadURL
+    )
+    _ = try store.markTaskDone(id: task.id)
+
+    let projection = try TaskBoardProjection.load(from: store)
+    let card = try #require(projection.column(.done).cards.first)
+    let inspector = try #require(projection.inspector(taskID: task.id))
+
+    #expect(card.canSendToCodex == false)
+    #expect(card.codexSendLabel != "Rerun")
+    #expect(card.canOpenInCodexApp)
+    #expect(inspector.canSendToCodex == false)
+    #expect(inspector.codexSendLabel != "Rerun")
+    #expect(inspector.canOpenInCodexApp)
+}
+
+@Test func sendFlowStoresThreadReferenceButNoRawEventsOrTranscriptContent() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Guard storage",
+        prompt: "Prompt may mention RAW_EVENT_MARKER and TRANSCRIPT_MARKER but run storage must not copy it."
+    )
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-guardrail")
+    let worktreePreparer = GuardrailWorktreePreparer(worktreeURL: worktreeURL)
+    let appServer = GuardrailAppServerClient(
+        thread: CodexThreadReference(id: "thread-guardrail", url: URL(string: "codex://threads/thread-guardrail"))
+    )
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+    let storedRuns = try store.runs(taskID: task.id)
+
+    #expect(storedRuns.map(\.id) == [run.id])
+    #expect(storedRuns.map(\.status) == [.running])
+    #expect(run.codexThreadID == "thread-guardrail")
+    #expect(run.codexThreadURL == URL(string: "codex://threads/thread-guardrail"))
+    #expect(run.errorMessage == nil)
+}
+
+@Test func failedSendFlowDoesNotPersistForbiddenMarkerSubstringsInStoredRun() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Guard failure storage",
+        prompt: "Prompt"
+    )
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-guardrail-failure")
+    let worktreePreparer = GuardrailWorktreePreparer(worktreeURL: worktreeURL)
+    let rejectedMessage = "app-server rejected turn rawEvent={\"type\":\"delta\"} transcript=assistant said hi"
+    let appServer = FailingGuardrailAppServerClient(message: rejectedMessage)
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .triggerFailed)
+    #expect(
+        run.serializedPersistedFieldValues()
+            .joined(separator: "\n")
+            .contains("rawEvent") == false
+    )
+    #expect(
+        run.serializedPersistedFieldValues()
+            .joined(separator: "\n")
+            .contains("transcript") == false
+    )
+}
+
+private final class GuardrailWorktreePreparer: CodexWorktreePreparing, @unchecked Sendable {
+    private let worktreeURL: URL
+
+    init(worktreeURL: URL) {
+        self.worktreeURL = worktreeURL
+    }
+
+    func prepareWorktree(for repository: OperatorRepository) throws -> PreparedWorktree {
+        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: repository.defaultBranch, baseRef: "abc123")
+    }
+}
+
+private final class FailingGuardrailAppServerClient: CodexAppServerClient, @unchecked Sendable {
+    private let message: String
+
+    init(message: String) {
+        self.message = message
+    }
+
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
+        throw CodexAppServerClientError.serverRejected(message: message)
+    }
+}
+
+private final class GuardrailAppServerClient: CodexAppServerClient, @unchecked Sendable {
+    private let thread: CodexThreadReference
+
+    init(thread: CodexThreadReference) {
+        self.thread = thread
+    }
+
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
+        CodexStartedThread(
+            reference: thread,
+            turnCompletion: CodexTurnCompletionSignal()
+        )
+    }
+}
+
+private extension OperatorRun {
+    func serializedPersistedFieldValues(
+        using guardrails: OperatorRuntimeGuardrails = .mvp
+    ) -> [String] {
+        guardrails.allowedRunPersistenceColumns.compactMap { column in
+            switch column {
+            case "id":
+                id.uuidString
+            case "taskID":
+                taskID.uuidString
+            case "repositoryID":
+                repositoryID.uuidString
+            case "status":
+                status.rawValue
+            case "worktreePath":
+                worktreePath
+            case "baseBranch":
+                baseBranch
+            case "baseRef":
+                baseRef
+            case "codexThreadID":
+                codexThreadID
+            case "codexThreadURL":
+                codexThreadURL?.absoluteString
+            case "errorMessage":
+                errorMessage
+            case "createdAt":
+                ISO8601DateFormatter().string(from: createdAt)
+            case "completedAt":
+                completedAt.map { ISO8601DateFormatter().string(from: $0) }
+            default:
+                nil
+            }
+        }
+    }
+}
+
+private func temporaryDatabaseURL() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "RuntimeGuardrailsTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory.appending(path: "operator.sqlite")
+}

@@ -1,0 +1,4 @@
+.build/
+codex_operator/.swiftpm/
+dist/
+.DS_Store
