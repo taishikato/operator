@@ -141,7 +141,8 @@ import Testing
     let card = try #require(projection.column(.review).cards.first)
     let inspector = try #require(projection.inspector(taskID: task.id))
 
-    #expect(card.triggerStateBadge == "Running")
+    #expect(card.triggerStateBadge == nil)
+    #expect(card.showsRunningActivityIndicator)
     #expect(card.canOpenInCodexApp == false)
     #expect(card.codexOpenTarget == nil)
     #expect(inspector.canOpenInCodexApp == false)
@@ -176,6 +177,7 @@ import Testing
     #expect(card.repositoryBadge == "operator")
     #expect(card.reasoningBadge == "Extra High")
     #expect(card.triggerStateBadge == "Failed to send")
+    #expect(card.showsRunningActivityIndicator == false)
     #expect(card.promptPreview == nil)
     #expect(card.canSendToCodex)
     #expect(card.codexSendLabel == "Send to Codex")

@@ -524,6 +524,13 @@ private struct TaskCardView: View {
                 if let triggerStateBadge = card.triggerStateBadge {
                     BadgeView(text: triggerStateBadge)
                 }
+                Spacer(minLength: 8)
+                if card.showsRunningActivityIndicator {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(width: 16, height: 16)
+                        .accessibilityLabel("Running")
+                }
             }
         }
         .padding(10)

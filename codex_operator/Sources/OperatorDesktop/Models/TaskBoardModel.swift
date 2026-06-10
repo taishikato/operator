@@ -185,6 +185,7 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
     public let repositoryBadge: String
     public let reasoningBadge: String
     public let triggerStateBadge: String?
+    public let showsRunningActivityIndicator: Bool
     public let promptPreview: String?
     public let canSendToCodex: Bool
     public let codexSendLabel: String
@@ -197,7 +198,8 @@ public struct TaskCardProjection: Equatable, Identifiable, Sendable {
         title = task.title
         repositoryBadge = repositoryName
         reasoningBadge = task.reasoningEffort.displayLabel
-        triggerStateBadge = latestRun?.triggerStateBadge
+        showsRunningActivityIndicator = latestRun?.status == .running
+        triggerStateBadge = showsRunningActivityIndicator ? nil : latestRun?.triggerStateBadge
         promptPreview = nil
         canSendToCodex = TaskCodexSendEligibility.canSend(
             taskStatus: task.status,
