@@ -17,6 +17,7 @@ them to a plan later.
 | 001  | Recover Running tasks after an app restart | P1 | M | — | TODO |
 | 002  | Ship a versioned, downloadable DMG release channel | P2 | S | — | TODO |
 | 003  | Design spike: follow-up sends and rerun | P2 | S | — (001's spike report is useful input) | TODO |
+| 004  | Design spike: "operator skills" — agent-facing CLI + thin skills | P2 | M | — (soft: 001, 003 outputs) | DONE — PRD at `.scratch/operator-skills/PRD.md`; at the maintainer's request the same pass also shipped the implementation (WAL store, `operator-cli` target, `skills/operator/SKILL.md`) |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -27,6 +28,11 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
   exposes about thread/turn status, which constrains 003's Option B
   (follow-up turn on an existing thread). 003 can run without it.
 - 001 and 002 are independent and can run in parallel worktrees.
+- 004 (operator skills spike, added 2026-06-10 at `022a616` via a `plan`
+  invocation) has soft dependencies on 001 and 003: 001 defines recovery for
+  runs stranded in `running` (constrains the CLI `send --no-wait` semantics)
+  and 003 may add follow-up-turn verbs to the CLI surface. 004 can run
+  without either, but its executor should read their outputs if DONE.
 
 ## Direction findings deferred (not planned this run)
 

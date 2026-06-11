@@ -55,6 +55,8 @@ public enum OperatorStoreError: Error, Equatable, LocalizedError, Sendable {
 public final class OperatorStore: @unchecked Sendable {
     private let dbQueue: DatabaseQueue
     private let changeSubject = PassthroughSubject<Void, Never>()
+    private let monitorLock = NSLock()
+    private var monitorTask: Task<Void, Never>?
 
     public var changes: AnyPublisher<Void, Never> {
         changeSubject.eraseToAnyPublisher()
@@ -65,8 +67,20 @@ public final class OperatorStore: @unchecked Sendable {
             at: databaseURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        dbQueue = try DatabaseQueue(path: databaseURL.path)
+        // The app and the operator CLI share this database from separate
+        // processes: wait out a competing writer instead of failing with
+        // SQLITE_BUSY, and use WAL so readers don't block the writer.
+        var configuration = Configuration()
+        configuration.busyMode = .timeout(5)
+        configuration.prepareDatabase { db in
+            try db.execute(sql: "PRAGMA journal_mode = WAL")
+        }
+        dbQueue = try DatabaseQueue(path: databaseURL.path, configuration: configuration)
         try Self.migrator.migrate(dbQueue)
+    }
+
+    deinit {
+        monitorTask?.cancel()
     }
 
     public static func applicationSupportStore(
@@ -464,6 +478,51 @@ public final class OperatorStore: @unchecked Sendable {
         }
         publishChange()
         return task
+    }
+
+    /// Fires `changes` when another connection (e.g. the operator CLI in a
+    /// separate process) commits to the database. `PRAGMA data_version` only
+    /// moves for foreign commits, so this never double-reports the store's
+    /// own writes.
+    public func startExternalChangeMonitoring(pollInterval: TimeInterval = 2.0) {
+        monitorLock.lock()
+        defer { monitorLock.unlock() }
+        guard monitorTask == nil else {
+            return
+        }
+
+        // Capture the baseline synchronously so commits landing right after
+        // this call cannot slip under the monitor's first reading.
+        let baseline = currentDataVersion()
+        monitorTask = Task { [weak self] in
+            var lastVersion = baseline
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(pollInterval))
+                guard let self, !Task.isCancelled else {
+                    return
+                }
+                guard let version = self.currentDataVersion() else {
+                    continue
+                }
+                if let previousVersion = lastVersion, version != previousVersion {
+                    self.publishChange()
+                }
+                lastVersion = version
+            }
+        }
+    }
+
+    public func stopExternalChangeMonitoring() {
+        monitorLock.lock()
+        defer { monitorLock.unlock() }
+        monitorTask?.cancel()
+        monitorTask = nil
+    }
+
+    private func currentDataVersion() -> Int? {
+        try? dbQueue.read { db in
+            try Int.fetchOne(db, sql: "PRAGMA data_version")
+        }
     }
 
     private func publishChange() {
