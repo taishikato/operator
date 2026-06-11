@@ -185,6 +185,61 @@ import Testing
     #expect(await fileExists(at: completionURL, withinMilliseconds: 5_000))
 }
 
+@Test func codexAppServerStdioClientCompletesTurnWatcherWhenServerDies() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientServerDies")
+    let scriptURL = directory.appending(path: "server.py")
+    let completionURL = directory.appending(path: "turn-orphaned")
+    try writeScript(
+        """
+        import json
+        import sys
+
+        def read_request():
+            line = sys.stdin.readline()
+            if not line:
+                sys.exit(1)
+            return json.loads(line)
+
+        def send(message):
+            sys.stdout.write(json.dumps(message) + "\\n")
+            sys.stdout.flush()
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {"thread": {"id": "thread-orphaned"}}})
+
+        request = read_request()
+        send({"jsonrpc": "2.0", "id": request["id"], "result": {}})
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path]
+    )
+
+    let startedThread = try await client.startThreadAndTurn(
+        CodexThreadStartRequest(
+            cwd: directory,
+            model: "gpt-5.5",
+            reasoningEffort: .medium,
+            prompt: "Orphaned watcher"
+        )
+    )
+
+    // The script exits right after accepting turn/start without emitting a
+    // terminal turn notification; the watcher must still complete.
+    Task {
+        await startedThread.turnCompletion.waitUntilCompleted()
+        try? "done".write(to: completionURL, atomically: true, encoding: .utf8)
+    }
+
+    #expect(startedThread.reference.id == "thread-orphaned")
+    #expect(await fileExists(at: completionURL, withinMilliseconds: 5_000))
+}
+
 @Test func codexAppServerStdioClientSerializesConcurrentStartRequests() async throws {
     let directory = try temporaryDirectory(named: "CodexAppServerStdioClientSerial")
     let scriptURL = directory.appending(path: "server.py")

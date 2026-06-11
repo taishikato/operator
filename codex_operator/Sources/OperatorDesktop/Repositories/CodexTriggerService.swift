@@ -132,27 +132,32 @@ public struct CodexTriggerService: @unchecked Sendable {
     private let store: OperatorStore
     private let worktreePreparer: any CodexWorktreePreparing
     private let appServerClientFactory: any CodexAppServerClientFactory
+    private let threadVisibility: (any CodexThreadVisibilityControlling)?
 
     public init(
         store: OperatorStore,
         worktreePreparer: any CodexWorktreePreparing,
-        appServerClient: any CodexAppServerClient
+        appServerClient: any CodexAppServerClient,
+        threadVisibility: (any CodexThreadVisibilityControlling)? = nil
     ) {
         self.init(
             store: store,
             worktreePreparer: worktreePreparer,
-            appServerClientFactory: FixedCodexAppServerClientFactory(appServerClient: appServerClient)
+            appServerClientFactory: FixedCodexAppServerClientFactory(appServerClient: appServerClient),
+            threadVisibility: threadVisibility
         )
     }
 
     public init(
         store: OperatorStore,
         worktreePreparer: any CodexWorktreePreparing,
-        appServerClientFactory: any CodexAppServerClientFactory
+        appServerClientFactory: any CodexAppServerClientFactory,
+        threadVisibility: (any CodexThreadVisibilityControlling)? = nil
     ) {
         self.store = store
         self.worktreePreparer = worktreePreparer
         self.appServerClientFactory = appServerClientFactory
+        self.threadVisibility = threadVisibility
     }
 
     public func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
@@ -162,6 +167,8 @@ public struct CodexTriggerService: @unchecked Sendable {
         }
 
         let preparedWorktree = try worktreePreparer.prepareWorktree(for: repository)
+        var hideTask: Task<Bool, Never>?
+        var startedThreadID: String?
         do {
             let appServerClient = try appServerClientFactory.makeAppServerClient()
             let startedThread = try await appServerClient.startThreadAndTurn(
@@ -180,6 +187,16 @@ public struct CodexTriggerService: @unchecked Sendable {
                     displayName: task.title
                 )
             )
+            // Hide the thread from the Codex App sidebar while the turn runs.
+            // The rollout file only exists once the turn starts, so this polls
+            // concurrently instead of blocking the send flow.
+            let threadID = startedThread.reference.id
+            startedThreadID = threadID
+            if let threadVisibility {
+                hideTask = Task {
+                    await threadVisibility.hideThread(id: threadID)
+                }
+            }
             let run = try store.recordStartedRun(
                 taskID: task.id,
                 worktreePath: preparedWorktree.worktreeURL.path,
@@ -189,13 +206,29 @@ public struct CodexTriggerService: @unchecked Sendable {
                 codexThreadURL: startedThread.reference.url
             )
             let store = store
+            let threadVisibility = threadVisibility
             let turnCompletion = startedThread.turnCompletion
+            let pendingHideTask = hideTask
             Task {
                 await turnCompletion.waitUntilCompleted()
+                if let threadVisibility, let pendingHideTask {
+                    pendingHideTask.cancel()
+                    if await pendingHideTask.value {
+                        await threadVisibility.revealThread(id: threadID)
+                    }
+                }
                 _ = try? store.completeStartedRun(id: run.id)
             }
             return run
         } catch {
+            if let threadVisibility, let hideTask, let startedThreadID {
+                hideTask.cancel()
+                Task {
+                    if await hideTask.value {
+                        await threadVisibility.revealThread(id: startedThreadID)
+                    }
+                }
+            }
             return try store.recordFailedRun(
                 taskID: task.id,
                 worktreePath: preparedWorktree.worktreeURL.path,
@@ -203,6 +236,21 @@ public struct CodexTriggerService: @unchecked Sendable {
                 baseRef: preparedWorktree.baseRef,
                 errorMessage: Self.shortErrorMessage(for: error)
             )
+        }
+    }
+
+    /// Completes runs that were still marked running when the app last quit.
+    /// The spawned app-server dies with the app, so these turns cannot still
+    /// be running; reveal their hidden threads and surface the tasks as Done.
+    public func recoverInterruptedRuns() async {
+        guard let runs = try? store.runningRuns() else {
+            return
+        }
+        for run in runs {
+            if let threadVisibility, let threadID = run.codexThreadID {
+                await threadVisibility.revealThread(id: threadID)
+            }
+            _ = try? store.completeStartedRun(id: run.id)
         }
     }
 

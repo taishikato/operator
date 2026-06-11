@@ -430,6 +430,17 @@ public final class OperatorStore: @unchecked Sendable {
         }
     }
 
+    public func runningRuns() throws -> [OperatorRun] {
+        try dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM runs WHERE status = ? ORDER BY createdAt, id",
+                arguments: [RunStatus.running.rawValue]
+            )
+            .map(Self.run(from:))
+        }
+    }
+
     public func latestRunsByTaskID() throws -> [UUID: OperatorRun] {
         try dbQueue.read { db in
             let runs = try Row.fetchAll(db, sql: "SELECT * FROM runs ORDER BY taskID, createdAt, id")

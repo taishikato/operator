@@ -11,13 +11,15 @@ struct OperatorApp: App {
         do {
             appDataURL = try OperatorAppBootstrap.applicationDataURL()
             store = try OperatorAppBootstrap.initializeStore(databaseURL: appDataURL.appending(path: "operator.sqlite"))
+            let codexBinarySettings = CodexBinarySettings()
             codexTrigger = CodexTriggerService(
                 store: store,
                 worktreePreparer: WorktreePreparer(
                     appDataURL: appDataURL,
                     worktreeRootURL: OperatorAppBootstrap.codexWorktreesURL()
                 ),
-                appServerClientFactory: ConfiguredCodexAppServerClientFactory()
+                appServerClientFactory: ConfiguredCodexAppServerClientFactory(settings: codexBinarySettings),
+                threadVisibility: CodexCLIThreadVisibilityController(settings: codexBinarySettings)
             )
         } catch {
             fatalError("Unable to initialize Operator store: \(error)")
@@ -28,6 +30,9 @@ struct OperatorApp: App {
         WindowGroup("Operator") {
             OperatorRootView(store: store, shell: .mvp, codexTrigger: codexTrigger)
                 .frame(minWidth: 1_040, minHeight: 680)
+                .task { [codexTrigger] in
+                    await codexTrigger.recoverInterruptedRuns()
+                }
         }
         .windowResizability(.contentMinSize)
 

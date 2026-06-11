@@ -94,6 +94,113 @@ import Testing
     #expect(completedRun.completedAt != nil)
 }
 
+@Test func codexTriggerHidesThreadWhileRunningAndRevealsBeforeCompletingRun() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Hidden while running", prompt: "Prompt")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-hidden"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-hidden", url: nil),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let visibility = FakeThreadVisibilityController()
+    let taskID = task.id
+    visibility.onReveal = { [store] _ in
+        // The reveal must happen while the run is still recorded as running,
+        // so the thread becomes visible before the task moves to Done.
+        let status = (try? store.runs(taskID: taskID).first?.status) ?? nil
+        visibility.recordRunStatusAtReveal(status)
+    }
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer,
+        threadVisibility: visibility
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .running)
+    await waitUntil { visibility.hideCalls == ["thread-hidden"] }
+    #expect(visibility.hideCalls == ["thread-hidden"])
+    #expect(visibility.revealCalls.isEmpty)
+
+    await turnCompletion.complete()
+    await waitUntil {
+        ((try? store.runs(taskID: taskID).first?.status) ?? nil) == .triggered
+    }
+
+    #expect(visibility.revealCalls == ["thread-hidden"])
+    #expect(visibility.runStatusAtReveal == .running)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
+@Test func codexTriggerSkipsRevealWhenThreadWasNeverHidden() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Never hidden", prompt: "Prompt")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-unhidden"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-unhidden", url: nil),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let visibility = FakeThreadVisibilityController()
+    visibility.hideResult = false
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer,
+        threadVisibility: visibility
+    )
+
+    _ = try await service.sendTaskToCodex(taskID: task.id)
+    await turnCompletion.complete()
+    await waitUntil {
+        ((try? store.runs(taskID: task.id).first?.status) ?? nil) == .triggered
+    }
+
+    #expect(visibility.hideCalls == ["thread-unhidden"])
+    #expect(visibility.revealCalls.isEmpty)
+}
+
+@Test func codexTriggerRecoversInterruptedRunsByRevealingAndCompleting() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Interrupted", prompt: "Prompt")
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/operator-worktree-interrupted",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-interrupted",
+        codexThreadURL: nil
+    )
+    let visibility = FakeThreadVisibilityController()
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: FakeCodexWorktreePreparer(preparedWorktrees: []),
+        appServerClient: FakeCodexAppServerClient(results: []),
+        threadVisibility: visibility
+    )
+
+    await service.recoverInterruptedRuns()
+
+    #expect(visibility.revealCalls == ["thread-interrupted"])
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .triggered)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
 @Test func codexTriggerRecordsFailureAndRetryUsesFreshWorktreeAndRun() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -327,6 +434,48 @@ private final class FakeCodexAppServerClient: CodexAppServerClient, @unchecked S
     func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         requests.append(request)
         return try results.removeFirst().get()
+    }
+}
+
+private final class FakeThreadVisibilityController: CodexThreadVisibilityControlling, @unchecked Sendable {
+    private let lock = NSLock()
+    private var hideCallsValue: [String] = []
+    private var revealCallsValue: [String] = []
+    private var runStatusAtRevealValue: RunStatus?
+    var hideResult = true
+    var onReveal: (@Sendable (String) -> Void)?
+
+    var hideCalls: [String] {
+        lock.withLock { hideCallsValue }
+    }
+
+    var revealCalls: [String] {
+        lock.withLock { revealCallsValue }
+    }
+
+    var runStatusAtReveal: RunStatus? {
+        lock.withLock { runStatusAtRevealValue }
+    }
+
+    func recordRunStatusAtReveal(_ status: RunStatus?) {
+        lock.withLock {
+            runStatusAtRevealValue = status
+        }
+    }
+
+    func hideThread(id: String) async -> Bool {
+        lock.withLock {
+            hideCallsValue.append(id)
+        }
+        return hideResult
+    }
+
+    func revealThread(id: String) async -> Bool {
+        onReveal?(id)
+        lock.withLock {
+            revealCallsValue.append(id)
+        }
+        return true
     }
 }
 

@@ -330,7 +330,16 @@ private actor CodexAppServerStdioTransport {
         stderr = nil
         stdoutBuffer.removeAll()
         initialized = false
+        // A dead app-server can no longer run its turns. Treat pending turns
+        // as terminal so waiting callers can finish their runs instead of
+        // hanging forever.
+        let orphanedCompletions = Array(pendingTurnCompletionsByThreadID.values)
         pendingTurnCompletionsByThreadID.removeAll()
+        for completion in orphanedCompletions {
+            Task {
+                await completion.complete()
+            }
+        }
     }
 
     private func failPendingResponses(with error: Error) {
