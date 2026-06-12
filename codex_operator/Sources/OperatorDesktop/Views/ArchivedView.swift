@@ -52,6 +52,8 @@ public struct ArchivedView: View {
                     }
                     .padding(.vertical, 4)
                 }
+                // Let the translucent window background show through the list.
+                .scrollContentBackground(.hidden)
             }
         }
         .padding(20)

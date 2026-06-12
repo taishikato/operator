@@ -27,13 +27,17 @@ public struct OperatorSettingsView: View {
             }
 
             Section("Codex") {
-                LabeledContent("Detected binary", value: model.codexDetectedBinaryPath)
-                LabeledContent("Active binary", value: model.codexBinaryPath)
+                LabeledContent("Detected binary") {
+                    PathText(model.codexDetectedBinaryPath)
+                }
+                LabeledContent("Active binary") {
+                    PathText(model.codexBinaryPath)
+                }
 
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(model.codexStatus.title)
-                            .font(.headline)
+                            .fontWeight(.medium)
                         Text(model.codexStatus.message)
                             .font(.callout)
                             .foregroundStyle(.secondary)
@@ -47,6 +51,7 @@ public struct OperatorSettingsView: View {
                         Label("Refresh", systemImage: "arrow.clockwise")
                     }
                     .buttonStyle(.glass)
+                    .controlSize(.small)
                     .accessibilityLabel(RepositorySettingsAccessibility.refreshCodexStatusLabel)
                 }
 
@@ -58,7 +63,9 @@ public struct OperatorSettingsView: View {
             }
 
             Section("Operator") {
-                LabeledContent(RepositorySettingsAccessibility.appDataPathLabel, value: model.appDataPath)
+                LabeledContent(RepositorySettingsAccessibility.appDataPathLabel) {
+                    PathText(model.appDataPath)
+                }
                 LabeledContent("App", value: model.aboutAppName)
                 LabeledContent("Minimum macOS", value: model.aboutMinimumMacOS)
             }
@@ -70,10 +77,30 @@ public struct OperatorSettingsView: View {
             }
         }
         .formStyle(.grouped)
-        .padding()
+        .scrollContentBackground(.hidden)
+        // Match the main window's translucent surface.
+        .containerBackground(.thickMaterial, for: .window)
         .onAppear {
             model.loadRepositoriesReportingErrors()
         }
+    }
+}
+
+/// A long filesystem path rendered as a single quiet line; the full value is
+/// available on hover.
+private struct PathText: View {
+    let path: String
+
+    init(_ path: String) {
+        self.path = path
+    }
+
+    var body: some View {
+        Text(path)
+            .foregroundStyle(.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .help(path)
     }
 }
 
@@ -87,29 +114,33 @@ private struct RepositorySettingsRow: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            LabeledContent(repository.name) {
-                Text(repository.path)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .firstTextBaseline, spacing: 12) {
+                Text(repository.name)
+                    .fontWeight(.medium)
+
+                Spacer()
+
+                PathText(repository.path)
             }
 
-            HStack(spacing: 8) {
-                TextField("Default branch", text: defaultBranchBinding)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel(RepositorySettingsAccessibility.defaultBranchLabel(for: repository))
+            LabeledContent("Default branch") {
+                HStack(spacing: 8) {
+                    TextField("main", text: defaultBranchBinding)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 160)
+                        .accessibilityLabel(RepositorySettingsAccessibility.defaultBranchLabel(for: repository))
 
-                Button {
-                    model.updateDefaultBranchReportingErrors(
-                        repositoryID: repository.id,
-                        defaultBranch: model.defaultBranchDraft(for: repository.id)
-                    )
-                } label: {
-                    Label("Save", systemImage: "checkmark")
+                    Button("Save") {
+                        model.updateDefaultBranchReportingErrors(
+                            repositoryID: repository.id,
+                            defaultBranch: model.defaultBranchDraft(for: repository.id)
+                        )
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .accessibilityLabel(RepositorySettingsAccessibility.saveDefaultBranchLabel(for: repository))
                 }
-                .buttonStyle(.glass)
-                .accessibilityLabel(RepositorySettingsAccessibility.saveDefaultBranchLabel(for: repository))
             }
         }
         .padding(.vertical, 4)

@@ -27,7 +27,7 @@ public enum OperatorDestination: Equatable, Sendable {
     case settings
 }
 
-public enum OperatorSidebarSelection: CaseIterable, Equatable, Sendable {
+public enum OperatorSidebarSelection: CaseIterable, Equatable, Hashable, Sendable {
     case board
     case archived
 
