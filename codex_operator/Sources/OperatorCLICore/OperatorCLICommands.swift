@@ -120,13 +120,28 @@ public enum OperatorCLIError: Error, Equatable, Sendable, LocalizedError {
 
 public struct OperatorCLICommands: Sendable {
     private let store: OperatorStore
+    private let repositoryInspector: any RepositoryInspecting
 
-    public init(store: OperatorStore) {
+    public init(
+        store: OperatorStore,
+        repositoryInspector: any RepositoryInspecting = GitRepositoryInspector()
+    ) {
         self.store = store
+        self.repositoryInspector = repositoryInspector
     }
 
     public func listRepositories() throws -> [CLIRepository] {
         try store.repositories().map(CLIRepository.init)
+    }
+
+    /// Registers a local Git repository the same way the app does: validates
+    /// the path, resolves the repo root, and infers the default branch.
+    public func addRepository(path: String) throws -> CLIRepository {
+        let service = RepositoryRegistrationService(store: store, inspector: repositoryInspector)
+        let repository = try service.registerRepository(
+            at: URL(filePath: path).standardizedFileURL
+        )
+        return CLIRepository(repository)
     }
 
     public func addTask(
@@ -315,6 +330,14 @@ public func cliFailure(for error: Error) -> CLIFailure {
         return CLIFailure(exitCode: 5, code: "sendFailed", message: message)
     case OperatorCLIError.sendTimedOut:
         return CLIFailure(exitCode: 6, code: "timeout", message: message)
+    case is RepositoryRegistrationError:
+        return CLIFailure(exitCode: 7, code: "invalidRepository", message: message)
+    case OperatorStoreError.repositoryPathAlreadyRegistered(let existingID):
+        return CLIFailure(
+            exitCode: 8,
+            code: "alreadyRegistered",
+            message: "This repository is already registered (id: \(existingID.uuidString)). Use it directly."
+        )
     default:
         return CLIFailure(exitCode: 70, code: "internal", message: message)
     }

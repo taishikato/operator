@@ -23,6 +23,7 @@ Add `--json` to every command you parse; human output is not stable.
 | Action | Command |
 |--------|---------|
 | List repositories | `operator repo list --json` |
+| Register a repository | `operator repo add <path> --json` |
 | Create a task | `operator task add --repo <name\|id> --title <t> --prompt <p> [--effort low\|medium\|high\|xhigh] --json` |
 | Multi-line prompt | `operator task add ... --prompt-file <path> --json` |
 | List tasks | `operator task list [--repo <name\|id>] [--status ready\|review\|done\|archived] --json` |
@@ -34,6 +35,13 @@ Add `--json` to every command you parse; human output is not stable.
 The prompt is sent to Codex verbatim — write it as a complete, standalone
 instruction. Resolve `--repo` names via `repo list` first; ambiguous names
 require the id.
+
+If the repository you need isn't on the board yet, register it yourself
+with `repo add <path>` (any path inside the working tree works — the CLI
+resolves the repo root, validates it's a Git repository, and infers the
+default branch) instead of asking the user to open the app. If the returned
+`defaultBranch` is empty, inference failed; tell the user to set it in the
+app's Settings before sending tasks for that repo.
 
 ## Lifecycle rules (enforced — don't fight them)
 
@@ -62,6 +70,8 @@ with the Codex thread recorded (`run list` shows `codexThreadID`).
 | 4 | `codexUnavailable` | Codex binary missing/misconfigured — user must fix Codex setup |
 | 5 | `sendFailed` | trigger failed (e.g. worktree/git error); task stays `ready`, retry is allowed |
 | 6 | `timeout` | `--timeout` elapsed; the turn was aborted by exiting |
+| 7 | `invalidRepository` | `repo add` path is not a usable Git repository |
+| 8 | `alreadyRegistered` | `repo add` path already on the board — the message includes the existing id; just use it |
 | 64 | `usage` | bad arguments |
 | 70 | `internal` | unexpected error |
 

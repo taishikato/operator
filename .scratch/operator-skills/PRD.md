@@ -97,6 +97,10 @@ Numbered per plan 004 Step 3.
    pragma on one existing connection is cheap and writer-agnostic.
 3. **CLI verb surface (MVP)**:
    `operator repo list`;
+   `operator repo add <path>` (added after dogfooding: the very first
+   skill-driven session stalled because its repo wasn't registered and only
+   the app could register one; reuses `RepositoryRegistrationService`, so
+   validation and default-branch inference match the app);
    `operator task add --repo <name|id> --title <t> [--prompt <p> | --prompt-file <f>] [--effort low|medium|high|xhigh]`;
    `operator task list [--repo <name|id>] [--status ready|review|done|archived]`;
    `operator task show <id>`;
@@ -105,9 +109,8 @@ Numbered per plan 004 Step 3.
    `operator run list --task <id>`.
    "Update status" maps ONLY to lifecycle-legal transitions — i.e. archive.
    Everything else is automatic (review→done) or forbidden; the CLI invents
-   no transition the board forbids. Repo creation stays in the app (it
-   validates Git state and infers branches with UI affordances); not a CLI
-   verb in the MVP.
+   no transition the board forbids. Repo *editing* (default-branch fixes)
+   stays in the app's Settings.
 4. **`send` semantics**: `send` always waits for turn completion (process
    stays alive, mirroring the app), with `--timeout <seconds>` as an escape
    hatch that exits distinctly while the turn may still be aborted by
@@ -153,6 +156,8 @@ Numbered per plan 004 Step 3.
    | 4    | `codexUnavailable`   | Codex binary not found/misconfigured (`CodexBinaryConfigurationError`) |
    | 5    | `sendFailed`  | trigger attempt recorded as failed (`runs` row with `triggerFailed`) |
    | 6    | `timeout`     | `send --timeout` elapsed before turn completion |
+   | 7    | `invalidRepository` | `repo add` path is not a usable Git repository (`RepositoryRegistrationError`) |
+   | 8    | `alreadyRegistered` | `repo add` path already registered (`OperatorStoreError.repositoryPathAlreadyRegistered`; message carries the existing id) |
    | 64   | `usage`       | argument-parsing/validation errors (ArgumentParser default) |
    | 70   | `internal`    | unexpected store/IO errors |
 
@@ -208,4 +213,6 @@ Mirroring the MVP PRD's behavioral style:
 - Should `recoverInterruptedRuns()` learn run ownership (PID/heartbeat) so
   an app launch doesn't prematurely complete a CLI-owned in-flight run?
   Recommended follow-up; needs a migration.
-- Should `repo add` exist for fully headless setups once agents demand it?
+- ~~Should `repo add` exist for fully headless setups once agents demand
+  it?~~ Resolved 2026-06-12: yes — the first skill-driven session stalled on
+  an unregistered repo, so `repo add` shipped (see decision 3).

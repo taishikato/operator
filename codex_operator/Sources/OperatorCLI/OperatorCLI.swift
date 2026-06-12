@@ -12,7 +12,8 @@ struct OperatorCommand: AsyncParsableCommand {
             All domain rules (task lifecycle, one successful run per task, \
             no hard delete) are enforced by the same OperatorDesktop library \
             the app uses. Exit codes: 2 not found, 3 lifecycle violation, \
-            4 Codex unavailable, 5 send failed, 6 timeout, 70 internal.
+            4 Codex unavailable, 5 send failed, 6 timeout, 7 invalid \
+            repository, 8 already registered, 70 internal.
             """,
         subcommands: [RepoCommand.self, TaskCommand.self, RunCommand.self]
     )
@@ -23,9 +24,27 @@ struct OperatorCommand: AsyncParsableCommand {
 struct RepoCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "repo",
-        abstract: "Inspect registered repositories.",
-        subcommands: [RepoList.self]
+        abstract: "Register and inspect repositories.",
+        subcommands: [RepoList.self, RepoAdd.self]
     )
+}
+
+struct RepoAdd: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "add",
+        abstract: "Register a local Git repository (validates the path and infers the default branch)."
+    )
+
+    @Argument(help: "Path to a local Git repository (any path inside it works).", completion: .directory)
+    var path: String
+
+    @OptionGroup var output: OutputOptions
+
+    func run() throws {
+        try output.render(running: { try makeCommands().addRepository(path: path) }) { repository in
+            "\(repository.name)  \(repository.id)  \(repository.path)  (\(repository.defaultBranch))"
+        }
+    }
 }
 
 struct RepoList: ParsableCommand {

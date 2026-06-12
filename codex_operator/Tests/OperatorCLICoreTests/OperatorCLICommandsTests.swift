@@ -367,3 +367,65 @@ private struct FakeSender: CodexTaskSending {
 
     #expect(OperatorCLIEnvironment.databaseURLOverride(environment: [:]) == nil)
 }
+
+// MARK: - repo add
+
+@Test func repoAddRegistersARepositoryUsingTheInspector() throws {
+    let store = try temporaryStore()
+    let commands = OperatorCLICommands(
+        store: store,
+        repositoryInspector: FakeInspector(result: .success(RepositoryInspection(
+            name: "operator",
+            path: "/tmp/operator-root",
+            defaultBranch: "main"
+        )))
+    )
+
+    let repository = try commands.addRepository(path: "/tmp/operator-root/subdir")
+
+    #expect(repository.name == "operator")
+    #expect(repository.path == "/tmp/operator-root")
+    #expect(repository.defaultBranch == "main")
+    #expect(try store.repositories().count == 1)
+}
+
+@Test func repoAddFailsForANonGitPath() throws {
+    let store = try temporaryStore()
+    let commands = OperatorCLICommands(
+        store: store,
+        repositoryInspector: FakeInspector(
+            result: .failure(RepositoryRegistrationError.invalidGitRepository(path: "/tmp/nope"))
+        )
+    )
+
+    #expect(throws: RepositoryRegistrationError.invalidGitRepository(path: "/tmp/nope")) {
+        try commands.addRepository(path: "/tmp/nope")
+    }
+    #expect(try store.repositories().isEmpty)
+}
+
+@Test func repoAddFailuresMapToTheDocumentedExitCodes() throws {
+    let invalid = cliFailure(for: RepositoryRegistrationError.invalidGitRepository(path: "/tmp/nope"))
+    #expect(invalid.exitCode == 7)
+    #expect(invalid.code == "invalidRepository")
+
+    let gitFailed = cliFailure(for: RepositoryRegistrationError.gitCommandFailed)
+    #expect(gitFailed.exitCode == 7)
+    #expect(gitFailed.code == "invalidRepository")
+
+    let existingID = UUID()
+    let duplicate = cliFailure(
+        for: OperatorStoreError.repositoryPathAlreadyRegistered(existingID: existingID)
+    )
+    #expect(duplicate.exitCode == 8)
+    #expect(duplicate.code == "alreadyRegistered")
+    #expect(duplicate.message.contains(existingID.uuidString))
+}
+
+private struct FakeInspector: RepositoryInspecting {
+    let result: Result<RepositoryInspection, RepositoryRegistrationError>
+
+    func inspect(_ repositoryURL: URL) throws -> RepositoryInspection {
+        try result.get()
+    }
+}
