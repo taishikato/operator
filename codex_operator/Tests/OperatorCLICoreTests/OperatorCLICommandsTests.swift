@@ -193,6 +193,33 @@ import OperatorDesktop
     }
 }
 
+@Test func sendTimeoutFailsTheRunAndReturnsTheTaskToReadyForRetry() async throws {
+    let store = try temporaryStore()
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "P")
+    let commands = OperatorCLICommands(store: store)
+    let sender = FakeSender(store: store, outcome: .runningForever)
+
+    _ = try? await commands.sendTask(id: task.id.uuidString, using: sender, timeout: 0.2, pollInterval: 0.05)
+
+    // Exiting on timeout kills the spawned app-server, so the turn is dead:
+    // the run must not stay `running` (recovery would mark the task Done) and
+    // the task must be sendable again.
+    let run = try #require(try store.runs(taskID: task.id).first)
+    #expect(run.status == .triggerFailed)
+    #expect(run.errorMessage?.isEmpty == false)
+    #expect(run.completedAt != nil)
+    #expect(try store.task(id: task.id)?.status == .ready)
+
+    let retried = try await commands.sendTask(
+        id: task.id.uuidString,
+        using: FakeSender(store: store, outcome: .runningThenComplete(after: 0.1)),
+        timeout: 5,
+        pollInterval: 0.05
+    )
+    #expect(retried.status == "triggered")
+}
+
 // MARK: - JSON output
 
 @Test func taskJSONUsesTheDocumentedStableSchema() throws {
@@ -366,6 +393,27 @@ private struct FakeSender: CodexTaskSending {
     #expect(url == URL(filePath: "/tmp/override.sqlite"))
 
     #expect(OperatorCLIEnvironment.databaseURLOverride(environment: [:]) == nil)
+}
+
+@Test func sendLocationsFollowTheDataDirectoryOverride() throws {
+    // A sandboxed send (OPERATOR_DB pointing at a scratch database) must not
+    // run git operations against the production worktree root, so the data
+    // directory override relocates every path `task send` writes to.
+    let locations = try OperatorCLIEnvironment.sendLocations(
+        environment: ["OPERATOR_DATA_DIR": "/tmp/sandbox"]
+    )
+    #expect(locations.appDataURL == URL(filePath: "/tmp/sandbox", directoryHint: .isDirectory))
+    #expect(
+        locations.worktreeRootURL
+            == URL(filePath: "/tmp/sandbox", directoryHint: .isDirectory)
+                .appending(path: "worktrees", directoryHint: .isDirectory)
+    )
+}
+
+@Test func sendLocationsDefaultToTheProductionPathsWithoutOverride() throws {
+    let locations = try OperatorCLIEnvironment.sendLocations(environment: [:])
+    #expect(locations.appDataURL == (try OperatorAppBootstrap.applicationDataURL()))
+    #expect(locations.worktreeRootURL == OperatorAppBootstrap.codexWorktreesURL())
 }
 
 // MARK: - repo add

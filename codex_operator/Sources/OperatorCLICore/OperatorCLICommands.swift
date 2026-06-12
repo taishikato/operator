@@ -227,6 +227,13 @@ public struct OperatorCLICommands: Sendable {
                 return CLIRun(currentRun)
             }
             if let deadline, Date() >= deadline {
+                // Exiting kills the spawned app-server and aborts the turn,
+                // so record the abort before leaving: the run must not stay
+                // `running` and the task must become sendable again.
+                _ = try store.failStartedRun(
+                    id: run.id,
+                    errorMessage: "Aborted by the CLI after the --timeout deadline elapsed."
+                )
                 throw OperatorCLIError.sendTimedOut(taskID: taskID.uuidString)
             }
             try await Task.sleep(for: .seconds(pollInterval))
@@ -269,6 +276,31 @@ public enum OperatorCLIEnvironment {
     ) -> URL? {
         environment["OPERATOR_DB"].map { URL(filePath: $0) }
     }
+
+    /// Filesystem locations `task send` writes to (app data, worktree root).
+    /// `OPERATOR_DATA_DIR=/path` relocates all of them so a sandboxed send
+    /// (paired with `OPERATOR_DB`) never runs git operations against the
+    /// production worktree root.
+    public static func sendLocations(
+        environment: [String: String] = ProcessInfo.processInfo.environment
+    ) throws -> CLISendLocations {
+        if let dataDirectory = environment["OPERATOR_DATA_DIR"] {
+            let dataDirectoryURL = URL(filePath: dataDirectory, directoryHint: .isDirectory)
+            return CLISendLocations(
+                appDataURL: dataDirectoryURL,
+                worktreeRootURL: dataDirectoryURL.appending(path: "worktrees", directoryHint: .isDirectory)
+            )
+        }
+        return CLISendLocations(
+            appDataURL: try OperatorAppBootstrap.applicationDataURL(),
+            worktreeRootURL: OperatorAppBootstrap.codexWorktreesURL()
+        )
+    }
+}
+
+public struct CLISendLocations: Equatable, Sendable {
+    public let appDataURL: URL
+    public let worktreeRootURL: URL
 }
 
 // MARK: - JSON output
@@ -300,6 +332,12 @@ public struct CLIFailure: Equatable, Sendable {
     public let exitCode: Int32
     public let code: String
     public let message: String
+
+    public init(exitCode: Int32, code: String, message: String) {
+        self.exitCode = exitCode
+        self.code = code
+        self.message = message
+    }
 }
 
 public func cliFailure(for error: Error) -> CLIFailure {

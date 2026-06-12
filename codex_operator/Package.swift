@@ -57,6 +57,13 @@ let package = Package(
         .testTarget(
             name: "OperatorCLICoreTests",
             dependencies: ["OperatorCLICore"]
+        ),
+        // Spawns the built operator-cli binary to verify the surface-level
+        // contract (--json envelopes, exit codes) that unit tests on the Core
+        // DTO encoders cannot see, e.g. ArgumentParser usage errors.
+        .testTarget(
+            name: "OperatorCLIIntegrationTests",
+            dependencies: ["OperatorCLI"]
         )
     ]
 )

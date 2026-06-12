@@ -57,6 +57,13 @@ until the Codex turn completes — exiting early aborts the turn. The CLI
 shares the app's domain library and database (WAL mode), and a running app
 picks up CLI writes within a couple of seconds.
 
+For development and testing the CLI can be sandboxed away from the real
+board: `OPERATOR_DB=/path/operator.sqlite` overrides the database, and
+`OPERATOR_DATA_DIR=/path` relocates the directories `task send` writes to
+(app data and the worktree root). Set both together — with only
+`OPERATOR_DB`, a send would still run git operations against the
+production worktree root.
+
 Design decisions live in `.scratch/operator-skills/PRD.md`; the skill
 itself is `skills/operator/SKILL.md`.
 

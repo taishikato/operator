@@ -29,7 +29,7 @@ Add `--json` to every command you parse; human output is not stable.
 | List tasks | `operator task list [--repo <name\|id>] [--status ready\|review\|done\|archived] --json` |
 | Show one task (with prompt) | `operator task show <task-id> --json` |
 | Archive a task | `operator task archive <task-id> --json` |
-| Send a Ready task to Codex | `operator task send <task-id> [--timeout <s>] --json` |
+| Send a Ready task to Codex | `operator task send <task-id> [--timeout <s>] --json` (timeout must be > 0) |
 | List a task's trigger attempts | `operator run list --task <task-id> --json` |
 
 The prompt is sent to Codex verbatim — write it as a complete, standalone
@@ -50,7 +50,8 @@ app's Settings before sending tasks for that repo.
 - Only `ready` tasks can be sent. One successful send per task; no rerun.
 - `review` → `done` happens automatically when the Codex turn completes.
 - Archive is the only manual status change and the only removal — there is
-  no delete and no way to move a task back to `ready`.
+  no delete and no way to manually move a task back to `ready`. (A send
+  aborted by `--timeout` returns the task to `ready` automatically.)
 
 ## `task send` blocks until the Codex turn finishes
 
@@ -69,7 +70,7 @@ with the Codex thread recorded (`run list` shows `codexThreadID`).
 | 3 | `lifecycleViolation` | the board forbids this (immutable task, already sent, bad transition) — report it, don't retry |
 | 4 | `codexUnavailable` | Codex binary missing/misconfigured — user must fix Codex setup |
 | 5 | `sendFailed` | trigger failed (e.g. worktree/git error); task stays `ready`, retry is allowed |
-| 6 | `timeout` | `--timeout` elapsed; the turn was aborted by exiting |
+| 6 | `timeout` | `--timeout` elapsed; the turn was aborted by exiting. The run is recorded as `triggerFailed` and the task returns to `ready`, so re-sending (ideally with a larger `--timeout`) is allowed |
 | 7 | `invalidRepository` | `repo add` path is not a usable Git repository |
 | 8 | `alreadyRegistered` | `repo add` path already on the board — the message includes the existing id; just use it |
 | 64 | `usage` | bad arguments |

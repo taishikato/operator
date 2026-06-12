@@ -1,3 +1,4 @@
+import Combine
 import SwiftUI
 
 public struct ArchivedView: View {
@@ -61,7 +62,10 @@ public struct ArchivedView: View {
         .onAppear {
             model.loadReportingErrors()
         }
-        .onReceive(store.changes) {
+        // The store publishes from whichever thread committed (the external
+        // change poller and turn completion run off the main thread), so hop
+        // to the main queue before touching view state.
+        .onReceive(store.changes.receive(on: DispatchQueue.main)) {
             model.loadReportingErrors()
         }
     }

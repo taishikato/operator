@@ -400,6 +400,41 @@ public final class OperatorStore: @unchecked Sendable {
         return run
     }
 
+    /// Marks a still-`running` run as failed after its turn was aborted (the
+    /// process owning the spawned app-server exits before completion, e.g. on
+    /// CLI --timeout). The task returns to Ready so it can be sent again, and
+    /// the run leaves the `running` state so interrupted-run recovery cannot
+    /// mistake the aborted turn for a finished one.
+    public func failStartedRun(id: UUID, errorMessage: String, now: Date = Date()) throws -> OperatorRun {
+        let run = try dbQueue.write { db in
+            let currentRun = try requiredRun(id: id, db: db)
+            guard currentRun.status == .running else {
+                return currentRun
+            }
+            try db.execute(
+                sql: """
+                    UPDATE runs
+                    SET status = ?, errorMessage = ?, completedAt = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    RunStatus.triggerFailed.rawValue,
+                    errorMessage,
+                    now.storageValue,
+                    currentRun.id.uuidString
+                ]
+            )
+
+            let task = try requiredTask(id: currentRun.taskID, db: db)
+            if task.status == .review {
+                try update(task: TaskLifecyclePolicy.recordAbortedRun(for: task, now: now), db: db)
+            }
+            return try requiredRun(id: id, db: db)
+        }
+        publishChange()
+        return run
+    }
+
     public func recordSuccessfulRun(
         id: UUID = UUID(),
         taskID: UUID,

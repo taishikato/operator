@@ -4,6 +4,36 @@ import OperatorCLICore
 import OperatorDesktop
 
 @main
+enum OperatorCLIMain {
+    static func main() async {
+        do {
+            var command = try OperatorCommand.parseAsRoot()
+            if var asyncCommand = command as? AsyncParsableCommand {
+                try await asyncCommand.run()
+            } else {
+                try command.run()
+            }
+        } catch {
+            // Subcommand failures arrive as ExitCode after OutputOptions
+            // already printed the JSON or human payload. Anything else is an
+            // ArgumentParser-level error (usage, validation, help) that would
+            // bypass the --json contract, so emit the documented envelope
+            // ourselves when --json was requested.
+            let exitCode = OperatorCommand.exitCode(for: error)
+            if !(error is ExitCode), !exitCode.isSuccess, CommandLine.arguments.contains("--json") {
+                let failure = CLIFailure(
+                    exitCode: exitCode.rawValue,
+                    code: "usage",
+                    message: OperatorCommand.message(for: error)
+                )
+                print((try? CLIJSONOutput.encodeError(failure)) ?? "{\"error\":{\"code\":\"usage\",\"message\":\"unencodable\"}}")
+                Foundation.exit(failure.exitCode)
+            }
+            OperatorCommand.exit(withError: error)
+        }
+    }
+}
+
 struct OperatorCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "operator",
@@ -201,15 +231,23 @@ struct TaskSend: AsyncParsableCommand {
     @Argument(help: "Task id.")
     var id: String
 
-    @Option(help: "Give up after this many seconds (aborts the turn on exit).")
+    @Option(help: "Give up after this many seconds (> 0; aborts the turn and returns the task to Ready).")
     var timeout: Double?
 
     @OptionGroup var output: OutputOptions
 
+    func validate() throws {
+        if let timeout, timeout <= 0 {
+            throw ValidationError("--timeout must be greater than 0 seconds.")
+        }
+    }
+
     func run() async throws {
         let store: OperatorStore
+        let locations: CLISendLocations
         do {
             store = try makeStore()
+            locations = try OperatorCLIEnvironment.sendLocations()
         } catch {
             throw output.failure(for: error)
         }
@@ -218,8 +256,8 @@ struct TaskSend: AsyncParsableCommand {
         let trigger = CodexTriggerService(
             store: store,
             worktreePreparer: WorktreePreparer(
-                appDataURL: try OperatorAppBootstrap.applicationDataURL(),
-                worktreeRootURL: OperatorAppBootstrap.codexWorktreesURL()
+                appDataURL: locations.appDataURL,
+                worktreeRootURL: locations.worktreeRootURL
             ),
             appServerClientFactory: ConfiguredCodexAppServerClientFactory(settings: settings)
         )

@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import SwiftUI
 
 public struct BoardView: View {
@@ -104,7 +105,10 @@ public struct BoardView: View {
         .onAppear {
             loadBoardState()
         }
-        .onReceive(store.changes) {
+        // The store publishes from whichever thread committed (the external
+        // change poller and turn completion run off the main thread), so hop
+        // to the main queue before touching view state.
+        .onReceive(store.changes.receive(on: DispatchQueue.main)) {
             model.loadReportingErrors()
             repositorySettingsModel.loadRepositoriesReportingErrors()
             syncRepositoryOnboardingPresentation()
