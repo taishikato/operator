@@ -35,9 +35,9 @@ public struct OperatorRootView: View {
                     .navigationTitle("Archived")
             }
         }
-        // Translucent window surface: the desktop bleeds through softly so the
-        // system's Liquid Glass chrome (toolbar, sidebar) has depth to sample.
-        .containerBackground(.thinMaterial, for: .window)
+        // Translucent window surface: mostly opaque, with just a hint of the
+        // desktop bleeding through so the Liquid Glass chrome has depth to sample.
+        .containerBackground(.thickMaterial, for: .window)
         .background {
             // Hidden control hosting the ⌘B shortcut to toggle the sidebar.
             Button("Toggle Sidebar", action: toggleSidebar)
