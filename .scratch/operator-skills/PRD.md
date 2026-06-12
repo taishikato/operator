@@ -118,11 +118,14 @@ Numbered per plan 004 Step 3.
    `codex app-server` is a child of the CLI, so exiting after the trigger
    kills the turn itself — the plan's "stranded run until recovery" framing
    undersold the damage (spike-notes Finding 3). Agents that don't want to
-   block should run the command in their own background facility. Known
-   limitation: launching the app mid-send prematurely completes the CLI's
-   run via `recoverInterruptedRuns()` (task shows Done early; thread and
-   worktree unharmed). Follow-up direction: run ownership (PID/heartbeat
-   column) so recovery skips live foreign runs — schema change, deferred.
+   block should run the command in their own background facility. Runs carry
+   ownership: `recordStartedRun` stores the triggering process's PID in
+   `runs.ownerPID` (migration `addRunOwnerPID`), and
+   `recoverInterruptedRuns()` skips runs whose owner is another live process
+   (`kill -0`; EPERM counts as alive), so launching the app mid-send no
+   longer prematurely completes the CLI's run. Residual risk: PID reuse can
+   make recovery skip a dead run for one launch; it is recovered on a later
+   launch once the PID frees up.
    The CLI does not use the thread-visibility controller (hiding threads is
    app UX; a CLI crash would otherwise strand hidden threads).
 5. **Output format**: human-readable text by default; `--json` on every verb
@@ -210,9 +213,11 @@ Mirroring the MVP PRD's behavioral style:
 
 ## Open Questions
 
-- Should `recoverInterruptedRuns()` learn run ownership (PID/heartbeat) so
-  an app launch doesn't prematurely complete a CLI-owned in-flight run?
-  Recommended follow-up; needs a migration.
+- ~~Should `recoverInterruptedRuns()` learn run ownership (PID/heartbeat) so
+  an app launch doesn't prematurely complete a CLI-owned in-flight run?~~
+  Resolved 2026-06-12: yes — `runs.ownerPID` + `kill -0` liveness check
+  shipped (see decision 4). Process start-time identity remains possible
+  hardening against PID reuse if it ever bites.
 - ~~Should `repo add` exist for fully headless setups once agents demand
   it?~~ Resolved 2026-06-12: yes — the first skill-driven session stalled on
   an unregistered repo, so `repo add` shipped (see decision 3).

@@ -28,6 +28,9 @@ public struct OperatorRun: Equatable, Identifiable, Sendable {
     public let codexThreadID: String?
     public let codexThreadURL: URL?
     public let errorMessage: String?
+    /// PID of the process that triggered the run (app or operator CLI).
+    /// Nil on terminal rows and rows recorded before ownership existed.
+    public let ownerPID: Int32?
     public let createdAt: Date
     public let completedAt: Date?
 }
@@ -298,6 +301,7 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: nil,
                 codexThreadURL: nil,
                 errorMessage: errorMessage,
+                ownerPID: nil,
                 createdAt: now,
                 completedAt: now
             )
@@ -316,6 +320,7 @@ public final class OperatorStore: @unchecked Sendable {
         baseRef: String,
         codexThreadID: String,
         codexThreadURL: URL?,
+        ownerPID: Int32? = ProcessInfo.processInfo.processIdentifier,
         now: Date = Date()
     ) throws -> OperatorRun {
         let run = try dbQueue.write { db in
@@ -338,6 +343,7 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: codexThreadID,
                 codexThreadURL: codexThreadURL,
                 errorMessage: nil,
+                ownerPID: ownerPID,
                 createdAt: now,
                 completedAt: nil
             )
@@ -365,6 +371,7 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: currentRun.codexThreadID,
                 codexThreadURL: currentRun.codexThreadURL,
                 errorMessage: currentRun.errorMessage,
+                ownerPID: currentRun.ownerPID,
                 createdAt: currentRun.createdAt,
                 completedAt: now
             )
@@ -423,6 +430,7 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: codexThreadID,
                 codexThreadURL: codexThreadURL,
                 errorMessage: nil,
+                ownerPID: nil,
                 createdAt: now,
                 completedAt: now
             )
@@ -606,9 +614,9 @@ public final class OperatorStore: @unchecked Sendable {
             sql: """
                 INSERT INTO runs (
                     id, taskID, repositoryID, status, worktreePath, baseBranch, baseRef,
-                    codexThreadID, codexThreadURL, errorMessage, createdAt, completedAt
+                    codexThreadID, codexThreadURL, errorMessage, ownerPID, createdAt, completedAt
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 run.id.uuidString,
@@ -621,6 +629,7 @@ public final class OperatorStore: @unchecked Sendable {
                 run.codexThreadID,
                 run.codexThreadURL?.absoluteString,
                 run.errorMessage,
+                run.ownerPID,
                 run.createdAt.storageValue,
                 run.completedAt?.storageValue
             ]
@@ -683,6 +692,14 @@ private extension OperatorStore {
             try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status IN ('running', 'triggered')")
         }
 
+        // Nullable so rows recorded before run ownership existed stay valid
+        // and keep being treated as recoverable orphans.
+        migrator.registerMigration("addRunOwnerPID") { db in
+            try db.alter(table: "runs") { table in
+                table.add(column: "ownerPID", .integer)
+            }
+        }
+
         return migrator
     }
 
@@ -734,6 +751,7 @@ private extension OperatorStore {
             codexThreadID: row["codexThreadID"],
             codexThreadURL: urlString.flatMap(URL.init(string:)),
             errorMessage: row["errorMessage"],
+            ownerPID: row["ownerPID"],
             createdAt: Date(storageValue: row["createdAt"]),
             completedAt: Date(optionalStorageValue: row["completedAt"])
         )

@@ -239,19 +239,33 @@ public struct CodexTriggerService: @unchecked Sendable {
         }
     }
 
-    /// Completes runs that were still marked running when the app last quit.
-    /// The spawned app-server dies with the app, so these turns cannot still
-    /// be running; reveal their hidden threads and surface the tasks as Done.
+    /// Completes runs whose owning process is gone. The spawned app-server is
+    /// a child of whichever process triggered the run (app or operator CLI),
+    /// so once the owner is dead the turn cannot still be running; reveal the
+    /// hidden thread and surface the task as Done. Runs owned by another live
+    /// process (an operator CLI mid-send) are still in flight and left alone.
     public func recoverInterruptedRuns() async {
         guard let runs = try? store.runningRuns() else {
             return
         }
+        let currentPID = ProcessInfo.processInfo.processIdentifier
         for run in runs {
+            if let ownerPID = run.ownerPID, ownerPID != currentPID, Self.isProcessAlive(ownerPID) {
+                continue
+            }
             if let threadVisibility, let threadID = run.codexThreadID {
                 await threadVisibility.revealThread(id: threadID)
             }
             _ = try? store.completeStartedRun(id: run.id)
         }
+    }
+
+    private static func isProcessAlive(_ pid: Int32) -> Bool {
+        if kill(pid, 0) == 0 {
+            return true
+        }
+        // EPERM proves the process exists even though signaling it is denied.
+        return errno == EPERM
     }
 
     private static func shortErrorMessage(for error: Error) -> String {

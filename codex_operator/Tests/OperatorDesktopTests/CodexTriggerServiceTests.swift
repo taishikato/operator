@@ -201,6 +201,106 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .done)
 }
 
+@Test func codexTriggerRecoverySkipsRunningRunOwnedByLiveForeignProcess() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "CLI in flight", prompt: "Prompt")
+    // A live process other than the test runner stands in for the operator
+    // CLI that is still mid-send when the app launches.
+    let foreignProcess = Process()
+    foreignProcess.executableURL = URL(filePath: "/bin/sleep")
+    foreignProcess.arguments = ["60"]
+    try foreignProcess.run()
+    defer {
+        foreignProcess.terminate()
+        foreignProcess.waitUntilExit()
+    }
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/operator-worktree-foreign",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-foreign",
+        codexThreadURL: nil,
+        ownerPID: foreignProcess.processIdentifier
+    )
+    let visibility = FakeThreadVisibilityController()
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: FakeCodexWorktreePreparer(preparedWorktrees: []),
+        appServerClient: FakeCodexAppServerClient(results: []),
+        threadVisibility: visibility
+    )
+
+    await service.recoverInterruptedRuns()
+
+    #expect(visibility.revealCalls.isEmpty)
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .running)
+    #expect(try store.task(id: task.id)?.status == .review)
+}
+
+@Test func codexTriggerRecoveryCompletesRunningRunWhoseOwnerProcessDied() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Owner died", prompt: "Prompt")
+    // A reaped child gives a PID that is guaranteed dead.
+    let deadProcess = Process()
+    deadProcess.executableURL = URL(filePath: "/usr/bin/true")
+    try deadProcess.run()
+    deadProcess.waitUntilExit()
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/operator-worktree-dead-owner",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-dead-owner",
+        codexThreadURL: nil,
+        ownerPID: deadProcess.processIdentifier
+    )
+    let visibility = FakeThreadVisibilityController()
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: FakeCodexWorktreePreparer(preparedWorktrees: []),
+        appServerClient: FakeCodexAppServerClient(results: []),
+        threadVisibility: visibility
+    )
+
+    await service.recoverInterruptedRuns()
+
+    #expect(visibility.revealCalls == ["thread-dead-owner"])
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .triggered)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
+@Test func codexTriggerRecoveryCompletesRunningRunWithoutRecordedOwner() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Legacy run", prompt: "Prompt")
+    // Rows recorded before the ownerPID migration carry no owner.
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/operator-worktree-legacy",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-legacy",
+        codexThreadURL: nil,
+        ownerPID: nil
+    )
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: FakeCodexWorktreePreparer(preparedWorktrees: []),
+        appServerClient: FakeCodexAppServerClient(results: [])
+    )
+
+    await service.recoverInterruptedRuns()
+
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .triggered)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
 @Test func codexTriggerRecordsFailureAndRetryUsesFreshWorktreeAndRun() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
