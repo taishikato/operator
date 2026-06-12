@@ -35,6 +35,9 @@ public struct OperatorRootView: View {
                     .navigationTitle("Archived")
             }
         }
+        // Translucent window surface: the desktop bleeds through softly so the
+        // system's Liquid Glass chrome (toolbar, sidebar) has depth to sample.
+        .containerBackground(.thinMaterial, for: .window)
         .background {
             // Hidden control hosting the ⌘B shortcut to toggle the sidebar.
             Button("Toggle Sidebar", action: toggleSidebar)
@@ -54,74 +57,39 @@ private struct SidebarView: View {
     @Binding var selection: OperatorSidebarSelection
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            SidebarItemButton(
-                title: "Board",
-                systemImage: "rectangle.grid.3x2",
-                isSelected: selection == .board
-            ) {
-                selection = .board
-            }
+        List(selection: listSelection) {
+            Label("Board", systemImage: "rectangle.grid.3x2")
+                .tag(OperatorSidebarSelection.board)
 
-            SidebarItemButton(
-                title: "Archived",
-                systemImage: "archivebox",
-                isSelected: selection == .archived
-            ) {
-                selection = .archived
-            }
-
-            Spacer(minLength: 0)
+            Label("Archived", systemImage: "archivebox")
+                .tag(OperatorSidebarSelection.archived)
         }
-        .padding(.horizontal, 8)
-        .padding(.top, 10)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .listStyle(.sidebar)
         .safeAreaInset(edge: .bottom) {
             SettingsLink {
                 Label("Settings", systemImage: "gearshape")
+                    .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .contentShape(RoundedRectangle(cornerRadius: 6))
             }
             .buttonStyle(.plain)
-            .padding(.horizontal, 8)
-            .padding(.bottom, 8)
+            .padding(.horizontal, 10)
+            .padding(.bottom, 10)
         }
-        .navigationSplitViewColumnWidth(min: 180, ideal: 220)
+        .navigationSplitViewColumnWidth(min: 180, ideal: 210)
     }
-}
 
-private struct SidebarItemButton: View {
-    let title: String
-    let systemImage: String
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .contentShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(SidebarItemButtonStyle(isSelected: isSelected))
-    }
-}
-
-private struct SidebarItemButtonStyle: ButtonStyle {
-    let isSelected: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .background {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.quaternary)
-                } else if configuration.isPressed {
-                    RoundedRectangle(cornerRadius: 6)
-                        .fill(.quaternary.opacity(0.5))
-                }
+    // List selection is optional; ignore deselection so one destination is
+    // always active.
+    private var listSelection: Binding<OperatorSidebarSelection?> {
+        Binding {
+            selection
+        } set: { newValue in
+            if let newValue {
+                selection = newValue
             }
+        }
     }
 }
