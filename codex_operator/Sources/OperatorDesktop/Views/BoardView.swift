@@ -211,43 +211,52 @@ private struct TaskCreationSheet: View {
     @Binding var isPresented: Bool
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("New Ticket")
+        VStack(alignment: .leading, spacing: 14) {
+            // The title field doubles as the sheet heading: a plain, large
+            // text field reads quieter than a heading plus a boxed input.
+            TextField("Task title", text: creationTitle)
+                .textFieldStyle(.plain)
                 .font(.title3.weight(.semibold))
 
-            VStack(alignment: .leading, spacing: 12) {
-                TextField("Task title", text: creationTitle)
-                    .textFieldStyle(.roundedBorder)
-
-                HStack(spacing: 12) {
-                    Picker("Repository", selection: creationRepositorySelection) {
-                        Text("Choose Repository").tag(UUID?.none)
-                        ForEach(model.projection.repositoryFilters.filter { $0.id != nil }) { filter in
-                            Text(filter.name).tag(filter.id)
-                        }
+            HStack(spacing: 12) {
+                Picker("Repository", selection: creationRepositorySelection) {
+                    Text("Choose Repository").tag(UUID?.none)
+                    ForEach(model.projection.repositoryFilters.filter { $0.id != nil }) { filter in
+                        Text(filter.name).tag(filter.id)
                     }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                    Picker("Reasoning", selection: creationReasoningSelection) {
-                        ForEach(ReasoningEffortOption.all) { option in
-                            Text(option.label).tag(option.effort)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .fixedSize()
                 }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
 
-                TextEditor(text: creationPrompt)
-                    .font(.body)
-                    .scrollContentBackground(.hidden)
-                    .padding(8)
-                    .frame(minHeight: 160)
-                    .recessedFieldBackground()
-                    .accessibilityLabel("Task prompt")
+                Spacer()
+
+                Picker("Reasoning", selection: creationReasoningSelection) {
+                    ForEach(ReasoningEffortOption.all) { option in
+                        Text(option.label).tag(option.effort)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+                .fixedSize()
             }
+
+            TextEditor(text: creationPrompt)
+                .font(.body)
+                .scrollContentBackground(.hidden)
+                .padding(8)
+                .frame(minHeight: 160)
+                .recessedFieldBackground()
+                .accessibilityLabel("Task prompt")
+                .overlay(alignment: .topLeading) {
+                    if model.creationDraft.prompt.isEmpty {
+                        Text("Describe the task for Codex…")
+                            .foregroundStyle(.tertiary)
+                            .padding(.horizontal, 13)
+                            .padding(.vertical, 8)
+                            .allowsHitTesting(false)
+                    }
+                }
 
             HStack {
                 if let errorMessage = model.errorMessage {
