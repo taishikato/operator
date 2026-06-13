@@ -259,7 +259,8 @@ struct TaskSend: AsyncParsableCommand {
                 appDataURL: locations.appDataURL,
                 worktreeRootURL: locations.worktreeRootURL
             ),
-            appServerClientFactory: ConfiguredCodexAppServerClientFactory(settings: settings)
+            appServerClientFactory: ConfiguredCodexAppServerClientFactory(settings: settings),
+            ownerKind: .cli
         )
 
         if !output.json {

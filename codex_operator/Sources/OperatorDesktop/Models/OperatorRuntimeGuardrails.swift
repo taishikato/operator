@@ -62,7 +62,8 @@ public struct OperatorRuntimeGuardrails: Equatable, Sendable {
             "errorMessage",
             "createdAt",
             "completedAt",
-            "ownerPID"
+            "ownerPID",
+            "ownerKind"
         ],
         forbiddenRunPersistenceColumns: [
             "rawEvent",

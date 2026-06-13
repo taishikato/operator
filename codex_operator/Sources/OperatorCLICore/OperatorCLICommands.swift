@@ -151,12 +151,12 @@ public struct OperatorCLICommands: Sendable {
         effort: ReasoningEffort
     ) throws -> CLITask {
         let repository = try resolveRepository(repository)
-        let task = try store.createTask(
+        let task = try TaskCreationDraft(
             repositoryID: repository.id,
             title: title,
             prompt: prompt,
             reasoningEffort: effort
-        )
+        ).createTask(in: store)
         return CLITask(task)
     }
 
@@ -230,14 +230,31 @@ public struct OperatorCLICommands: Sendable {
                 // Exiting kills the spawned app-server and aborts the turn,
                 // so record the abort before leaving: the run must not stay
                 // `running` and the task must become sendable again.
-                _ = try store.failStartedRun(
+                let abortedRun = try store.failStartedRun(
                     id: run.id,
                     errorMessage: "Aborted by the CLI after the --timeout deadline elapsed."
                 )
-                throw OperatorCLIError.sendTimedOut(taskID: taskID.uuidString)
+                switch Self.timeoutDecision(afterAbortAttempt: abortedRun) {
+                case .completed(let completedRun):
+                    return completedRun
+                case .timedOut:
+                    throw OperatorCLIError.sendTimedOut(taskID: taskID.uuidString)
+                }
             }
             try await Task.sleep(for: .seconds(pollInterval))
         }
+    }
+
+    public enum TimeoutDecision: Equatable, Sendable {
+        case completed(CLIRun)
+        case timedOut
+    }
+
+    public static func timeoutDecision(afterAbortAttempt run: OperatorRun) -> TimeoutDecision {
+        if run.status == .triggered {
+            return .completed(CLIRun(run))
+        }
+        return .timedOut
     }
 
     private func resolveRepository(_ reference: String) throws -> OperatorRepository {

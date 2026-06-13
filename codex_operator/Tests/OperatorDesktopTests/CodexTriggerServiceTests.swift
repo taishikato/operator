@@ -274,6 +274,40 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .done)
 }
 
+@Test func codexTriggerRecoveryFailsCLIStartedRunWhoseOwnerProcessDied() async throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "CLI owner died", prompt: "Prompt")
+    let deadProcess = Process()
+    deadProcess.executableURL = URL(filePath: "/usr/bin/true")
+    try deadProcess.run()
+    deadProcess.waitUntilExit()
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/operator-worktree-dead-cli-owner",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-dead-cli-owner",
+        codexThreadURL: nil,
+        ownerPID: deadProcess.processIdentifier,
+        ownerKind: .cli
+    )
+    let visibility = FakeThreadVisibilityController()
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: FakeCodexWorktreePreparer(preparedWorktrees: []),
+        appServerClient: FakeCodexAppServerClient(results: []),
+        threadVisibility: visibility
+    )
+
+    await service.recoverInterruptedRuns()
+
+    #expect(visibility.revealCalls == ["thread-dead-cli-owner"])
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .triggerFailed)
+    #expect(try store.task(id: task.id)?.status == .ready)
+}
+
 @Test func codexTriggerRecoveryCompletesRunningRunWithoutRecordedOwner() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -403,13 +437,16 @@ import Testing
     #expect(lifetime.deinitializedCount == 0)
 }
 
-@Test func codexTriggerRecordsClearFailureWhenConfiguredBinaryIsMissing() async throws {
+@Test func codexTriggerThrowsCodexUnavailableBeforeRecordingRunWhenConfiguredBinaryIsMissing() async throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
     let task = try store.createTask(repositoryID: repository.id, title: "Missing binary", prompt: "Send")
-    let worktreeURL = URL(filePath: "/tmp/operator-worktree-missing-binary")
     let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
-        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+        PreparedWorktree(
+            worktreeURL: URL(filePath: "/tmp/operator-worktree-missing-binary"),
+            baseBranch: "main",
+            baseRef: "abc123"
+        )
     ])
     let factory = ConfiguredCodexAppServerClientFactory(
         settings: StaticCodexBinarySettingsProvider(
@@ -424,10 +461,11 @@ import Testing
         appServerClientFactory: factory
     )
 
-    let run = try await service.sendTaskToCodex(taskID: task.id)
-
-    #expect(run.status == .triggerFailed)
-    #expect(run.errorMessage == "Codex binary not found. Configure an absolute Codex binary path in Settings.")
+    await #expect(throws: CodexBinaryConfigurationError.notFound) {
+        try await service.sendTaskToCodex(taskID: task.id)
+    }
+    #expect(worktreePreparer.repositories.isEmpty)
+    #expect(try store.runs(taskID: task.id).isEmpty)
     #expect(try store.task(id: task.id)?.status == .ready)
 }
 

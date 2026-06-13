@@ -37,6 +37,35 @@ import OperatorDesktop
     #expect(try store.tasks().count == 1)
 }
 
+@Test func taskAddTrimsTitleAndPromptBeforeCreatingTask() throws {
+    let store = try temporaryStore()
+    _ = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let commands = OperatorCLICommands(store: store)
+
+    let task = try commands.addTask(
+        repository: "operator",
+        title: "  File follow-up  ",
+        prompt: "\nDo the thing\t",
+        effort: .high
+    )
+
+    #expect(task.title == "File follow-up")
+    #expect(task.prompt == "Do the thing")
+}
+
+@Test func taskAddRejectsBlankTitleAndPrompt() throws {
+    let store = try temporaryStore()
+    _ = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let commands = OperatorCLICommands(store: store)
+
+    #expect(throws: TaskCreationError.titleRequired) {
+        try commands.addTask(repository: "operator", title: " \n\t", prompt: "Prompt", effort: .medium)
+    }
+    #expect(throws: TaskCreationError.promptRequired) {
+        try commands.addTask(repository: "operator", title: "Title", prompt: " \n\t", effort: .medium)
+    }
+}
+
 @Test func taskAddResolvesRepositoryByID() throws {
     let store = try temporaryStore()
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
@@ -218,6 +247,25 @@ import OperatorDesktop
         pollInterval: 0.05
     )
     #expect(retried.status == "triggered")
+}
+
+@Test func timeoutDecisionReturnsCompletedRunWhenAbortFindsRunAlreadyCompleted() throws {
+    let store = try temporaryStore()
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Completed", prompt: "P")
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/wt",
+        baseBranch: "main",
+        baseRef: "abc",
+        codexThreadID: "thread-1",
+        codexThreadURL: nil
+    )
+    let completedRun = try store.completeStartedRun(id: run.id)
+
+    let decision = OperatorCLICommands.timeoutDecision(afterAbortAttempt: completedRun)
+
+    #expect(decision == .completed(CLIRun(completedRun)))
 }
 
 // MARK: - JSON output

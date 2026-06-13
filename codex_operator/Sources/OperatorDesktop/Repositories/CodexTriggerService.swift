@@ -133,18 +133,21 @@ public struct CodexTriggerService: @unchecked Sendable {
     private let worktreePreparer: any CodexWorktreePreparing
     private let appServerClientFactory: any CodexAppServerClientFactory
     private let threadVisibility: (any CodexThreadVisibilityControlling)?
+    private let ownerKind: RunOwnerKind
 
     public init(
         store: OperatorStore,
         worktreePreparer: any CodexWorktreePreparing,
         appServerClient: any CodexAppServerClient,
-        threadVisibility: (any CodexThreadVisibilityControlling)? = nil
+        threadVisibility: (any CodexThreadVisibilityControlling)? = nil,
+        ownerKind: RunOwnerKind = .app
     ) {
         self.init(
             store: store,
             worktreePreparer: worktreePreparer,
             appServerClientFactory: FixedCodexAppServerClientFactory(appServerClient: appServerClient),
-            threadVisibility: threadVisibility
+            threadVisibility: threadVisibility,
+            ownerKind: ownerKind
         )
     }
 
@@ -152,12 +155,14 @@ public struct CodexTriggerService: @unchecked Sendable {
         store: OperatorStore,
         worktreePreparer: any CodexWorktreePreparing,
         appServerClientFactory: any CodexAppServerClientFactory,
-        threadVisibility: (any CodexThreadVisibilityControlling)? = nil
+        threadVisibility: (any CodexThreadVisibilityControlling)? = nil,
+        ownerKind: RunOwnerKind = .app
     ) {
         self.store = store
         self.worktreePreparer = worktreePreparer
         self.appServerClientFactory = appServerClientFactory
         self.threadVisibility = threadVisibility
+        self.ownerKind = ownerKind
     }
 
     public func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
@@ -166,11 +171,11 @@ public struct CodexTriggerService: @unchecked Sendable {
             throw CodexTriggerError.repositoryNotFound
         }
 
+        let appServerClient = try appServerClientFactory.makeAppServerClient()
         let preparedWorktree = try worktreePreparer.prepareWorktree(for: repository)
         var hideTask: Task<Bool, Never>?
         var startedThreadID: String?
         do {
-            let appServerClient = try appServerClientFactory.makeAppServerClient()
             let startedThread = try await appServerClient.startThreadAndTurn(
                 CodexThreadStartRequest(
                     cwd: preparedWorktree.worktreeURL,
@@ -203,7 +208,8 @@ public struct CodexTriggerService: @unchecked Sendable {
                 baseBranch: preparedWorktree.baseBranch,
                 baseRef: preparedWorktree.baseRef,
                 codexThreadID: startedThread.reference.id,
-                codexThreadURL: startedThread.reference.url
+                codexThreadURL: startedThread.reference.url,
+                ownerKind: ownerKind
             )
             let store = store
             let threadVisibility = threadVisibility
@@ -229,6 +235,9 @@ public struct CodexTriggerService: @unchecked Sendable {
                     }
                 }
             }
+            if let binaryError = error as? CodexBinaryConfigurationError {
+                throw binaryError
+            }
             return try store.recordFailedRun(
                 taskID: task.id,
                 worktreePath: preparedWorktree.worktreeURL.path,
@@ -239,11 +248,9 @@ public struct CodexTriggerService: @unchecked Sendable {
         }
     }
 
-    /// Completes runs whose owning process is gone. The spawned app-server is
-    /// a child of whichever process triggered the run (app or operator CLI),
-    /// so once the owner is dead the turn cannot still be running; reveal the
-    /// hidden thread and surface the task as Done. Runs owned by another live
-    /// process (an operator CLI mid-send) are still in flight and left alone.
+    /// Recovers runs whose owning process is gone. App-owned and legacy rows
+    /// are surfaced as Done; CLI-owned rows are failed because killing the CLI
+    /// also aborts the child app-server.
     public func recoverInterruptedRuns() async {
         guard let runs = try? store.runningRuns() else {
             return
@@ -256,7 +263,14 @@ public struct CodexTriggerService: @unchecked Sendable {
             if let threadVisibility, let threadID = run.codexThreadID {
                 await threadVisibility.revealThread(id: threadID)
             }
-            _ = try? store.completeStartedRun(id: run.id)
+            if run.ownerKind == .cli {
+                _ = try? store.failStartedRun(
+                    id: run.id,
+                    errorMessage: "Aborted because the operator CLI process exited before the Codex turn completed."
+                )
+            } else {
+                _ = try? store.completeStartedRun(id: run.id)
+            }
         }
     }
 
