@@ -37,6 +37,7 @@ import Testing
         codexThreadID: nil,
         codexThreadURL: nil,
         errorMessage: "failed",
+        ownerPID: nil,
         createdAt: Date(timeIntervalSince1970: 1_700_000_000),
         completedAt: Date(timeIntervalSince1970: 1_700_000_000)
     )
@@ -78,6 +79,7 @@ private func successfulRun(
         codexThreadID: codexThreadID,
         codexThreadURL: codexThreadURL,
         errorMessage: nil,
+        ownerPID: nil,
         createdAt: Date(timeIntervalSince1970: 1_700_000_000),
         completedAt: Date(timeIntervalSince1970: 1_700_000_000)
     )

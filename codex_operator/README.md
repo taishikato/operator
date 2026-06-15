@@ -39,6 +39,34 @@ script/build_and_run.sh --debug
 
 A downloadable `.dmg` build is planned for the near future.
 
+## Operator CLI and agent skills
+
+Coding agents (Claude Code, Codex) can drive the board through a
+first-class `operator` CLI instead of the UI:
+
+```bash
+script/install_cli.sh     # builds release and symlinks ~/.local/bin/operator
+script/install_skills.sh  # links the agent skill into ~/.claude/skills and ~/.codex/skills
+```
+
+`operator --help` shows the verb surface (`repo list`,
+`task add/list/show/archive/send`, `run list`). Every verb accepts `--json`
+with a stable schema and distinct exit codes, so agents can branch on
+"task not found" vs "the lifecycle forbids this". `task send` stays alive
+until the Codex turn completes — exiting early aborts the turn. The CLI
+shares the app's domain library and database (WAL mode), and a running app
+picks up CLI writes within a couple of seconds.
+
+For development and testing the CLI can be sandboxed away from the real
+board: `OPERATOR_DB=/path/operator.sqlite` overrides the database, and
+`OPERATOR_DATA_DIR=/path` relocates the directories `task send` writes to
+(app data and the worktree root). Set both together — with only
+`OPERATOR_DB`, a send would still run git operations against the
+production worktree root.
+
+Design decisions live in `.scratch/operator-skills/PRD.md`; the skill
+itself is `skills/operator/SKILL.md`.
+
 ## Requirements
 
 Codex Operator requires:

@@ -210,6 +210,7 @@ import Testing
         codexThreadID: "thread-legacy",
         codexThreadURL: nil,
         errorMessage: nil,
+        ownerPID: nil,
         createdAt: Date(),
         completedAt: Date()
     )

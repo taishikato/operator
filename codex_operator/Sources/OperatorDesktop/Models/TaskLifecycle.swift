@@ -68,6 +68,17 @@ public enum TaskLifecyclePolicy {
         return task
     }
 
+    /// A started run was aborted before its turn finished (e.g. the CLI hit
+    /// --timeout and exited, killing the spawned app-server). The send did
+    /// not happen, so the task becomes sendable again.
+    public static func recordAbortedRun(for task: OperatorTask, now: Date = Date()) throws -> OperatorTask {
+        guard task.status == .review else {
+            throw TaskLifecycleError.transitionNotAllowed
+        }
+
+        return task.with(status: .ready, now: now)
+    }
+
     public static func moveToDone(_ task: OperatorTask, now: Date = Date()) throws -> OperatorTask {
         guard task.status == .review else {
             throw TaskLifecycleError.transitionNotAllowed

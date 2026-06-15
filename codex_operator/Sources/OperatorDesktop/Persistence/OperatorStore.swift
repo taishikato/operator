@@ -17,6 +17,11 @@ public enum RunStatus: String, Codable, CaseIterable, Sendable {
     case triggered
 }
 
+public enum RunOwnerKind: String, Codable, CaseIterable, Sendable {
+    case app
+    case cli
+}
+
 public struct OperatorRun: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let taskID: UUID
@@ -28,8 +33,46 @@ public struct OperatorRun: Equatable, Identifiable, Sendable {
     public let codexThreadID: String?
     public let codexThreadURL: URL?
     public let errorMessage: String?
+    /// PID of the process that triggered the run (app or operator CLI).
+    /// Nil on terminal rows and rows recorded before ownership existed.
+    public let ownerPID: Int32?
+    /// Process family that owns a running run. Nil on legacy rows and
+    /// terminal rows recorded before owner kind existed.
+    public let ownerKind: RunOwnerKind?
     public let createdAt: Date
     public let completedAt: Date?
+
+    public init(
+        id: UUID,
+        taskID: UUID,
+        repositoryID: UUID,
+        status: RunStatus,
+        worktreePath: String,
+        baseBranch: String,
+        baseRef: String,
+        codexThreadID: String?,
+        codexThreadURL: URL?,
+        errorMessage: String?,
+        ownerPID: Int32?,
+        ownerKind: RunOwnerKind? = nil,
+        createdAt: Date,
+        completedAt: Date?
+    ) {
+        self.id = id
+        self.taskID = taskID
+        self.repositoryID = repositoryID
+        self.status = status
+        self.worktreePath = worktreePath
+        self.baseBranch = baseBranch
+        self.baseRef = baseRef
+        self.codexThreadID = codexThreadID
+        self.codexThreadURL = codexThreadURL
+        self.errorMessage = errorMessage
+        self.ownerPID = ownerPID
+        self.ownerKind = ownerKind
+        self.createdAt = createdAt
+        self.completedAt = completedAt
+    }
 }
 
 public enum OperatorStoreError: Error, Equatable, LocalizedError, Sendable {
@@ -55,6 +98,8 @@ public enum OperatorStoreError: Error, Equatable, LocalizedError, Sendable {
 public final class OperatorStore: @unchecked Sendable {
     private let dbQueue: DatabaseQueue
     private let changeSubject = PassthroughSubject<Void, Never>()
+    private let monitorLock = NSLock()
+    private var monitorTask: Task<Void, Never>?
 
     public var changes: AnyPublisher<Void, Never> {
         changeSubject.eraseToAnyPublisher()
@@ -65,8 +110,20 @@ public final class OperatorStore: @unchecked Sendable {
             at: databaseURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        dbQueue = try DatabaseQueue(path: databaseURL.path)
+        // The app and the operator CLI share this database from separate
+        // processes: wait out a competing writer instead of failing with
+        // SQLITE_BUSY, and use WAL so readers don't block the writer.
+        var configuration = Configuration()
+        configuration.busyMode = .timeout(5)
+        configuration.prepareDatabase { db in
+            try db.execute(sql: "PRAGMA journal_mode = WAL")
+        }
+        dbQueue = try DatabaseQueue(path: databaseURL.path, configuration: configuration)
         try Self.migrator.migrate(dbQueue)
+    }
+
+    deinit {
+        monitorTask?.cancel()
     }
 
     public static func applicationSupportStore(
@@ -284,6 +341,8 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: nil,
                 codexThreadURL: nil,
                 errorMessage: errorMessage,
+                ownerPID: nil,
+                ownerKind: nil,
                 createdAt: now,
                 completedAt: now
             )
@@ -302,6 +361,8 @@ public final class OperatorStore: @unchecked Sendable {
         baseRef: String,
         codexThreadID: String,
         codexThreadURL: URL?,
+        ownerPID: Int32? = ProcessInfo.processInfo.processIdentifier,
+        ownerKind: RunOwnerKind? = .app,
         now: Date = Date()
     ) throws -> OperatorRun {
         let run = try dbQueue.write { db in
@@ -324,6 +385,8 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: codexThreadID,
                 codexThreadURL: codexThreadURL,
                 errorMessage: nil,
+                ownerPID: ownerPID,
+                ownerKind: ownerKind,
                 createdAt: now,
                 completedAt: nil
             )
@@ -351,6 +414,8 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: currentRun.codexThreadID,
                 codexThreadURL: currentRun.codexThreadURL,
                 errorMessage: currentRun.errorMessage,
+                ownerPID: currentRun.ownerPID,
+                ownerKind: currentRun.ownerKind,
                 createdAt: currentRun.createdAt,
                 completedAt: now
             )
@@ -374,6 +439,41 @@ public final class OperatorStore: @unchecked Sendable {
                 try update(task: TaskLifecyclePolicy.moveToDone(task, now: now), db: db)
             }
             return completedRun
+        }
+        publishChange()
+        return run
+    }
+
+    /// Marks a still-`running` run as failed after its turn was aborted (the
+    /// process owning the spawned app-server exits before completion, e.g. on
+    /// CLI --timeout). The task returns to Ready so it can be sent again, and
+    /// the run leaves the `running` state so interrupted-run recovery cannot
+    /// mistake the aborted turn for a finished one.
+    public func failStartedRun(id: UUID, errorMessage: String, now: Date = Date()) throws -> OperatorRun {
+        let run = try dbQueue.write { db in
+            let currentRun = try requiredRun(id: id, db: db)
+            guard currentRun.status == .running else {
+                return currentRun
+            }
+            try db.execute(
+                sql: """
+                    UPDATE runs
+                    SET status = ?, errorMessage = ?, completedAt = ?
+                    WHERE id = ?
+                    """,
+                arguments: [
+                    RunStatus.triggerFailed.rawValue,
+                    errorMessage,
+                    now.storageValue,
+                    currentRun.id.uuidString
+                ]
+            )
+
+            let task = try requiredTask(id: currentRun.taskID, db: db)
+            if task.status == .review {
+                try update(task: TaskLifecyclePolicy.recordAbortedRun(for: task, now: now), db: db)
+            }
+            return try requiredRun(id: id, db: db)
         }
         publishChange()
         return run
@@ -409,6 +509,8 @@ public final class OperatorStore: @unchecked Sendable {
                 codexThreadID: codexThreadID,
                 codexThreadURL: codexThreadURL,
                 errorMessage: nil,
+                ownerPID: nil,
+                ownerKind: nil,
                 createdAt: now,
                 completedAt: now
             )
@@ -464,6 +566,51 @@ public final class OperatorStore: @unchecked Sendable {
         }
         publishChange()
         return task
+    }
+
+    /// Fires `changes` when another connection (e.g. the operator CLI in a
+    /// separate process) commits to the database. `PRAGMA data_version` only
+    /// moves for foreign commits, so this never double-reports the store's
+    /// own writes.
+    public func startExternalChangeMonitoring(pollInterval: TimeInterval = 2.0) {
+        monitorLock.lock()
+        defer { monitorLock.unlock() }
+        guard monitorTask == nil else {
+            return
+        }
+
+        // Capture the baseline synchronously so commits landing right after
+        // this call cannot slip under the monitor's first reading.
+        let baseline = currentDataVersion()
+        monitorTask = Task { [weak self] in
+            var lastVersion = baseline
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(pollInterval))
+                guard let self, !Task.isCancelled else {
+                    return
+                }
+                guard let version = self.currentDataVersion() else {
+                    continue
+                }
+                if let previousVersion = lastVersion, version != previousVersion {
+                    self.publishChange()
+                }
+                lastVersion = version
+            }
+        }
+    }
+
+    public func stopExternalChangeMonitoring() {
+        monitorLock.lock()
+        defer { monitorLock.unlock() }
+        monitorTask?.cancel()
+        monitorTask = nil
+    }
+
+    private func currentDataVersion() -> Int? {
+        try? dbQueue.read { db in
+            try Int.fetchOne(db, sql: "PRAGMA data_version")
+        }
     }
 
     private func publishChange() {
@@ -547,9 +694,9 @@ public final class OperatorStore: @unchecked Sendable {
             sql: """
                 INSERT INTO runs (
                     id, taskID, repositoryID, status, worktreePath, baseBranch, baseRef,
-                    codexThreadID, codexThreadURL, errorMessage, createdAt, completedAt
+                    codexThreadID, codexThreadURL, errorMessage, ownerPID, ownerKind, createdAt, completedAt
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 run.id.uuidString,
@@ -562,6 +709,8 @@ public final class OperatorStore: @unchecked Sendable {
                 run.codexThreadID,
                 run.codexThreadURL?.absoluteString,
                 run.errorMessage,
+                run.ownerPID,
+                run.ownerKind?.rawValue,
                 run.createdAt.storageValue,
                 run.completedAt?.storageValue
             ]
@@ -624,6 +773,20 @@ private extension OperatorStore {
             try db.execute(sql: "CREATE UNIQUE INDEX runs_one_success_per_task ON runs(taskID) WHERE status IN ('running', 'triggered')")
         }
 
+        // Nullable so rows recorded before run ownership existed stay valid
+        // and keep being treated as recoverable orphans.
+        migrator.registerMigration("addRunOwnerPID") { db in
+            try db.alter(table: "runs") { table in
+                table.add(column: "ownerPID", .integer)
+            }
+        }
+
+        migrator.registerMigration("addRunOwnerKind") { db in
+            try db.alter(table: "runs") { table in
+                table.add(column: "ownerKind", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -662,6 +825,13 @@ private extension OperatorStore {
         guard let status = RunStatus(rawValue: row["status"]) else {
             throw OperatorStoreError.invalidStoredValue("status")
         }
+        let ownerKindValue: String? = row["ownerKind"]
+        let ownerKind = try ownerKindValue.map { value in
+            guard let ownerKind = RunOwnerKind(rawValue: value) else {
+                throw OperatorStoreError.invalidStoredValue("ownerKind")
+            }
+            return ownerKind
+        }
 
         let urlString: String? = row["codexThreadURL"]
         return OperatorRun(
@@ -675,6 +845,8 @@ private extension OperatorStore {
             codexThreadID: row["codexThreadID"],
             codexThreadURL: urlString.flatMap(URL.init(string:)),
             errorMessage: row["errorMessage"],
+            ownerPID: row["ownerPID"],
+            ownerKind: ownerKind,
             createdAt: Date(storageValue: row["createdAt"]),
             completedAt: Date(optionalStorageValue: row["completedAt"])
         )

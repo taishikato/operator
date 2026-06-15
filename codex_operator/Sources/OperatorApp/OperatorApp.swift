@@ -30,7 +30,9 @@ struct OperatorApp: App {
         WindowGroup("Operator") {
             OperatorRootView(store: store, shell: .mvp, codexTrigger: codexTrigger)
                 .frame(minWidth: 1_040, minHeight: 680)
-                .task { [codexTrigger] in
+                .task { [store, codexTrigger] in
+                    // Surface writes made by the operator CLI on a running board.
+                    store.startExternalChangeMonitoring()
                     await codexTrigger.recoverInterruptedRuns()
                 }
         }

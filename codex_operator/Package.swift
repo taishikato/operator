@@ -15,10 +15,18 @@ let package = Package(
         .executable(
             name: "Operator",
             targets: ["OperatorApp"]
+        ),
+        // Named operator-cli because an executable literally named "operator"
+        // would collide with the Operator app product on macOS's
+        // case-insensitive filesystem; install scripts symlink it as `operator`.
+        .executable(
+            name: "operator-cli",
+            targets: ["OperatorCLI"]
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.10.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.10.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [
         .target(
@@ -31,9 +39,31 @@ let package = Package(
             name: "OperatorApp",
             dependencies: ["OperatorDesktop"]
         ),
+        .target(
+            name: "OperatorCLICore",
+            dependencies: ["OperatorDesktop"]
+        ),
+        .executableTarget(
+            name: "OperatorCLI",
+            dependencies: [
+                "OperatorCLICore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ]
+        ),
         .testTarget(
             name: "OperatorDesktopTests",
             dependencies: ["OperatorDesktop"]
+        ),
+        .testTarget(
+            name: "OperatorCLICoreTests",
+            dependencies: ["OperatorCLICore"]
+        ),
+        // Spawns the built operator-cli binary to verify the surface-level
+        // contract (--json envelopes, exit codes) that unit tests on the Core
+        // DTO encoders cannot see, e.g. ArgumentParser usage errors.
+        .testTarget(
+            name: "OperatorCLIIntegrationTests",
+            dependencies: ["OperatorCLI"]
         )
     ]
 )

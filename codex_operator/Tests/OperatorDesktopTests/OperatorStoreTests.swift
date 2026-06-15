@@ -143,6 +143,24 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .done)
 }
 
+@Test func recordStartedRunStoresCurrentProcessAsRunOwnerByDefault() throws {
+    let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let task = try store.createTask(repositoryID: repository.id, title: "Owned run", prompt: "Prompt")
+
+    let run = try store.recordStartedRun(
+        taskID: task.id,
+        worktreePath: "/tmp/worktrees/owned",
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-owned",
+        codexThreadURL: nil
+    )
+
+    #expect(run.ownerPID == ProcessInfo.processInfo.processIdentifier)
+    #expect(try store.runs(taskID: task.id).first?.ownerPID == ProcessInfo.processInfo.processIdentifier)
+}
+
 @Test func storeRejectsReadyReversalAndImmutableTaskContent() throws {
     let store = try OperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
