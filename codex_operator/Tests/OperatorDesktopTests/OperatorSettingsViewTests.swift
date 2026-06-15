@@ -26,4 +26,7 @@ import Testing
     #expect(RepositorySettingsAccessibility.refreshCodexStatusLabel == "Refresh Codex status")
     #expect(RepositorySettingsAccessibility.appDataPathLabel == "Operator app data path")
     #expect(RepositorySettingsAccessibility.aboutLabel == "About Operator")
+    #expect(RepositorySettingsAccessibility.installCLILabel == "Install Operator CLI")
+    #expect(RepositorySettingsAccessibility.installAgentSkillLabel == "Install Operator agent skill")
+    #expect(RepositorySettingsAccessibility.revealAgentSkillLabel == "Reveal Operator agent skill in Finder")
 }

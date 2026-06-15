@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 public struct OperatorSettingsView: View {
@@ -62,6 +63,45 @@ public struct OperatorSettingsView: View {
                 }
             }
 
+            Section("Agent Support") {
+                if let agentSupportStatus = model.agentSupportStatus {
+                    AgentSupportRow(
+                        title: "CLI",
+                        badge: "operator",
+                        destinationText: displayPath(agentSupportStatus.cli.destination),
+                        status: agentSupportStatus.cli.state,
+                        installTitle: "Install CLI",
+                        installAccessibilityLabel: RepositorySettingsAccessibility.installCLILabel
+                    ) {
+                        model.installCLIReportingErrors()
+                    }
+
+                    AgentSupportRow(
+                        title: "Agent Skill",
+                        badge: "/operator",
+                        destinationText: skillDestinationText(agentSupportStatus.skills),
+                        status: aggregateSkillStatus(agentSupportStatus.skills),
+                        installTitle: "Install Skill",
+                        installAccessibilityLabel: RepositorySettingsAccessibility.installAgentSkillLabel,
+                        revealAccessibilityLabel: RepositorySettingsAccessibility.revealAgentSkillLabel
+                    ) {
+                        model.installSkillsReportingErrors()
+                    } reveal: {
+                        revealAgentSkill(agentSupportStatus.skills)
+                    }
+                } else {
+                    Text("Agent support unavailable")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let agentSupportErrorMessage = model.agentSupportErrorMessage {
+                    Text(agentSupportErrorMessage)
+                        .font(.callout)
+                        .foregroundStyle(.red)
+                }
+            }
+
             Section("Operator") {
                 LabeledContent(RepositorySettingsAccessibility.appDataPathLabel) {
                     PathText(model.appDataPath)
@@ -82,6 +122,75 @@ public struct OperatorSettingsView: View {
         .containerBackground(.thickMaterial, for: .window)
         .onAppear {
             model.loadRepositoriesReportingErrors()
+        }
+    }
+}
+
+private struct AgentSupportRow: View {
+    let title: String
+    let badge: String
+    let destinationText: String
+    let status: OperatorAgentSupportInstallState
+    let installTitle: String
+    let installAccessibilityLabel: String
+    var revealAccessibilityLabel: String?
+    let install: () -> Void
+    var reveal: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            VStack(alignment: .leading, spacing: 6) {
+                HStack(spacing: 8) {
+                    Text(title)
+                        .font(.headline)
+                    Text(badge)
+                        .font(.callout.weight(.semibold))
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(.quaternary, in: Capsule())
+                }
+
+                Text("to \(destinationText).")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(destinationText)
+            }
+
+            Spacer(minLength: 16)
+
+            HStack(spacing: 8) {
+                if let reveal, let revealAccessibilityLabel {
+                    Button("Reveal in Finder") {
+                        reveal()
+                    }
+                    .buttonStyle(.glass)
+                    .controlSize(.small)
+                    .disabled(!status.isInstalled)
+                    .accessibilityLabel(revealAccessibilityLabel)
+                }
+
+                Button(installButtonTitle) {
+                    install()
+                }
+                .buttonStyle(.glassProminent)
+                .controlSize(.small)
+                .disabled(!status.canInstall)
+                .accessibilityLabel(installAccessibilityLabel)
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var installButtonTitle: String {
+        switch status {
+        case .installed:
+            return "Installed"
+        case .unmanaged:
+            return "Manual"
+        case .missing, .stale:
+            return installTitle
         }
     }
 }
@@ -159,6 +268,9 @@ enum RepositorySettingsAccessibility {
     static let refreshCodexStatusLabel = "Refresh Codex status"
     static let appDataPathLabel = "Operator app data path"
     static let aboutLabel = "About Operator"
+    static let installCLILabel = "Install Operator CLI"
+    static let installAgentSkillLabel = "Install Operator agent skill"
+    static let revealAgentSkillLabel = "Reveal Operator agent skill in Finder"
 
     static func defaultBranchLabel(for repository: OperatorRepository) -> String {
         "Default branch for \(repository.name)"
@@ -166,5 +278,73 @@ enum RepositorySettingsAccessibility {
 
     static func saveDefaultBranchLabel(for repository: OperatorRepository) -> String {
         "Save default branch for \(repository.name)"
+    }
+}
+
+private extension OperatorSettingsView {
+    func aggregateSkillStatus(
+        _ skills: [OperatorAgentSupportComponentStatus]
+    ) -> OperatorAgentSupportInstallState {
+        if skills.allSatisfy({ $0.state.isInstalled }), let first = skills.first {
+            return first.state
+        }
+        if skills.contains(where: { $0.state == .unmanaged }) {
+            return .unmanaged
+        }
+        if let stale = skills.first(where: { $0.state.isStale }) {
+            return stale.state
+        }
+        return .missing
+    }
+
+    func skillDestinationText(_ skills: [OperatorAgentSupportComponentStatus]) -> String {
+        skills.map { displayPath($0.destination) }.joined(separator: ", ")
+    }
+
+    func displayPath(_ url: URL) -> String {
+        let home = NSHomeDirectory()
+        if url.path == home {
+            return "~"
+        }
+        if url.path.hasPrefix(home + "/") {
+            return "~" + String(url.path.dropFirst(home.count))
+        }
+        return url.path
+    }
+
+    func revealAgentSkill(_ skills: [OperatorAgentSupportComponentStatus]) {
+        guard let destination = skills.first?.destination else {
+            return
+        }
+        if FileManager.default.fileExists(atPath: destination.path) {
+            NSWorkspace.shared.activateFileViewerSelecting([destination])
+        } else {
+            NSWorkspace.shared.activateFileViewerSelecting([destination.deletingLastPathComponent()])
+        }
+    }
+}
+
+private extension OperatorAgentSupportInstallState {
+    var isInstalled: Bool {
+        if case .installed = self {
+            return true
+        }
+        return false
+    }
+
+    var isStale: Bool {
+        if case .stale = self {
+            return true
+        }
+        return false
+    }
+
+    var canInstall: Bool {
+        switch self {
+        case .missing, .stale:
+            return true
+        case .installed, .unmanaged:
+            return false
+        }
     }
 }
