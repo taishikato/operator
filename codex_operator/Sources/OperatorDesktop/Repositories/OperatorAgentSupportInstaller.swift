@@ -14,7 +14,13 @@ public struct OperatorAgentSupportSource: Equatable, Sendable {
     }
 }
 
-public struct OperatorAgentSupportInstaller {
+public protocol OperatorAgentSupportInstalling {
+    func status() throws -> OperatorAgentSupportStatus
+    @discardableResult func installCLI() throws -> URL
+    @discardableResult func installSkills() throws -> [URL]
+}
+
+public struct OperatorAgentSupportInstaller: OperatorAgentSupportInstalling {
     private let fileManager: FileManager
     private let source: OperatorAgentSupportSource
     private let homeDirectory: URL
@@ -53,10 +59,16 @@ public struct OperatorAgentSupportInstaller {
     @discardableResult
     public func installSkills() throws -> [URL] {
         try validateSkill()
+        var installedDestinations: [URL] = []
         for destination in skillDestinations {
+            let status = try componentStatus(destination: destination, source: source.skillURL)
+            guard status.state.canInstall else {
+                continue
+            }
             try installSymlink(source: source.skillURL, destination: destination)
+            installedDestinations.append(destination)
         }
-        return skillDestinations
+        return installedDestinations
     }
 
     public var cliDestination: URL {
@@ -78,6 +90,9 @@ public struct OperatorAgentSupportInstaller {
             if symlinkTarget == source.path {
                 return OperatorAgentSupportComponentStatus(destination: destination, state: .installed(targetPath: symlinkTarget))
             }
+            guard isOperatorManagedSymlink(targetPath: symlinkTarget, destination: destination) else {
+                return OperatorAgentSupportComponentStatus(destination: destination, state: .unmanaged)
+            }
             return OperatorAgentSupportComponentStatus(destination: destination, state: .stale(targetPath: symlinkTarget))
         }
 
@@ -89,13 +104,16 @@ public struct OperatorAgentSupportInstaller {
     }
 
     private func installSymlink(source: URL, destination: URL) throws {
-        if let symlinkTarget = try symlinkDestination(at: destination) {
-            if symlinkTarget == source.path {
-                return
-            }
+        let status = try componentStatus(destination: destination, source: source)
+        switch status.state {
+        case .installed:
+            return
+        case .stale:
             try fileManager.removeItem(at: destination)
-        } else if fileManager.fileExists(atPath: destination.path) {
+        case .unmanaged:
             throw OperatorAgentSupportInstallerError.destinationExists(destination.path)
+        case .missing:
+            break
         }
 
         try fileManager.createDirectory(
@@ -103,6 +121,20 @@ public struct OperatorAgentSupportInstaller {
             withIntermediateDirectories: true
         )
         try fileManager.createSymbolicLink(at: destination, withDestinationURL: source)
+    }
+
+    private func isOperatorManagedSymlink(targetPath: String, destination: URL) -> Bool {
+        if destination == cliDestination {
+            return targetPath.contains("/Operator.app/Contents/Library/Helpers/operator-cli")
+                || (targetPath.contains("/codex_operator/.build/") && targetPath.hasSuffix("/operator-cli"))
+        }
+
+        if skillDestinations.contains(destination) {
+            return targetPath.contains("/Operator.app/Contents/Resources/skills/operator")
+                || targetPath.contains("/operator/skills/operator")
+        }
+
+        return false
     }
 
     private func symlinkDestination(at url: URL) throws -> String? {
@@ -113,7 +145,12 @@ public struct OperatorAgentSupportInstaller {
         } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadNoSuchFileError {
             return nil
         } catch let error as NSError where error.domain == NSCocoaErrorDomain && error.code == NSFileReadUnknownError {
-            return nil
+            if let underlyingError = error.userInfo[NSUnderlyingErrorKey] as? NSError,
+               underlyingError.domain == NSPOSIXErrorDomain,
+               underlyingError.code == Int(EINVAL) {
+                return nil
+            }
+            throw error
         } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(ENOENT) {
             return nil
         } catch let error as NSError where error.domain == NSPOSIXErrorDomain && error.code == Int(EINVAL) {
@@ -142,6 +179,19 @@ public struct OperatorAgentSupportStatus: Equatable, Sendable {
         self.cli = cli
         self.skills = skills
     }
+
+    public var skillsState: OperatorAgentSupportInstallState {
+        if let repairable = skills.first(where: { $0.state.canInstall }) {
+            return repairable.state
+        }
+        if skills.allSatisfy({ $0.state.isInstalled }), let first = skills.first {
+            return first.state
+        }
+        if skills.contains(where: { $0.state == .unmanaged }) {
+            return .unmanaged
+        }
+        return .missing
+    }
 }
 
 public struct OperatorAgentSupportComponentStatus: Equatable, Sendable {
@@ -159,6 +209,29 @@ public enum OperatorAgentSupportInstallState: Equatable, Sendable {
     case installed(targetPath: String)
     case stale(targetPath: String)
     case unmanaged
+
+    public var isInstalled: Bool {
+        if case .installed = self {
+            return true
+        }
+        return false
+    }
+
+    public var isStale: Bool {
+        if case .stale = self {
+            return true
+        }
+        return false
+    }
+
+    public var canInstall: Bool {
+        switch self {
+        case .missing, .stale:
+            return true
+        case .installed, .unmanaged:
+            return false
+        }
+    }
 }
 
 public enum OperatorAgentSupportInstallerError: LocalizedError, Equatable, Sendable {

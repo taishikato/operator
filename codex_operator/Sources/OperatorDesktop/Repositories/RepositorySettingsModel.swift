@@ -32,7 +32,7 @@ public final class RepositorySettingsModel: ObservableObject {
     private let appDataURL: URL
     private let codexBinarySettings: any CodexBinarySettingsManaging
     private let codexStatusChecker: any CodexStatusChecking
-    private let agentSupportInstaller: OperatorAgentSupportInstaller
+    private let agentSupportInstaller: any OperatorAgentSupportInstalling
     private var defaultBranchDrafts: [UUID: String] = [:]
     private var codexStatusRefreshGeneration = 0
 
@@ -42,7 +42,7 @@ public final class RepositorySettingsModel: ObservableObject {
         appDataURL: URL? = nil,
         codexBinarySettings: (any CodexBinarySettingsManaging)? = nil,
         codexStatusChecker: any CodexStatusChecking = CodexStatusChecker(),
-        agentSupportInstaller: OperatorAgentSupportInstaller? = nil
+        agentSupportInstaller: (any OperatorAgentSupportInstalling)? = nil
     ) {
         self.store = store
         self.registrationService = registrationService ?? RepositoryRegistrationService(store: store)
@@ -61,7 +61,7 @@ public final class RepositorySettingsModel: ObservableObject {
         appDataURL: URL = URL(filePath: NSHomeDirectory()),
         codexBinarySettings: any CodexBinarySettingsManaging = CodexBinarySettings(),
         codexStatusChecker: any CodexStatusChecking = CodexStatusChecker(),
-        agentSupportInstaller: OperatorAgentSupportInstaller? = nil
+        agentSupportInstaller: (any OperatorAgentSupportInstalling)? = nil
     ) {
         self.store = store
         self.registrationService = registrationService
@@ -75,7 +75,7 @@ public final class RepositorySettingsModel: ObservableObject {
     public func loadSettings() throws {
         try loadRepositories()
         try loadCodexBinarySettings()
-        try loadAgentSupportStatus()
+        loadAgentSupportStatus()
         appDataPath = appDataURL.path
     }
 
@@ -170,26 +170,31 @@ public final class RepositorySettingsModel: ObservableObject {
         }
     }
 
-    public func loadAgentSupportStatus() throws {
-        agentSupportStatus = try agentSupportInstaller.status()
-        agentSupportErrorMessage = nil
+    public func loadAgentSupportStatus() {
+        do {
+            agentSupportStatus = try agentSupportInstaller.status()
+            agentSupportErrorMessage = nil
+        } catch {
+            agentSupportStatus = nil
+            agentSupportErrorMessage = Self.userFacingAgentSupportMessage(for: error)
+        }
     }
 
     public func installCLI() throws {
         try agentSupportInstaller.installCLI()
-        try loadAgentSupportStatus()
+        loadAgentSupportStatus()
     }
 
     public func installSkills() throws {
         try agentSupportInstaller.installSkills()
-        try loadAgentSupportStatus()
+        loadAgentSupportStatus()
     }
 
     public func installCLIReportingErrors() {
         do {
             try installCLI()
         } catch {
-            agentSupportErrorMessage = Self.userFacingMessage(for: error)
+            agentSupportErrorMessage = Self.userFacingAgentSupportMessage(for: error)
         }
     }
 
@@ -197,7 +202,7 @@ public final class RepositorySettingsModel: ObservableObject {
         do {
             try installSkills()
         } catch {
-            agentSupportErrorMessage = Self.userFacingMessage(for: error)
+            agentSupportErrorMessage = Self.userFacingAgentSupportMessage(for: error)
         }
     }
 
@@ -261,6 +266,14 @@ public final class RepositorySettingsModel: ObservableObject {
             return errorDescription
         }
         return "Unable to update repository settings."
+    }
+
+    nonisolated private static func userFacingAgentSupportMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let errorDescription = localizedError.errorDescription {
+            return "Unable to update agent support settings: \(errorDescription)"
+        }
+        return "Unable to update agent support settings: \(error.localizedDescription)"
     }
 }
 

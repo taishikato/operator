@@ -146,6 +146,44 @@ import Testing
 }
 
 @MainActor
+@Test func repositorySettingsModelKeepsCoreSettingsLoadedWhenAgentSupportStatusFails() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let binarySettings = CodexBinarySettings(
+        store: InMemorySettingsBinaryStore(),
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        agentSupportInstaller: FailingSettingsAgentSupportInstaller(statusError: SettingsAgentSupportError.statusFailed)
+    )
+
+    try model.loadSettings()
+
+    #expect(model.repositories.map(\.id) == [repository.id])
+    #expect(model.codexBinaryPath == "/opt/homebrew/bin/codex")
+    #expect(model.errorMessage == nil)
+    #expect(model.agentSupportStatus == nil)
+    #expect(model.agentSupportErrorMessage == "Unable to update agent support settings: status failed")
+}
+
+@MainActor
+@Test func repositorySettingsModelReportsAgentSupportInstallErrorsInAgentSupportMessage() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let model = RepositorySettingsModel(
+        store: store,
+        agentSupportInstaller: FailingSettingsAgentSupportInstaller(installCLIError: SettingsAgentSupportError.installFailed)
+    )
+
+    model.installCLIReportingErrors()
+
+    #expect(model.errorMessage == nil)
+    #expect(model.agentSupportErrorMessage == "Unable to update agent support settings: install failed")
+}
+
+@MainActor
 @Test func repositorySettingsModelAppliesAbsoluteCodexOverrideAndRejectsRelativeOverride() throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let binaryStore = InMemorySettingsBinaryStore()
@@ -385,6 +423,50 @@ private struct SettingsAgentSupportFixture {
         try "name: operator\n".write(to: skillSource.appending(path: "SKILL.md"), atomically: true, encoding: .utf8)
 
         source = OperatorAgentSupportSource(cliURL: cliSource, skillURL: skillSource)
+    }
+}
+
+private struct FailingSettingsAgentSupportInstaller: OperatorAgentSupportInstalling {
+    var statusError: Error?
+    var installCLIError: Error?
+    var installSkillsError: Error?
+
+    func status() throws -> OperatorAgentSupportStatus {
+        if let statusError {
+            throw statusError
+        }
+        return OperatorAgentSupportStatus(
+            cli: OperatorAgentSupportComponentStatus(destination: URL(filePath: "/tmp/operator"), state: .missing),
+            skills: []
+        )
+    }
+
+    func installCLI() throws -> URL {
+        if let installCLIError {
+            throw installCLIError
+        }
+        return URL(filePath: "/tmp/operator")
+    }
+
+    func installSkills() throws -> [URL] {
+        if let installSkillsError {
+            throw installSkillsError
+        }
+        return []
+    }
+}
+
+private enum SettingsAgentSupportError: Error, LocalizedError {
+    case statusFailed
+    case installFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .statusFailed:
+            return "status failed"
+        case .installFailed:
+            return "install failed"
+        }
     }
 }
 

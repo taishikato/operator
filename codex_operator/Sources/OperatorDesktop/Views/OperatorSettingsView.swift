@@ -80,7 +80,7 @@ public struct OperatorSettingsView: View {
                         title: "Agent Skill",
                         badge: "/operator",
                         destinationText: skillDestinationText(agentSupportStatus.skills),
-                        status: aggregateSkillStatus(agentSupportStatus.skills),
+                        status: agentSupportStatus.skillsState,
                         installTitle: "Install Skill",
                         installAccessibilityLabel: RepositorySettingsAccessibility.installAgentSkillLabel,
                         revealAccessibilityLabel: RepositorySettingsAccessibility.revealAgentSkillLabel
@@ -189,8 +189,10 @@ private struct AgentSupportRow: View {
             return "Installed"
         case .unmanaged:
             return "Manual"
-        case .missing, .stale:
+        case .missing:
             return installTitle
+        case .stale:
+            return "Repair"
         }
     }
 }
@@ -282,21 +284,6 @@ enum RepositorySettingsAccessibility {
 }
 
 private extension OperatorSettingsView {
-    func aggregateSkillStatus(
-        _ skills: [OperatorAgentSupportComponentStatus]
-    ) -> OperatorAgentSupportInstallState {
-        if skills.allSatisfy({ $0.state.isInstalled }), let first = skills.first {
-            return first.state
-        }
-        if skills.contains(where: { $0.state == .unmanaged }) {
-            return .unmanaged
-        }
-        if let stale = skills.first(where: { $0.state.isStale }) {
-            return stale.state
-        }
-        return .missing
-    }
-
     func skillDestinationText(_ skills: [OperatorAgentSupportComponentStatus]) -> String {
         skills.map { displayPath($0.destination) }.joined(separator: ", ")
     }
@@ -320,31 +307,6 @@ private extension OperatorSettingsView {
             NSWorkspace.shared.activateFileViewerSelecting([destination])
         } else {
             NSWorkspace.shared.activateFileViewerSelecting([destination.deletingLastPathComponent()])
-        }
-    }
-}
-
-private extension OperatorAgentSupportInstallState {
-    var isInstalled: Bool {
-        if case .installed = self {
-            return true
-        }
-        return false
-    }
-
-    var isStale: Bool {
-        if case .stale = self {
-            return true
-        }
-        return false
-    }
-
-    var canInstall: Bool {
-        switch self {
-        case .missing, .stale:
-            return true
-        case .installed, .unmanaged:
-            return false
         }
     }
 }

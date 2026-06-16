@@ -106,6 +106,12 @@ if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
     --options runtime \
     --timestamp \
     --sign "$CODESIGN_IDENTITY" \
+    "$APP_CLI"
+  codesign \
+    --force \
+    --options runtime \
+    --timestamp \
+    --sign "$CODESIGN_IDENTITY" \
     "$APP_BUNDLE"
   codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
 else
