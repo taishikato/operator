@@ -11,11 +11,15 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_HELPERS="$APP_CONTENTS/Library/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
+APP_CLI="$APP_HELPERS/operator-cli"
 APP_ICON="$APP_RESOURCES/AppIcon.icns"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 LOGO_PNG="$ROOT_DIR/Resources/Assets/operator-logo.png"
+SKILL_SOURCE="$ROOT_DIR/../skills/operator"
+APP_SKILLS_DIR="$APP_RESOURCES/skills"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
@@ -24,9 +28,19 @@ swift build
 BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+cp "$(swift build --show-bin-path)/operator-cli" "$APP_CLI"
+chmod +x "$APP_CLI"
+
+if [[ -d "$SKILL_SOURCE" ]]; then
+  mkdir -p "$APP_SKILLS_DIR"
+  cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/operator"
+else
+  echo "missing skill source: $SKILL_SOURCE" >&2
+  exit 1
+fi
 
 if [[ -f "$LOGO_PNG" ]]; then
   ICONSET="$DIST_DIR/AppIcon.iconset"

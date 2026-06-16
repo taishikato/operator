@@ -120,6 +120,70 @@ import Testing
 }
 
 @MainActor
+@Test func repositorySettingsModelLoadsAndInstallsAgentSupport() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let fixture = try SettingsAgentSupportFixture()
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        agentSupportInstaller: OperatorAgentSupportInstaller(
+            source: fixture.source,
+            homeDirectory: fixture.homeDirectory
+        )
+    )
+
+    try model.loadSettings()
+
+    #expect(model.agentSupportStatus?.cli.state == .missing)
+    #expect(model.agentSupportStatus?.skills.allSatisfy { $0.state == .missing } == true)
+
+    try model.installCLI()
+    try model.installSkills()
+
+    #expect(model.agentSupportStatus?.cli.state == .installed(targetPath: fixture.cliSource.path))
+    #expect(model.agentSupportStatus?.skills.allSatisfy { $0.state == .installed(targetPath: fixture.skillSource.path) } == true)
+    #expect(model.agentSupportErrorMessage == nil)
+}
+
+@MainActor
+@Test func repositorySettingsModelKeepsCoreSettingsLoadedWhenAgentSupportStatusFails() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let repository = try store.createRepository(name: "operator", path: "/tmp/operator", defaultBranch: "main")
+    let binarySettings = CodexBinarySettings(
+        store: InMemorySettingsBinaryStore(),
+        detector: StubSettingsBinaryDetector(detectedURL: URL(filePath: "/opt/homebrew/bin/codex"))
+    )
+    let model = RepositorySettingsModel(
+        store: store,
+        appDataURL: URL(filePath: "/tmp/Operator", directoryHint: .isDirectory),
+        codexBinarySettings: binarySettings,
+        agentSupportInstaller: FailingSettingsAgentSupportInstaller(statusError: SettingsAgentSupportError.statusFailed)
+    )
+
+    try model.loadSettings()
+
+    #expect(model.repositories.map(\.id) == [repository.id])
+    #expect(model.codexBinaryPath == "/opt/homebrew/bin/codex")
+    #expect(model.errorMessage == nil)
+    #expect(model.agentSupportStatus == nil)
+    #expect(model.agentSupportErrorMessage == "Unable to update agent support settings: status failed")
+}
+
+@MainActor
+@Test func repositorySettingsModelReportsAgentSupportInstallErrorsInAgentSupportMessage() throws {
+    let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
+    let model = RepositorySettingsModel(
+        store: store,
+        agentSupportInstaller: FailingSettingsAgentSupportInstaller(installCLIError: SettingsAgentSupportError.installFailed)
+    )
+
+    model.installCLIReportingErrors()
+
+    #expect(model.errorMessage == nil)
+    #expect(model.agentSupportErrorMessage == "Unable to update agent support settings: install failed")
+}
+
+@MainActor
 @Test func repositorySettingsModelAppliesAbsoluteCodexOverrideAndRejectsRelativeOverride() throws {
     let store = try OperatorStore(databaseURL: temporarySettingsDatabaseURL())
     let binaryStore = InMemorySettingsBinaryStore()
@@ -336,6 +400,73 @@ private struct StubRepositoryInspector: RepositoryInspecting {
             throw error
         }
         return inspection!
+    }
+}
+
+private struct SettingsAgentSupportFixture {
+    let temporaryDirectory: URL
+    let homeDirectory: URL
+    let cliSource: URL
+    let skillSource: URL
+    let source: OperatorAgentSupportSource
+
+    init() throws {
+        temporaryDirectory = FileManager.default.temporaryDirectory
+            .appending(path: "RepositorySettingsAgentSupportTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        homeDirectory = temporaryDirectory.appending(path: "home", directoryHint: .isDirectory)
+        cliSource = temporaryDirectory.appending(path: "bundle/Contents/Library/Helpers/operator-cli")
+        skillSource = temporaryDirectory.appending(path: "bundle/Contents/Resources/skills/operator", directoryHint: .isDirectory)
+
+        try FileManager.default.createDirectory(at: cliSource.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: skillSource, withIntermediateDirectories: true)
+        try "#!/bin/sh\n".write(to: cliSource, atomically: true, encoding: .utf8)
+        try "name: operator\n".write(to: skillSource.appending(path: "SKILL.md"), atomically: true, encoding: .utf8)
+
+        source = OperatorAgentSupportSource(cliURL: cliSource, skillURL: skillSource)
+    }
+}
+
+private struct FailingSettingsAgentSupportInstaller: OperatorAgentSupportInstalling {
+    var statusError: Error?
+    var installCLIError: Error?
+    var installSkillsError: Error?
+
+    func status() throws -> OperatorAgentSupportStatus {
+        if let statusError {
+            throw statusError
+        }
+        return OperatorAgentSupportStatus(
+            cli: OperatorAgentSupportComponentStatus(destination: URL(filePath: "/tmp/operator"), state: .missing),
+            skills: []
+        )
+    }
+
+    func installCLI() throws -> URL {
+        if let installCLIError {
+            throw installCLIError
+        }
+        return URL(filePath: "/tmp/operator")
+    }
+
+    func installSkills() throws -> [URL] {
+        if let installSkillsError {
+            throw installSkillsError
+        }
+        return []
+    }
+}
+
+private enum SettingsAgentSupportError: Error, LocalizedError {
+    case statusFailed
+    case installFailed
+
+    var errorDescription: String? {
+        switch self {
+        case .statusFailed:
+            return "status failed"
+        case .installFailed:
+            return "install failed"
+        }
     }
 }
 

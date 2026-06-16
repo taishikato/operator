@@ -44,6 +44,20 @@ A downloadable `.dmg` build is planned for the near future.
 Coding agents (Claude Code, Codex) can drive the board through a
 first-class `operator` CLI instead of the UI:
 
+Install the app, then open Settings and use **Install CLI** and
+**Install Skill**. Release builds bundle `operator-cli` inside
+`Operator.app/Contents/Library/Helpers` and the `operator` skill inside
+`Operator.app/Contents/Resources/skills`; the buttons symlink them into
+the user-level destinations agents expect:
+
+```text
+~/.local/bin/operator
+~/.codex/skills/operator
+~/.claude/skills/operator
+```
+
+For development checkouts, the scripts provide the same links:
+
 ```bash
 script/install_cli.sh     # builds release and symlinks ~/.local/bin/operator
 script/install_skills.sh  # links the agent skill into ~/.claude/skills and ~/.codex/skills

@@ -12,11 +12,15 @@ STAGING_DIR="$RELEASE_DIR/staging"
 APP_BUNDLE="$STAGING_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_HELPERS="$APP_CONTENTS/Library/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
+APP_CLI="$APP_HELPERS/operator-cli"
 APP_ICON="$APP_RESOURCES/AppIcon.icns"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 LOGO_PNG="$ROOT_DIR/Resources/Assets/operator-logo.png"
+SKILL_SOURCE="$ROOT_DIR/../skills/operator"
+APP_SKILLS_DIR="$APP_RESOURCES/skills"
 DMG_PATH="$RELEASE_DIR/$APP_NAME.dmg"
 
 require_command() {
@@ -33,13 +37,24 @@ require_command shasum
 cd "$ROOT_DIR"
 
 rm -rf "$RELEASE_DIR"
-mkdir -p "$APP_MACOS" "$APP_RESOURCES"
+mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
 
 swift build -c release
 BUILD_BINARY="$(swift build -c release --show-bin-path)/$APP_NAME"
+BUILD_CLI="$(swift build -c release --show-bin-path)/operator-cli"
 
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
+cp "$BUILD_CLI" "$APP_CLI"
+chmod +x "$APP_CLI"
+
+if [[ -d "$SKILL_SOURCE" ]]; then
+  mkdir -p "$APP_SKILLS_DIR"
+  cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/operator"
+else
+  echo "missing skill source: $SKILL_SOURCE" >&2
+  exit 1
+fi
 
 if [[ -f "$LOGO_PNG" ]]; then
   require_command sips
@@ -86,6 +101,12 @@ PLIST
 
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
   require_command codesign
+  codesign \
+    --force \
+    --options runtime \
+    --timestamp \
+    --sign "$CODESIGN_IDENTITY" \
+    "$APP_CLI"
   codesign \
     --force \
     --options runtime \
