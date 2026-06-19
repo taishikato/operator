@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # Cursor Operator app shell and isolated app data
 
@@ -14,12 +14,12 @@ This is a tracer bullet for the app container: the app should build, run, show t
 
 ## Acceptance criteria
 
-- [ ] A separate Cursor Operator Swift package/app exists and builds independently of Codex Operator.
-- [ ] Launching the app opens a native SwiftUI desktop window directly to the task board surface.
-- [ ] The board visibly contains Ready, Running, and Done columns, with Archived not shown as an active default column.
-- [ ] A native Settings scene is reachable from the app.
-- [ ] The app resolves and displays or logs an isolated Cursor Operator app data directory distinct from Codex Operator.
-- [ ] The app has a basic test/build command path documented for future implementation slices.
+- [x] A separate Cursor Operator Swift package/app exists and builds independently of Codex Operator.
+- [x] Launching the app opens a native SwiftUI desktop window directly to the task board surface.
+- [x] The board visibly contains Ready, Running, and Done columns, with Archived not shown as an active default column.
+- [x] A native Settings scene is reachable from the app.
+- [x] The app resolves and displays or logs an isolated Cursor Operator app data directory distinct from Codex Operator.
+- [x] The app has a basic test/build command path documented for future implementation slices.
 
 ## Blocked by
 
