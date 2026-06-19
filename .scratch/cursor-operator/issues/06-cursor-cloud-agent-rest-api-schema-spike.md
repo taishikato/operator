@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # Cursor Cloud Agent REST API schema spike
 
@@ -14,13 +14,13 @@ The output should establish the endpoint path, auth header, request fields, resp
 
 ## Acceptance criteria
 
-- [ ] The preferred Swift REST request contract is documented in implementation-facing notes.
-- [ ] The contract covers auth, prompt text, GitHub repository URL, starting ref, fixed `composer-2.5` model, and auto-create PR.
-- [ ] The expected success response mapping covers Cursor agent id and open URL.
-- [ ] The expected error response mapping covers auth failure, validation failure, malformed response, and network failure.
-- [ ] Fake HTTP fixtures or tests encode the selected request and response shapes.
-- [ ] Any unverifiable live-only assumptions are explicitly listed with a fallback condition.
-- [ ] The spike states whether Swift REST remains the implementation path or a Node SDK helper is required.
+- [x] The preferred Swift REST request contract is documented in implementation-facing notes.
+- [x] The contract covers auth, prompt text, GitHub repository URL, starting ref, fixed `composer-2.5` model, and auto-create PR.
+- [x] The expected success response mapping covers Cursor agent id and open URL.
+- [x] The expected error response mapping covers auth failure, validation failure, malformed response, and network failure.
+- [x] Fake HTTP fixtures or tests encode the selected request and response shapes.
+- [x] Any unverifiable live-only assumptions are explicitly listed with a fallback condition.
+- [x] The spike states whether Swift REST remains the implementation path or a Node SDK helper is required.
 
 ## Blocked by
 
