@@ -22,6 +22,16 @@ import Testing
     #expect(try provider.apiKey() == "crsr_env_key")
 }
 
+@Test func credentialProviderPrefersEnvironmentBeforeStoredKey() throws {
+    let storage = InMemoryCursorCredentialStore(apiKey: "crsr_stored_key")
+    let provider = CursorCredentialProvider(
+        store: storage,
+        environment: ["CURSOR_API_KEY": "crsr_env_key"]
+    )
+
+    #expect(try provider.apiKey() == "crsr_env_key")
+}
+
 @MainActor
 @Test func settingsModelReportsMaskedStatusAndValidationResults() async throws {
     let storage = InMemoryCursorCredentialStore()

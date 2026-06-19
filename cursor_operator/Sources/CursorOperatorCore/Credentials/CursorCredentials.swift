@@ -109,10 +109,13 @@ public struct CursorCredentialProvider: Sendable {
     }
 
     public func apiKey() throws -> String? {
+        if let apiKey = environment["CURSOR_API_KEY"], !apiKey.isEmpty {
+            return apiKey
+        }
         if let stored = try store.loadAPIKey(), !stored.isEmpty {
             return stored
         }
-        return environment["CURSOR_API_KEY"].flatMap { $0.isEmpty ? nil : $0 }
+        return nil
     }
 }
 

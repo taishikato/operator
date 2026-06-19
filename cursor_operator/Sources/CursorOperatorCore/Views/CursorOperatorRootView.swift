@@ -205,13 +205,11 @@ private struct CursorBoardView: View {
     }
 
     private var setupStatusView: some View {
-        let repositoryIcon = model.setupStatus.repositoryState == .missing ? "folder.badge.questionmark" : "folder.badge.checkmark"
-        let credentialIcon = model.setupStatus.credentialState == .missing ? "key.slash" : "key"
         let foregroundStyle: Color = model.setupStatus.canSend ? .secondary : .orange
 
         return HStack(spacing: 14) {
-            Label(model.setupStatus.repositoryMessage, systemImage: repositoryIcon)
-            Label(model.setupStatus.credentialMessage, systemImage: credentialIcon)
+            Label(model.setupStatus.repositoryMessage, systemImage: model.setupStatus.repositoryIconName)
+            Label(model.setupStatus.credentialMessage, systemImage: model.setupStatus.credentialIconName)
         }
         .font(.callout)
         .foregroundStyle(foregroundStyle)

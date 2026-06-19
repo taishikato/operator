@@ -62,3 +62,13 @@ import Testing
     #expect(app.developmentCommands.contains("swift build"))
     #expect(app.developmentCommands.contains("./script/build_and_run.sh"))
 }
+
+@Test func setupStatusUsesConservativeSFSymbolNames() {
+    let ready = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready
+    )
+
+    #expect(ready.repositoryIconName == "folder")
+    #expect(ready.credentialIconName == "key")
+}

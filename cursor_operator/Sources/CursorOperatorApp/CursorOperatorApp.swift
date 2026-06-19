@@ -1,4 +1,5 @@
 import CursorOperatorCore
+import AppKit
 import Foundation
 import SwiftUI
 
@@ -8,6 +9,7 @@ struct CursorOperatorApp: App {
     private let store: CursorOperatorStore
 
     init() {
+        NSApplication.shared.setActivationPolicy(.regular)
         do {
             appDataURL = try CursorOperatorAppBootstrap.applicationDataURL()
             try FileManager.default.createDirectory(
@@ -27,6 +29,9 @@ struct CursorOperatorApp: App {
         WindowGroup("Cursor Operator") {
             CursorOperatorRootView(store: store, appDataURL: appDataURL)
                 .frame(minWidth: 1_040, minHeight: 680)
+                .onAppear {
+                    revealMainWindow()
+                }
         }
         .windowResizability(.contentMinSize)
         .commands {
@@ -47,6 +52,28 @@ struct CursorOperatorApp: App {
         Settings {
             CursorOperatorSettingsView(appDataURL: appDataURL)
                 .frame(width: 520)
+        }
+    }
+
+    private func revealMainWindow() {
+        DispatchQueue.main.async {
+            NSApplication.shared.setActivationPolicy(.regular)
+            NSApplication.shared.unhide(nil)
+            NSApplication.shared.activate(ignoringOtherApps: true)
+
+            for window in NSApplication.shared.windows where window.isVisible || window.canBecomeKey {
+                window.setFrame(
+                    NSRect(
+                        x: window.frame.origin.x,
+                        y: window.frame.origin.y,
+                        width: max(window.frame.width, 1_040),
+                        height: max(window.frame.height, 680)
+                    ),
+                    display: true
+                )
+                window.makeKeyAndOrderFront(nil)
+                window.orderFrontRegardless()
+            }
         }
     }
 }

@@ -43,4 +43,22 @@ public struct CursorSetupStatusProjection: Equatable, Sendable {
             "Cursor API key: ready"
         }
     }
+
+    public var repositoryIconName: String {
+        switch repositoryState {
+        case .missing:
+            "folder.badge.questionmark"
+        case .registered:
+            "folder"
+        }
+    }
+
+    public var credentialIconName: String {
+        switch credentialState {
+        case .missing:
+            "key.slash"
+        case .ready:
+            "key"
+        }
+    }
 }
