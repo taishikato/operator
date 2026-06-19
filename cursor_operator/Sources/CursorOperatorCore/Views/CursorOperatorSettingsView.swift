@@ -3,16 +3,20 @@ import SwiftUI
 public struct CursorOperatorSettingsView: View {
     private let appSpec: CursorOperatorAppSpec
     private let appDataURL: URL
+    private let nodeResolver: any CursorNodeResolving
     @StateObject private var credentialModel: CursorCredentialSettingsModel
     @State private var apiKeyDraft = ""
+    @State private var nodeProjection = CursorNodeSettingsProjection(result: .failure(.missingCompatibleNode))
 
     public init(
         appSpec: CursorOperatorAppSpec = .mvp,
         appDataURL: URL,
-        credentialModel: CursorCredentialSettingsModel = CursorCredentialSettingsModel()
+        credentialModel: CursorCredentialSettingsModel = CursorCredentialSettingsModel(),
+        nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver()
     ) {
         self.appSpec = appSpec
         self.appDataURL = appDataURL
+        self.nodeResolver = nodeResolver
         _credentialModel = StateObject(wrappedValue: credentialModel)
     }
 
@@ -45,6 +49,14 @@ public struct CursorOperatorSettingsView: View {
                 LabeledContent("App", value: appSpec.displayName)
                 LabeledContent("Bundle ID", value: appSpec.bundleIdentifier)
                 LabeledContent("Minimum macOS", value: appSpec.minimumMacOS)
+                LabeledContent("Node.js", value: nodeProjection.status)
+                LabeledContent("Node Path") {
+                    Text(nodeProjection.path)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .help(nodeProjection.path)
+                }
                 LabeledContent("App Data") {
                     Text(appDataURL.path)
                         .foregroundStyle(.secondary)
@@ -64,6 +76,7 @@ public struct CursorOperatorSettingsView: View {
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
         .containerBackground(.thickMaterial, for: .window)
+        .onAppear(perform: refreshNodeProjection)
     }
 
     private var credentialStatusText: String {
@@ -85,6 +98,16 @@ public struct CursorOperatorSettingsView: View {
             "Valid"
         case let .invalid(message):
             message
+        }
+    }
+
+    private func refreshNodeProjection() {
+        do {
+            nodeProjection = CursorNodeSettingsProjection(result: .success(try nodeResolver.resolve()))
+        } catch CursorNodeResolutionError.missingCompatibleNode {
+            nodeProjection = CursorNodeSettingsProjection(result: .failure(.missingCompatibleNode))
+        } catch {
+            nodeProjection = CursorNodeSettingsProjection(result: .failure(.missingCompatibleNode))
         }
     }
 }

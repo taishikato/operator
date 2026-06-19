@@ -127,13 +127,26 @@ public struct CursorCloudAgentSDKRuntime: CursorCloudAgentRuntime {
 }
 
 public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
-    public init() {}
+    private let nodeResolver: any CursorNodeResolving
+
+    public init(nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver()) {
+        self.nodeResolver = nodeResolver
+    }
 
     public func run(helperScriptURL: URL, request: CursorSDKHelperRequest) async throws -> Data {
-        try await Task.detached(priority: .utility) {
+        let node: CursorNodeResolution
+        do {
+            node = try nodeResolver.resolve()
+        } catch CursorNodeResolutionError.missingCompatibleNode {
+            throw CursorRuntimeFailure(message: "Node.js 22.13 or newer is required for the Cursor SDK helper.")
+        } catch {
+            throw CursorRuntimeFailure(message: "Unable to locate Node.js for the Cursor SDK helper.")
+        }
+
+        return try await Task.detached(priority: .utility) {
             let process = Process()
-            process.executableURL = URL(filePath: "/usr/bin/env")
-            process.arguments = ["node", helperScriptURL.path]
+            process.executableURL = node.executableURL
+            process.arguments = [helperScriptURL.path]
 
             let stdin = Pipe()
             let stdout = Pipe()
