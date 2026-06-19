@@ -20,7 +20,7 @@ public final class CursorBoardModel: ObservableObject {
         store: CursorOperatorStore,
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
-        runtime: any CursorCloudAgentRuntime = CursorCloudAgentRESTClient(),
+        runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
         externalOpener: any CursorExternalOpening = SystemCursorExternalOpener()
     ) {
         self.store = store
@@ -111,6 +111,16 @@ public final class CursorBoardModel: ObservableObject {
         try load()
     }
 
+    public func resumeRunMonitoring() async throws {
+        let service = CursorRunMonitorService(
+            store: store,
+            credentialReadiness: CursorSendReadiness(provider: credentialProvider),
+            runtime: runtime
+        )
+        _ = try await service.resumeRunningTasks()
+        try load()
+    }
+
     public func markDone(taskID: UUID) throws {
         _ = try store.markTaskDone(id: taskID)
         try load()
@@ -189,8 +199,21 @@ public final class CursorBoardModel: ObservableObject {
         Task {
             do {
                 try await send(taskID: taskID)
+                resumeRunMonitoringReportingErrors()
             } catch CursorTaskSendError.missingCredentials {
                 errorMessage = "Cursor API key is required before sending."
+            } catch {
+                errorMessage = Self.userFacingMessage(for: error)
+            }
+        }
+    }
+
+    public func resumeRunMonitoringReportingErrors() {
+        Task {
+            do {
+                try await resumeRunMonitoring()
+            } catch CursorTaskSendError.missingCredentials {
+                errorMessage = "Cursor API key is required before monitoring runs."
             } catch {
                 errorMessage = Self.userFacingMessage(for: error)
             }

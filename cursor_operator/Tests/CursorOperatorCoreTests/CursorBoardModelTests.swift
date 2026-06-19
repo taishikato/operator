@@ -239,6 +239,47 @@ import Testing
     #expect(runtime.requests.count == 1)
 }
 
+@MainActor
+@Test func boardModelCanResumeMonitoringAndMoveCompletedRunDone() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Resume", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        cursorAgentID: "agent-resume",
+        cursorRunID: "run-resume",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-resume")!
+    )
+    let runtime = BoardModelMonitoringRuntime(completion: CursorCloudAgentRunCompletion(
+        status: "finished",
+        result: "Complete"
+    ))
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        runtime: runtime
+    )
+    try model.load()
+
+    try await model.resumeRunMonitoring()
+
+    #expect(try store.task(id: task.id)?.status == .done)
+    #expect(runtime.waits.map(\.runID) == ["run-resume"])
+}
+
 private struct BoardModelStubRepositoryInspector: CursorRepositoryInspecting {
     let inspection: CursorRepositoryInspection
 
@@ -258,6 +299,28 @@ private final class BoardModelFakeRuntime: CursorCloudAgentRuntime, @unchecked S
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
         requests.append(request)
         return reference
+    }
+}
+
+private final class BoardModelMonitoringRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
+    let completion: CursorCloudAgentRunCompletion
+    private(set) var waits: [CursorCloudAgentReference] = []
+
+    init(completion: CursorCloudAgentRunCompletion) {
+        self.completion = completion
+    }
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        CursorCloudAgentReference(
+            agentID: "agent-board-monitor",
+            runID: "run-board-monitor",
+            openURL: URL(string: "https://cursor.com/agents/agent-board-monitor")!
+        )
+    }
+
+    func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
+        waits.append(reference)
+        return completion
     }
 }
 

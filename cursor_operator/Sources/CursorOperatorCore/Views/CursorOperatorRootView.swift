@@ -170,6 +170,7 @@ private struct CursorBoardView: View {
         }
         .onAppear {
             model.loadReportingErrors()
+            model.resumeRunMonitoringReportingErrors()
         }
         .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorNewTaskCommand)) { _ in
             presentCreateTaskSheet()
@@ -308,6 +309,12 @@ private struct CursorTaskCardView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(card.title)
                 .font(.callout.weight(.medium))
+
+            if let runStatusText = card.runStatusText {
+                Label(runStatusText, systemImage: card.status == .done ? "checkmark.circle" : "clock")
+                    .font(.caption)
+                    .foregroundStyle(card.status == .done ? .green : .secondary)
+            }
 
             HStack {
                 if card.status == .ready {

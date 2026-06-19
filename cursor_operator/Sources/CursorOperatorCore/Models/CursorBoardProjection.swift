@@ -64,6 +64,19 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     public var canOpenInCursor: Bool {
         hasCursorReference
     }
+
+    public var runStatusText: String? {
+        switch status {
+        case .ready:
+            nil
+        case .running:
+            "Run in progress"
+        case .done:
+            "Run complete"
+        case .archived:
+            nil
+        }
+    }
 }
 
 public struct CursorTaskRunReference: Equatable, Sendable {

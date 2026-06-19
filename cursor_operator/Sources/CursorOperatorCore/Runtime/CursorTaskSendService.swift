@@ -2,6 +2,7 @@ import Foundation
 
 public protocol CursorCloudAgentRuntime: Sendable {
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference
+    func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion
 }
 
 public struct CursorRuntimeFailure: Error, Equatable, Sendable {
@@ -33,6 +34,27 @@ public struct CursorRuntimeFailure: Error, Equatable, Sendable {
         }
 
         return collapsed
+    }
+}
+
+public struct CursorCloudAgentRunCompletion: Equatable, Sendable {
+    public let status: String
+    public let result: String?
+
+    public init(status: String, result: String?) {
+        self.status = status
+        self.result = result
+    }
+
+    public var isComplete: Bool {
+        let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["completed", "complete", "finished", "done", "succeeded", "success"].contains(normalized)
+    }
+}
+
+public extension CursorCloudAgentRuntime {
+    func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
+        throw CursorRuntimeFailure(message: "Cursor runtime does not support run monitoring.")
     }
 }
 
@@ -112,5 +134,9 @@ public struct FakeCursorCloudAgentRuntime: CursorCloudAgentRuntime {
             runID: "run-\(UUID().uuidString)",
             openURL: URL(string: "https://cursor.com/agents/\(agentID)")!
         )
+    }
+
+    public func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
+        CursorCloudAgentRunCompletion(status: "finished", result: nil)
     }
 }
