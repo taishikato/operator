@@ -15,6 +15,10 @@ let package = Package(
         .executable(
             name: "CursorOperator",
             targets: ["CursorOperatorApp"]
+        ),
+        .executable(
+            name: "CursorOperatorSmokeSupport",
+            targets: ["CursorOperatorSmokeSupport"]
         )
     ],
     dependencies: [
@@ -29,6 +33,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "CursorOperatorApp",
+            dependencies: ["CursorOperatorCore"]
+        ),
+        .executableTarget(
+            name: "CursorOperatorSmokeSupport",
             dependencies: ["CursorOperatorCore"]
         ),
         .testTarget(

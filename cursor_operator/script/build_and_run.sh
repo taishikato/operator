@@ -60,6 +60,8 @@ open_app() {
 }
 
 case "$MODE" in
+  --bundle|bundle)
+    ;;
   run)
     open_app
     ;;
@@ -80,7 +82,7 @@ case "$MODE" in
     pgrep -x "$APP_NAME" >/dev/null
     ;;
   *)
-    echo "usage: $0 [run|--debug|--logs|--telemetry|--verify]" >&2
+    echo "usage: $0 [run|--bundle|--debug|--logs|--telemetry|--verify]" >&2
     exit 2
     ;;
 esac
