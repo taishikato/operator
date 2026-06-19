@@ -27,6 +27,7 @@ public struct CursorRunAttempt: Equatable, Identifiable, Sendable {
     public let autoCreatePR: Bool
     public let prompt: String
     public let cursorAgentID: String?
+    public let cursorRunID: String?
     public let cursorURL: URL?
     public let errorMessage: String?
     public let createdAt: Date
@@ -223,6 +224,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
                 cursorAgentID: nil,
+                cursorRunID: nil,
                 cursorURL: nil,
                 errorMessage: errorMessage,
                 createdAt: now,
@@ -242,6 +244,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         autoCreatePR: Bool,
         prompt: String,
         cursorAgentID: String,
+        cursorRunID: String,
         cursorURL: URL,
         now: Date = Date()
     ) throws -> CursorRunAttempt {
@@ -265,6 +268,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
                 cursorAgentID: cursorAgentID,
+                cursorRunID: cursorRunID,
                 cursorURL: cursorURL,
                 errorMessage: nil,
                 createdAt: now,
@@ -367,9 +371,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
             sql: """
                 INSERT INTO runAttempts (
                     id, taskID, repositoryID, status, repositoryURL, startingRef, model,
-                    autoCreatePR, prompt, cursorAgentID, cursorURL, errorMessage, createdAt, completedAt
+                    autoCreatePR, prompt, cursorAgentID, cursorRunID, cursorURL, errorMessage, createdAt, completedAt
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 runAttempt.id.uuidString,
@@ -382,6 +386,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 runAttempt.autoCreatePR,
                 runAttempt.prompt,
                 runAttempt.cursorAgentID,
+                runAttempt.cursorRunID,
                 runAttempt.cursorURL?.absoluteString,
                 runAttempt.errorMessage,
                 runAttempt.createdAt.storageValue,
@@ -444,6 +449,12 @@ private extension CursorOperatorStore {
             }
         }
 
+        migrator.registerMigration("addCursorRunIDToRunAttempts") { db in
+            try db.alter(table: "runAttempts") { table in
+                table.add(column: "cursorRunID", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -500,6 +511,7 @@ private extension CursorOperatorStore {
             autoCreatePR: row["autoCreatePR"],
             prompt: row["prompt"],
             cursorAgentID: row["cursorAgentID"],
+            cursorRunID: row["cursorRunID"],
             cursorURL: cursorURLString.flatMap(URL.init(string:)),
             errorMessage: row["errorMessage"],
             createdAt: Date(storageValue: row["createdAt"]),

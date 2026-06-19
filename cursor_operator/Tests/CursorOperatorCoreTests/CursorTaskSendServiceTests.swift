@@ -1,0 +1,144 @@
+import Foundation
+import Testing
+@testable import CursorOperatorCore
+
+@Test func sendServiceRecordsSuccessfulFakeRuntimeAndMovesTaskRunning() async throws {
+    let fixture = try SendServiceFixture()
+    let runtime = FakeCursorRuntime(result: .success(CursorCloudAgentReference(
+        agentID: "agent-123",
+        runID: "run-123",
+        openURL: URL(string: "https://cursor.com/agents/agent-123")!
+    )))
+    let service = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    let attempt = try await service.send(taskID: fixture.task.id)
+
+    #expect(attempt.status == .succeeded)
+    #expect(attempt.cursorAgentID == "agent-123")
+    #expect(attempt.cursorRunID == "run-123")
+    #expect(attempt.cursorURL == URL(string: "https://cursor.com/agents/agent-123")!)
+    #expect(try fixture.store.task(id: fixture.task.id)?.status == .running)
+    #expect(runtime.requests == [CursorCloudAgentRequestPreview(
+        prompt: fixture.task.prompt,
+        repositoryURL: fixture.repository.githubURL,
+        startingRef: fixture.repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: fixture.task.autoCreatePR
+    )])
+}
+
+@Test func sendServiceRecordsFailureLeavesTaskReadyAndAllowsRetry() async throws {
+    let fixture = try SendServiceFixture()
+    let runtime = FakeCursorRuntime(result: .failure(CursorRuntimeFailure(
+        message: "HTTP 500 body {\"token\":\"crsr_secret_123\",\"detail\":\"raw response\"}"
+    )))
+    let service = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    let failedAttempt = try await service.send(taskID: fixture.task.id)
+
+    #expect(failedAttempt.status == .failed)
+    #expect(failedAttempt.errorMessage == "Cursor run failed. See Cursor for details.")
+    #expect(failedAttempt.errorMessage?.contains("crsr_secret_123") == false)
+    #expect((failedAttempt.errorMessage?.count ?? 0) <= 160)
+    #expect(try fixture.store.task(id: fixture.task.id)?.status == .ready)
+
+    runtime.result = .success(CursorCloudAgentReference(
+        agentID: "agent-456",
+        runID: "run-456",
+        openURL: URL(string: "https://cursor.com/agents/agent-456")!
+    ))
+    let retryAttempt = try await service.send(taskID: fixture.task.id)
+
+    #expect(retryAttempt.status == .succeeded)
+    #expect(try fixture.store.runAttempts(taskID: fixture.task.id).map(\.status) == [.failed, .succeeded])
+}
+
+@Test func sendServiceBlocksMissingCredentialsAndPreventsSecondSuccessfulSend() async throws {
+    let fixture = try SendServiceFixture()
+    let missingService = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.missingProvider),
+        runtime: FakeCursorRuntime(result: .failure(CursorRuntimeFailure(message: "unused")))
+    )
+
+    await #expect(throws: CursorTaskSendError.missingCredentials) {
+        try await missingService.send(taskID: fixture.task.id)
+    }
+
+    let runtime = FakeCursorRuntime(result: .success(CursorCloudAgentReference(
+        agentID: "agent-123",
+        runID: "run-123",
+        openURL: URL(string: "https://cursor.com/agents/agent-123")!
+    )))
+    let readyService = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+    _ = try await readyService.send(taskID: fixture.task.id)
+
+    await #expect(throws: CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun) {
+        try await readyService.send(taskID: fixture.task.id)
+    }
+}
+
+private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
+    var result: Result<CursorCloudAgentReference, CursorRuntimeFailure>
+    private(set) var requests: [CursorCloudAgentRequestPreview] = []
+
+    init(result: Result<CursorCloudAgentReference, CursorRuntimeFailure>) {
+        self.result = result
+    }
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        requests.append(request)
+        return try result.get()
+    }
+}
+
+private struct SendServiceFixture {
+    let store: CursorOperatorStore
+    let repository: CursorRepository
+    let task: CursorTask
+    let readyProvider: CursorCredentialProvider
+    let missingProvider: CursorCredentialProvider
+
+    init() throws {
+        store = try CursorOperatorStore(databaseURL: Self.temporaryDatabaseURL())
+        repository = try store.createRepository(
+            name: "operator",
+            localPath: "/tmp/operator",
+            githubURL: URL(string: "https://github.com/example/operator")!,
+            defaultBranch: "main"
+        )
+        task = try store.createTask(
+            repositoryID: repository.id,
+            title: "Send",
+            prompt: "Prompt exactly",
+            autoCreatePR: true
+        )
+        readyProvider = CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        )
+        missingProvider = CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(),
+            environment: [:]
+        )
+    }
+
+    private static func temporaryDatabaseURL() throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appending(path: "CursorTaskSendServiceTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appending(path: "cursor-operator.sqlite")
+    }
+}

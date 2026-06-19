@@ -230,4 +230,11 @@ public struct CursorSendReadiness: Sendable {
         }
         return .ready
     }
+
+    public func apiKeyForSending() throws -> String {
+        guard let apiKey = try provider.apiKey(), !apiKey.isEmpty else {
+            throw CursorTaskSendError.missingCredentials
+        }
+        return apiKey
+    }
 }

@@ -123,6 +123,8 @@ private struct CursorBoardView: View {
                         } else {
                             ForEach(projectionColumn(for: column.id).cards) { card in
                                 CursorTaskCardView(card: card) {
+                                    model.sendReportingErrors(taskID: card.id)
+                                } markDone: {
                                     model.markDoneReportingErrors(taskID: card.id)
                                 } archive: {
                                     model.archiveReportingErrors(taskID: card.id)
@@ -273,6 +275,7 @@ private struct CursorRepositoryReviewSheet: View {
 
 private struct CursorTaskCardView: View {
     let card: CursorTaskCardProjection
+    let send: () -> Void
     let markDone: () -> Void
     let archive: () -> Void
 
@@ -282,6 +285,10 @@ private struct CursorTaskCardView: View {
                 .font(.callout.weight(.medium))
 
             HStack {
+                if card.status == .ready {
+                    Button("Send", action: send)
+                        .controlSize(.small)
+                }
                 if card.status == .running {
                     Button("Done", action: markDone)
                         .controlSize(.small)

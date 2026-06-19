@@ -11,12 +11,18 @@ public final class CursorBoardModel: ObservableObject {
 
     private let store: CursorOperatorStore
     private let repositoryRegistrationService: CursorRepositoryRegistrationService
+    private let credentialProvider: CursorCredentialProvider
+    private let runtime: any CursorCloudAgentRuntime
 
     public init(
         store: CursorOperatorStore,
-        repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector()
+        repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
+        credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
+        runtime: any CursorCloudAgentRuntime = FakeCursorCloudAgentRuntime()
     ) {
         self.store = store
+        self.credentialProvider = credentialProvider
+        self.runtime = runtime
         repositoryRegistrationService = CursorRepositoryRegistrationService(
             store: store,
             inspector: repositoryInspector
@@ -75,6 +81,16 @@ public final class CursorBoardModel: ObservableObject {
         return try CursorSendPreview(task: task, repository: repository)
     }
 
+    public func send(taskID: UUID) async throws {
+        let service = CursorTaskSendService(
+            store: store,
+            credentialReadiness: CursorSendReadiness(provider: credentialProvider),
+            runtime: runtime
+        )
+        _ = try await service.send(taskID: taskID)
+        try load()
+    }
+
     public func markDone(taskID: UUID) throws {
         _ = try store.markTaskDone(id: taskID)
         try load()
@@ -128,6 +144,18 @@ public final class CursorBoardModel: ObservableObject {
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
             return false
+        }
+    }
+
+    public func sendReportingErrors(taskID: UUID) {
+        Task {
+            do {
+                try await send(taskID: taskID)
+            } catch CursorTaskSendError.missingCredentials {
+                errorMessage = "Cursor API key is required before sending."
+            } catch {
+                errorMessage = Self.userFacingMessage(for: error)
+            }
         }
     }
 

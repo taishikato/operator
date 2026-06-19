@@ -31,6 +31,7 @@ import Testing
         autoCreatePR: false,
         prompt: task.prompt,
         cursorAgentID: "agent-123",
+        cursorRunID: "run-123",
         cursorURL: URL(string: "https://cursor.com/agents/agent-123")!
     )
     let model = CursorBoardModel(store: store)
@@ -94,11 +95,56 @@ import Testing
     #expect(preview.prompt == "Prompt exactly")
 }
 
+@MainActor
+@Test func boardModelSendsReadyTaskWithInjectedRuntime() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "Prompt")
+    let runtime = BoardModelFakeRuntime(reference: CursorCloudAgentReference(
+        agentID: "agent-board",
+        runID: "run-board",
+        openURL: URL(string: "https://cursor.com/agents/agent-board")!
+    ))
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        runtime: runtime
+    )
+    try model.load()
+
+    try await model.send(taskID: task.id)
+
+    #expect(try store.task(id: task.id)?.status == .running)
+    #expect(runtime.requests.count == 1)
+}
+
 private struct BoardModelStubRepositoryInspector: CursorRepositoryInspecting {
     let inspection: CursorRepositoryInspection
 
     func inspect(_ repositoryURL: URL) throws -> CursorRepositoryInspection {
         inspection
+    }
+}
+
+private final class BoardModelFakeRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
+    let reference: CursorCloudAgentReference
+    private(set) var requests: [CursorCloudAgentRequestPreview] = []
+
+    init(reference: CursorCloudAgentReference) {
+        self.reference = reference
+    }
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        requests.append(request)
+        return reference
     }
 }
 

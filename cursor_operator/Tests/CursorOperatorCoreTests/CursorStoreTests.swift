@@ -33,6 +33,7 @@ import Testing
         autoCreatePR: false,
         prompt: task.prompt,
         cursorAgentID: "agent-123",
+        cursorRunID: "run-123",
         cursorURL: URL(string: "https://cursor.com/agents/agent-123")!
     )
 
@@ -44,6 +45,7 @@ import Testing
     #expect(try reloadedStore.task(id: task.id)?.status == .running)
     #expect(try reloadedStore.runAttempts(taskID: task.id).map(\.status) == [.failed, .succeeded])
     #expect(try reloadedStore.runAttempts(taskID: task.id).last?.id == run.id)
+    #expect(try reloadedStore.runAttempts(taskID: task.id).last?.cursorRunID == "run-123")
 }
 
 @Test func storeAllowsReadyEditsAndRejectsImmutableTaskEdits() throws {
@@ -68,6 +70,7 @@ import Testing
         autoCreatePR: false,
         prompt: edited.prompt,
         cursorAgentID: "agent-123",
+        cursorRunID: "run-123",
         cursorURL: URL(string: "https://cursor.com/agents/agent-123")!
     )
 
@@ -130,6 +133,7 @@ import Testing
         autoCreatePR: false,
         prompt: task.prompt,
         cursorAgentID: "agent-123",
+        cursorRunID: "run-123",
         cursorURL: URL(string: "https://cursor.com/agents/agent-123")!
     )
 
@@ -143,6 +147,7 @@ import Testing
             autoCreatePR: false,
             prompt: task.prompt,
             cursorAgentID: "agent-456",
+            cursorRunID: "run-456",
             cursorURL: URL(string: "https://cursor.com/agents/agent-456")!
         )
     }
