@@ -44,6 +44,37 @@ import Testing
     #expect(model.projection.columns.flatMap(\.cards).isEmpty)
 }
 
+@MainActor
+@Test func boardModelPreparesAndSavesReviewedRepositoryRegistration() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repositoryURL = URL(filePath: "/tmp/operator")
+    let inspector = BoardModelStubRepositoryInspector(
+        inspection: CursorRepositoryInspection(
+            name: "operator",
+            localPath: repositoryURL.path,
+            githubURL: URL(string: "https://github.com/example/operator")!,
+            defaultBranch: "main"
+        )
+    )
+    let model = CursorBoardModel(store: store, repositoryInspector: inspector)
+
+    try model.prepareRepositoryRegistration(at: repositoryURL)
+    #expect(model.pendingRepositoryDraft?.defaultBranch == "main")
+
+    try model.savePendingRepository(defaultBranch: "trunk")
+
+    #expect(model.pendingRepositoryDraft == nil)
+    #expect(try store.repositories().first?.defaultBranch == "trunk")
+}
+
+private struct BoardModelStubRepositoryInspector: CursorRepositoryInspecting {
+    let inspection: CursorRepositoryInspection
+
+    func inspect(_ repositoryURL: URL) throws -> CursorRepositoryInspection {
+        inspection
+    }
+}
+
 private func temporaryBoardModelDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorBoardModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)

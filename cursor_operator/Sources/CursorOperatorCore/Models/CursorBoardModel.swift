@@ -5,11 +5,20 @@ import Foundation
 public final class CursorBoardModel: ObservableObject {
     @Published public private(set) var projection: CursorBoardProjection
     @Published public private(set) var errorMessage: String?
+    @Published public private(set) var pendingRepositoryDraft: CursorRepositoryRegistrationDraft?
 
     private let store: CursorOperatorStore
+    private let repositoryRegistrationService: CursorRepositoryRegistrationService
 
-    public init(store: CursorOperatorStore) {
+    public init(
+        store: CursorOperatorStore,
+        repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector()
+    ) {
         self.store = store
+        repositoryRegistrationService = CursorRepositoryRegistrationService(
+            store: store,
+            inspector: repositoryInspector
+        )
         projection = CursorBoardProjection(tasks: [])
     }
 
@@ -35,6 +44,23 @@ public final class CursorBoardModel: ObservableObject {
 
     public func archive(taskID: UUID) throws {
         _ = try store.archiveTask(id: taskID)
+        try load()
+    }
+
+    public func prepareRepositoryRegistration(at repositoryURL: URL) throws {
+        pendingRepositoryDraft = try repositoryRegistrationService.prepareRepository(at: repositoryURL)
+        errorMessage = nil
+    }
+
+    public func savePendingRepository(defaultBranch: String) throws {
+        guard let pendingRepositoryDraft else {
+            return
+        }
+        _ = try repositoryRegistrationService.saveRepository(
+            pendingRepositoryDraft,
+            defaultBranch: defaultBranch
+        )
+        self.pendingRepositoryDraft = nil
         try load()
     }
 
@@ -68,6 +94,22 @@ public final class CursorBoardModel: ObservableObject {
     public func archiveReportingErrors(taskID: UUID) {
         do {
             try archive(taskID: taskID)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func prepareRepositoryRegistrationReportingErrors(at repositoryURL: URL) {
+        do {
+            try prepareRepositoryRegistration(at: repositoryURL)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func savePendingRepositoryReportingErrors(defaultBranch: String) {
+        do {
+            try savePendingRepository(defaultBranch: defaultBranch)
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }

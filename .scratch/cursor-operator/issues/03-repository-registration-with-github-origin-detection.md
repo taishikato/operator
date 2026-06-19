@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # Repository registration with GitHub origin detection
 
@@ -14,14 +14,14 @@ The slice should make the remote-default-branch contract visible: Cursor Cloud A
 
 ## Acceptance criteria
 
-- [ ] Repository registration uses a native folder picker from the desktop app.
-- [ ] Selected folders are validated as Git repositories before saving.
-- [ ] A GitHub origin URL is required and normalized into the repository URL shape expected by Cursor Cloud Agent.
-- [ ] Missing origin, non-Git folders, and unsupported remote URLs are rejected with clear user-facing errors.
-- [ ] Default branch is detected and can be reviewed or edited before save.
-- [ ] GitHub-only repository records without a local checkout are not allowed.
-- [ ] The registration UI explains that Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.
-- [ ] Tests cover valid GitHub origin, missing origin, non-Git folder, unsupported remote URL, detected default branch, and edited default branch.
+- [x] Repository registration uses a native folder picker from the desktop app.
+- [x] Selected folders are validated as Git repositories before saving.
+- [x] A GitHub origin URL is required and normalized into the repository URL shape expected by Cursor Cloud Agent.
+- [x] Missing origin, non-Git folders, and unsupported remote URLs are rejected with clear user-facing errors.
+- [x] Default branch is detected and can be reviewed or edited before save.
+- [x] GitHub-only repository records without a local checkout are not allowed.
+- [x] The registration UI explains that Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.
+- [x] Tests cover valid GitHub origin, missing origin, non-Git folder, unsupported remote URL, detected default branch, and edited default branch.
 
 ## Blocked by
 

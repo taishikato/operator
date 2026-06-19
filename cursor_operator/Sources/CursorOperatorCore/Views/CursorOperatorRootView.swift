@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 public struct CursorOperatorRootView: View {
@@ -80,6 +81,7 @@ public struct CursorOperatorRootView: View {
 private struct CursorBoardView: View {
     let shell: CursorOperatorShellSpec
     @StateObject private var model: CursorBoardModel
+    @State private var defaultBranchDraft = ""
     let appDataURL: URL
 
     init(shell: CursorOperatorShellSpec, store: CursorOperatorStore, appDataURL: URL) {
@@ -150,14 +152,114 @@ private struct CursorBoardView: View {
                 }
                 .help("New Local Task")
             }
+
+            ToolbarItem {
+                Button(action: selectRepositoryFolder) {
+                    Label("Add Repository", systemImage: "folder.badge.plus")
+                }
+                .help("Add Repository")
+            }
         }
         .onAppear {
             model.loadReportingErrors()
+        }
+        .onChange(of: model.pendingRepositoryDraft) { _, draft in
+            defaultBranchDraft = draft?.defaultBranch ?? ""
+        }
+        .sheet(item: pendingRepositoryDraftBinding) { draft in
+            CursorRepositoryReviewSheet(
+                draft: draft,
+                defaultBranch: $defaultBranchDraft
+            ) {
+                model.savePendingRepositoryReportingErrors(defaultBranch: defaultBranchDraft)
+            }
         }
     }
 
     private func projectionColumn(for id: CursorBoardColumnID) -> CursorBoardColumnProjection {
         model.projection.columns.first { $0.id == id } ?? CursorBoardColumnProjection(id: id, title: "", cards: [])
+    }
+
+    private var pendingRepositoryDraftBinding: Binding<CursorRepositoryRegistrationDraft?> {
+        Binding {
+            model.pendingRepositoryDraft
+        } set: { _ in }
+    }
+
+    private func selectRepositoryFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+
+        guard panel.runModal() == .OK, let repositoryURL = panel.url else {
+            return
+        }
+
+        model.prepareRepositoryRegistrationReportingErrors(at: repositoryURL)
+    }
+}
+
+extension CursorRepositoryRegistrationDraft: Identifiable {
+    public var id: String { localPath }
+}
+
+private struct CursorRepositoryReviewSheet: View {
+    let draft: CursorRepositoryRegistrationDraft
+    @Binding var defaultBranch: String
+    let save: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Review Repository")
+                .font(.title3.weight(.semibold))
+
+            LabeledContent("GitHub") {
+                Text(draft.githubURL.absoluteString)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(draft.githubURL.absoluteString)
+            }
+
+            LabeledContent("Local checkout") {
+                Text(draft.localPath)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(draft.localPath)
+            }
+
+            LabeledContent("Default branch") {
+                TextField("main", text: $defaultBranch)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 180)
+            }
+
+            Text("Cursor Cloud Agent starts from the remote default branch. Local-only dirty files and unpushed commits are not included.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    dismiss()
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button {
+                    save()
+                    dismiss()
+                } label: {
+                    Label("Save Repository", systemImage: "checkmark")
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(defaultBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24)
+        .frame(width: 520)
     }
 }
 
