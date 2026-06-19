@@ -46,6 +46,86 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelOpensCursorURLAndCopiesRunIDFallback() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let urlTask = try store.createTask(repositoryID: repository.id, title: "Open URL", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: urlTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: urlTask.prompt,
+        cursorAgentID: "agent-url",
+        cursorRunID: "run-url",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-url")!
+    )
+    let fallbackTask = try store.createTask(repositoryID: repository.id, title: "Copy run", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: fallbackTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: fallbackTask.prompt,
+        cursorAgentID: "agent-copy",
+        cursorRunID: "run-copy",
+        cursorURL: nil
+    )
+    let opener = BoardModelFakeExternalOpener()
+    let model = CursorBoardModel(store: store, externalOpener: opener)
+
+    try model.openInCursor(taskID: urlTask.id)
+    try model.openInCursor(taskID: fallbackTask.id)
+
+    #expect(opener.actions == [
+        .openURL(URL(string: "https://cursor.com/agents/agent-url")!),
+        .copyRunID("run-copy")
+    ])
+}
+
+@MainActor
+@Test func boardModelManualDoneDoesNotStartCursorRuntime() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Manual", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        cursorAgentID: "agent-manual",
+        cursorRunID: "run-manual",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-manual")!
+    )
+    let runtime = BoardModelFakeRuntime(reference: CursorCloudAgentReference(
+        agentID: "unused",
+        runID: "unused",
+        openURL: URL(string: "https://cursor.com/agents/unused")!
+    ))
+    let model = CursorBoardModel(store: store, runtime: runtime)
+    try model.load()
+
+    try model.markDone(taskID: task.id)
+
+    #expect(try store.task(id: task.id)?.status == .done)
+    #expect(runtime.requests.isEmpty)
+}
+
+@MainActor
 @Test func boardModelPreparesAndSavesReviewedRepositoryRegistration() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repositoryURL = URL(filePath: "/tmp/operator")
@@ -145,6 +225,15 @@ private final class BoardModelFakeRuntime: CursorCloudAgentRuntime, @unchecked S
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
         requests.append(request)
         return reference
+    }
+}
+
+@MainActor
+private final class BoardModelFakeExternalOpener: CursorExternalOpening {
+    private(set) var actions: [CursorExternalOpenAction] = []
+
+    func perform(_ action: CursorExternalOpenAction) {
+        actions.append(action)
     }
 }
 

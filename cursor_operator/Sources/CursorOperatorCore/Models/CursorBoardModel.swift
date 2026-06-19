@@ -13,16 +13,19 @@ public final class CursorBoardModel: ObservableObject {
     private let repositoryRegistrationService: CursorRepositoryRegistrationService
     private let credentialProvider: CursorCredentialProvider
     private let runtime: any CursorCloudAgentRuntime
+    private let externalOpener: any CursorExternalOpening
 
     public init(
         store: CursorOperatorStore,
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
-        runtime: any CursorCloudAgentRuntime = CursorCloudAgentRESTClient()
+        runtime: any CursorCloudAgentRuntime = CursorCloudAgentRESTClient(),
+        externalOpener: any CursorExternalOpening = SystemCursorExternalOpener()
     ) {
         self.store = store
         self.credentialProvider = credentialProvider
         self.runtime = runtime
+        self.externalOpener = externalOpener
         repositoryRegistrationService = CursorRepositoryRegistrationService(
             store: store,
             inspector: repositoryInspector
@@ -101,6 +104,24 @@ public final class CursorBoardModel: ObservableObject {
         try load()
     }
 
+    public func openInCursor(taskID: UUID) throws {
+        guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded }) else {
+            throw CursorOpenInCursorError.noCursorReference
+        }
+
+        let action: CursorExternalOpenAction
+        if let cursorURL = successfulAttempt.cursorURL {
+            action = .openURL(cursorURL)
+        } else if let cursorRunID = successfulAttempt.cursorRunID {
+            action = .copyRunID(cursorRunID)
+        } else {
+            action = .openDashboard(CursorCloudAgentDestinations.dashboard)
+        }
+
+        externalOpener.perform(action)
+        errorMessage = nil
+    }
+
     public func prepareRepositoryRegistration(at repositoryURL: URL) throws {
         pendingRepositoryDraft = try repositoryRegistrationService.prepareRepository(at: repositoryURL)
         errorMessage = nil
@@ -170,6 +191,14 @@ public final class CursorBoardModel: ObservableObject {
     public func archiveReportingErrors(taskID: UUID) {
         do {
             try archive(taskID: taskID)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func openInCursorReportingErrors(taskID: UUID) {
+        do {
+            try openInCursor(taskID: taskID)
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }

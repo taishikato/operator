@@ -2,12 +2,26 @@ import Foundation
 
 public struct CursorBoardProjection: Equatable, Sendable {
     public let columns: [CursorBoardColumnProjection]
+    public let archivedCards: [CursorTaskCardProjection]
 
     public static func load(from store: CursorOperatorStore) throws -> CursorBoardProjection {
-        try CursorBoardProjection(tasks: store.tasks())
+        let tasks = try store.tasks()
+        var runReferencesByTaskID: [UUID: CursorTaskRunReference] = [:]
+        for task in tasks {
+            let successfulAttempt = try store.runAttempts(taskID: task.id)
+                .last { $0.status == .succeeded }
+            if let successfulAttempt {
+                runReferencesByTaskID[task.id] = CursorTaskRunReference(
+                    cursorAgentID: successfulAttempt.cursorAgentID,
+                    cursorRunID: successfulAttempt.cursorRunID,
+                    cursorURL: successfulAttempt.cursorURL
+                )
+            }
+        }
+        return CursorBoardProjection(tasks: tasks, runReferencesByTaskID: runReferencesByTaskID)
     }
 
-    public init(tasks: [CursorTask]) {
+    public init(tasks: [CursorTask], runReferencesByTaskID: [UUID: CursorTaskRunReference] = [:]) {
         let activeTasks = tasks.filter { $0.status != .archived }
         columns = [CursorTaskStatus.ready, .running, .done].map { status in
             CursorBoardColumnProjection(
@@ -15,9 +29,12 @@ public struct CursorBoardProjection: Equatable, Sendable {
                 title: status.columnTitle,
                 cards: activeTasks
                     .filter { $0.status == status }
-                    .map { CursorTaskCardProjection(task: $0) }
+                    .map { CursorTaskCardProjection(task: $0, runReference: runReferencesByTaskID[$0.id]) }
             )
         }
+        archivedCards = tasks
+            .filter { $0.status == .archived }
+            .map { CursorTaskCardProjection(task: $0, runReference: runReferencesByTaskID[$0.id]) }
     }
 }
 
@@ -31,11 +48,33 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let title: String
     public let status: CursorTaskStatus
+    public let hasCursorReference: Bool
+    public let cursorRunID: String?
+    public let cursorURL: URL?
 
-    public init(task: CursorTask) {
+    public init(task: CursorTask, runReference: CursorTaskRunReference? = nil) {
         id = task.id
         title = task.title
         status = task.status
+        hasCursorReference = runReference != nil
+        cursorRunID = runReference?.cursorRunID
+        cursorURL = runReference?.cursorURL
+    }
+
+    public var canOpenInCursor: Bool {
+        hasCursorReference
+    }
+}
+
+public struct CursorTaskRunReference: Equatable, Sendable {
+    public let cursorAgentID: String?
+    public let cursorRunID: String?
+    public let cursorURL: URL?
+
+    public init(cursorAgentID: String?, cursorRunID: String?, cursorURL: URL?) {
+        self.cursorAgentID = cursorAgentID
+        self.cursorRunID = cursorRunID
+        self.cursorURL = cursorURL
     }
 }
 

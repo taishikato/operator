@@ -97,6 +97,62 @@ import Testing
     #expect(projection.columns.flatMap(\.cards).map(\.id) == [visibleTask.id])
 }
 
+@Test func boardProjectionExposesCursorReferencesForSentRunningDoneAndArchivedTasks() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let runningTask = try store.createTask(repositoryID: repository.id, title: "Running", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: runningTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: runningTask.prompt,
+        cursorAgentID: "agent-running",
+        cursorRunID: "run-running",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-running")!
+    )
+    let doneTask = try store.createTask(repositoryID: repository.id, title: "Done", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: doneTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: doneTask.prompt,
+        cursorAgentID: "agent-done",
+        cursorRunID: "run-done",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-done")!
+    )
+    _ = try store.markTaskDone(id: doneTask.id)
+    let archivedTask = try store.createTask(repositoryID: repository.id, title: "Archived", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: archivedTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: archivedTask.prompt,
+        cursorAgentID: "agent-archived",
+        cursorRunID: "run-archived",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-archived")!
+    )
+    _ = try store.archiveTask(id: archivedTask.id)
+
+    let projection = try CursorBoardProjection.load(from: store)
+    let activeCards = projection.columns.flatMap(\.cards)
+
+    #expect(activeCards.first { $0.id == runningTask.id }?.canOpenInCursor == true)
+    #expect(activeCards.first { $0.id == doneTask.id }?.canOpenInCursor == true)
+    #expect(projection.archivedCards.first { $0.id == archivedTask.id }?.canOpenInCursor == true)
+    #expect(projection.archivedCards.first { $0.id == archivedTask.id }?.cursorURL == URL(string: "https://cursor.com/agents/agent-archived")!)
+}
+
 @Test func storePreventsRerunAfterOneSuccessfulSendButAllowsFailedRetries() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(

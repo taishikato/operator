@@ -49,7 +49,7 @@ public struct CursorOperatorRootView: View {
                 CursorBoardView(shell: shell, store: store, appDataURL: appDataURL)
                     .navigationTitle("Board")
             case .archived:
-                CursorArchivedView()
+                CursorArchivedView(store: store)
                     .navigationTitle("Archived")
             }
         }
@@ -124,6 +124,8 @@ private struct CursorBoardView: View {
                             ForEach(projectionColumn(for: column.id).cards) { card in
                                 CursorTaskCardView(card: card) {
                                     model.sendReportingErrors(taskID: card.id)
+                                } openInCursor: {
+                                    model.openInCursorReportingErrors(taskID: card.id)
                                 } markDone: {
                                     model.markDoneReportingErrors(taskID: card.id)
                                 } archive: {
@@ -276,6 +278,7 @@ private struct CursorRepositoryReviewSheet: View {
 private struct CursorTaskCardView: View {
     let card: CursorTaskCardProjection
     let send: () -> Void
+    let openInCursor: () -> Void
     let markDone: () -> Void
     let archive: () -> Void
 
@@ -289,12 +292,18 @@ private struct CursorTaskCardView: View {
                     Button("Send", action: send)
                         .controlSize(.small)
                 }
+                if card.canOpenInCursor {
+                    Button("Open in Cursor", action: openInCursor)
+                        .controlSize(.small)
+                }
                 if card.status == .running {
                     Button("Done", action: markDone)
                         .controlSize(.small)
                 }
-                Button("Archive", action: archive)
-                    .controlSize(.small)
+                if card.status != .archived {
+                    Button("Archive", action: archive)
+                        .controlSize(.small)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -415,11 +424,39 @@ private struct CursorTaskCreationSheet: View {
 }
 
 private struct CursorArchivedView: View {
+    @StateObject private var model: CursorBoardModel
+
+    init(store: CursorOperatorStore) {
+        _model = StateObject(wrappedValue: CursorBoardModel(store: store))
+    }
+
     var body: some View {
-        ContentUnavailableView(
-            "No Archived Tasks",
-            systemImage: "archivebox",
-            description: Text("Archived Cursor tasks stay out of the default board.")
-        )
+        Group {
+            if model.projection.archivedCards.isEmpty {
+                ContentUnavailableView(
+                    "No Archived Tasks",
+                    systemImage: "archivebox",
+                    description: Text("Archived Cursor tasks stay out of the default board.")
+                )
+            } else {
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 12) {
+                        ForEach(model.projection.archivedCards) { card in
+                            CursorTaskCardView(card: card) {
+                            } openInCursor: {
+                                model.openInCursorReportingErrors(taskID: card.id)
+                            } markDone: {
+                            } archive: {
+                            }
+                        }
+                    }
+                    .padding(24)
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                }
+            }
+        }
+        .onAppear {
+            model.loadReportingErrors()
+        }
     }
 }

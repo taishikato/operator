@@ -245,7 +245,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         prompt: String,
         cursorAgentID: String,
         cursorRunID: String,
-        cursorURL: URL,
+        cursorURL: URL?,
         now: Date = Date()
     ) throws -> CursorRunAttempt {
         try dbQueue.write { db in
