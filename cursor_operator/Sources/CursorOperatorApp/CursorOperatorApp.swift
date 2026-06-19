@@ -1,4 +1,5 @@
 import CursorOperatorCore
+import Foundation
 import SwiftUI
 
 @main
@@ -28,6 +29,20 @@ struct CursorOperatorApp: App {
                 .frame(minWidth: 1_040, minHeight: 680)
         }
         .windowResizability(.contentMinSize)
+        .commands {
+            SidebarCommands()
+            CommandGroup(replacing: .newItem) {
+                Button("New Cursor Task") {
+                    NotificationCenter.default.post(name: .cursorOperatorNewTaskCommand, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: .command)
+
+                Button("Add Repository") {
+                    NotificationCenter.default.post(name: .cursorOperatorAddRepositoryCommand, object: nil)
+                }
+                .keyboardShortcut("o", modifiers: .command)
+            }
+        }
 
         Settings {
             CursorOperatorSettingsView(appDataURL: appDataURL)

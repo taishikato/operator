@@ -14,6 +14,39 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelReportsRepositoryAndCredentialSetupStatus() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let missingCredentialModel = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:])
+    )
+
+    try missingCredentialModel.load()
+    #expect(missingCredentialModel.setupStatus.repositoryState == .missing)
+    #expect(missingCredentialModel.setupStatus.credentialState == .missing)
+    #expect(missingCredentialModel.setupStatus.canSend == false)
+
+    _ = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let readyModel = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        )
+    )
+
+    try readyModel.load()
+    #expect(readyModel.setupStatus.repositoryState == .registered(count: 1))
+    #expect(readyModel.setupStatus.credentialState == .ready)
+    #expect(readyModel.setupStatus.canSend)
+}
+
+@MainActor
 @Test func boardModelMovesRunningTasksToDoneAndArchivesActiveTasks() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(

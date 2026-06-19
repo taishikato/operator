@@ -57,3 +57,34 @@ import Testing
     #expect(malformed == "Cursor returned an unexpected response.")
     #expect(network == "Unable to reach Cursor Cloud Agent.")
 }
+
+@Test func cloudAgentContractExcludesMVPOutOfScopeOwnershipFields() throws {
+    let preview = CursorCloudAgentRequestPreview(
+        prompt: "Exact prompt",
+        repositoryURL: URL(string: "https://github.com/example/operator")!,
+        startingRef: "main",
+        model: CursorModel.fixed,
+        autoCreatePR: true
+    )
+
+    let request = try CursorCloudAgentAPIContract.createAgentRequest(preview: preview)
+    let disallowedFields = [
+        "branchName",
+        "pullRequestTitle",
+        "pullRequestBody",
+        "rawLogs",
+        "eventStream",
+        "transcript",
+        "diff",
+        "commits",
+        "testResults",
+        "resultClassification",
+        "webhookURL",
+        "desktopDeepLink"
+    ]
+
+    for field in disallowedFields {
+        #expect(request.bodyValue(field) == nil)
+    }
+    #expect(request.bodyValue("prompt.text") as? String == "Exact prompt")
+}

@@ -1,3 +1,5 @@
+import Foundation
+
 public struct CursorOperatorShellSpec: Equatable, Sendable {
     public let launchDestination: CursorOperatorDestination
     public let board: CursorBoardSpec
@@ -11,6 +13,10 @@ public struct CursorOperatorShellSpec: Equatable, Sendable {
                 CursorBoardColumnSpec(id: .ready, title: "Ready"),
                 CursorBoardColumnSpec(id: .running, title: "Running"),
                 CursorBoardColumnSpec(id: .done, title: "Done")
+            ],
+            commands: [
+                CursorBoardCommandSpec(id: .newTask, title: "New Cursor Task", keyboardShortcut: "Command-N"),
+                CursorBoardCommandSpec(id: .addRepository, title: "Add Repository", keyboardShortcut: "Command-O")
             ],
             emptyState: CursorBoardEmptyState(
                 title: "No Cursor tasks yet",
@@ -46,12 +52,24 @@ public enum CursorOperatorSidebarSelection: CaseIterable, Equatable, Hashable, S
 
 public struct CursorBoardSpec: Equatable, Sendable {
     public let columns: [CursorBoardColumnSpec]
+    public let commands: [CursorBoardCommandSpec]
     public let emptyState: CursorBoardEmptyState
 }
 
 public struct CursorBoardColumnSpec: Equatable, Identifiable, Sendable {
     public let id: CursorBoardColumnID
     public let title: String
+}
+
+public enum CursorBoardCommandID: Equatable, Sendable {
+    case newTask
+    case addRepository
+}
+
+public struct CursorBoardCommandSpec: Equatable, Identifiable, Sendable {
+    public let id: CursorBoardCommandID
+    public let title: String
+    public let keyboardShortcut: String
 }
 
 public enum CursorBoardColumnID: Equatable, Sendable {
@@ -64,4 +82,9 @@ public enum CursorBoardColumnID: Equatable, Sendable {
 public struct CursorBoardEmptyState: Equatable, Sendable {
     public let title: String
     public let message: String
+}
+
+public extension Notification.Name {
+    static let cursorOperatorNewTaskCommand = Notification.Name("com.focus.cursor-operator.new-task")
+    static let cursorOperatorAddRepositoryCommand = Notification.Name("com.focus.cursor-operator.add-repository")
 }

@@ -99,7 +99,9 @@ private struct CursorBoardView: View {
                     .foregroundStyle(.red)
             }
 
-            Text("Cursor Cloud Agent starts from the remote default branch.")
+            setupStatusView
+
+            Text("Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
@@ -151,10 +153,7 @@ private struct CursorBoardView: View {
         .toolbar {
             ToolbarItem {
                 Button {
-                    if model.creationDraft.repositoryID == nil {
-                        model.creationDraft.repositoryID = model.repositories.first?.id
-                    }
-                    showCreateTaskSheet = true
+                    presentCreateTaskSheet()
                 } label: {
                     Label("New Task", systemImage: "plus")
                 }
@@ -171,6 +170,12 @@ private struct CursorBoardView: View {
         }
         .onAppear {
             model.loadReportingErrors()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorNewTaskCommand)) { _ in
+            presentCreateTaskSheet()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorAddRepositoryCommand)) { _ in
+            selectRepositoryFolder()
         }
         .onChange(of: model.pendingRepositoryDraft) { _, draft in
             defaultBranchDraft = draft?.defaultBranch ?? ""
@@ -198,6 +203,19 @@ private struct CursorBoardView: View {
         } set: { _ in }
     }
 
+    private var setupStatusView: some View {
+        let repositoryIcon = model.setupStatus.repositoryState == .missing ? "folder.badge.questionmark" : "folder.badge.checkmark"
+        let credentialIcon = model.setupStatus.credentialState == .missing ? "key.slash" : "key"
+        let foregroundStyle: Color = model.setupStatus.canSend ? .secondary : .orange
+
+        return HStack(spacing: 14) {
+            Label(model.setupStatus.repositoryMessage, systemImage: repositoryIcon)
+            Label(model.setupStatus.credentialMessage, systemImage: credentialIcon)
+        }
+        .font(.callout)
+        .foregroundStyle(foregroundStyle)
+    }
+
     private func selectRepositoryFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
@@ -210,6 +228,10 @@ private struct CursorBoardView: View {
         }
 
         model.prepareRepositoryRegistrationReportingErrors(at: repositoryURL)
+    }
+
+    private func presentCreateTaskSheet() {
+        showCreateTaskSheet = model.prepareCreateTaskDraftForPresentation()
     }
 }
 

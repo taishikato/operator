@@ -21,6 +21,21 @@ import Testing
     #expect(shell.sceneDestinations.contains(.settings))
 }
 
+@Test func commonBoardActionsHaveToolbarMenuAndKeyboardPaths() {
+    let shell = CursorOperatorShellSpec.mvp
+
+    #expect(shell.board.commands.contains(CursorBoardCommandSpec(
+        id: .newTask,
+        title: "New Cursor Task",
+        keyboardShortcut: "Command-N"
+    )))
+    #expect(shell.board.commands.contains(CursorBoardCommandSpec(
+        id: .addRepository,
+        title: "Add Repository",
+        keyboardShortcut: "Command-O"
+    )))
+}
+
 @Test func cursorOperatorUsesIsolatedIdentityAndDataRoot() {
     let app = CursorOperatorAppSpec.mvp
 
@@ -29,6 +44,15 @@ import Testing
     #expect(app.applicationSupportDirectoryName == "Cursor Operator")
     #expect(app.databaseFileName == "cursor-operator.sqlite")
     #expect(app.applicationSupportDirectoryName != "Operator")
+}
+
+@Test func mvpScopeKeepsCursorAndGitOrchestrationOutOfScope() {
+    #expect(CursorOperatorMVPScope.outOfScope.contains(.localCursorRuntime))
+    #expect(CursorOperatorMVPScope.outOfScope.contains(.branchOwnership))
+    #expect(CursorOperatorMVPScope.outOfScope.contains(.rawLogs))
+    #expect(CursorOperatorMVPScope.outOfScope.contains(.resultClassification))
+    #expect(CursorOperatorMVPScope.disallowedAutomaticGitCommands == ["fetch", "pull", "push", "merge", "rebase"])
+    #expect(CursorOperatorMVPScope.cursorContinuations == [.webURL, .copyRunID, .dashboard])
 }
 
 @Test func cursorOperatorDocumentsBasicBuildAndTestCommands() {

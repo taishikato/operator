@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # MVP guardrails and desktop polish
 
@@ -14,14 +14,14 @@ This slice should also smooth the board and settings experience enough that the 
 
 ## Acceptance criteria
 
-- [ ] Toolbar, menu, and keyboard paths exist for common board actions where appropriate.
-- [ ] Repository and Cursor credential setup status are visible enough to diagnose why sending is unavailable.
-- [ ] The UI clearly states or shows that Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.
-- [ ] Guardrail tests verify no prompt augmentation is introduced.
-- [ ] Guardrail tests verify Cursor Operator does not own branch naming, PR creation, raw logs, diffs, commits, test results, or Cursor result classification.
-- [ ] Guardrail tests verify no automatic fetch, pull, push, merge, or rebase is performed by MVP send flows.
-- [ ] Guardrail tests verify no Cursor run polling, webhook handling, or Cursor Desktop deep linking is required.
-- [ ] The final app build and test suite pass for the Cursor Operator package.
+- [x] Toolbar, menu, and keyboard paths exist for common board actions where appropriate.
+- [x] Repository and Cursor credential setup status are visible enough to diagnose why sending is unavailable.
+- [x] The UI clearly states or shows that Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.
+- [x] Guardrail tests verify no prompt augmentation is introduced.
+- [x] Guardrail tests verify Cursor Operator does not own branch naming, PR creation, raw logs, diffs, commits, test results, or Cursor result classification.
+- [x] Guardrail tests verify no automatic fetch, pull, push, merge, or rebase is performed by MVP send flows.
+- [x] Guardrail tests verify no Cursor run polling, webhook handling, or Cursor Desktop deep linking is required.
+- [x] The final app build and test suite pass for the Cursor Operator package.
 
 ## Blocked by
 

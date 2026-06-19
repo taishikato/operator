@@ -5,6 +5,7 @@ import Foundation
 public final class CursorBoardModel: ObservableObject {
     @Published public private(set) var projection: CursorBoardProjection
     @Published public private(set) var repositories: [CursorRepository]
+    @Published public private(set) var setupStatus: CursorSetupStatusProjection
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var pendingRepositoryDraft: CursorRepositoryRegistrationDraft?
     @Published public var creationDraft: CursorTaskCreationDraft
@@ -32,11 +33,16 @@ public final class CursorBoardModel: ObservableObject {
         )
         projection = CursorBoardProjection(tasks: [])
         repositories = []
+        setupStatus = .empty
         creationDraft = CursorTaskCreationDraft()
     }
 
     public func load() throws {
         repositories = try store.repositories()
+        setupStatus = try CursorSetupStatusProjection(
+            repositoryState: repositories.isEmpty ? .missing : .registered(count: repositories.count),
+            credentialState: CursorSendReadiness(provider: credentialProvider).credentialState()
+        )
         projection = try CursorBoardProjection.load(from: store)
         errorMessage = nil
     }
@@ -56,6 +62,17 @@ public final class CursorBoardModel: ObservableObject {
         creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
         try load()
         return task
+    }
+
+    public func prepareCreateTaskDraftForPresentation() -> Bool {
+        if creationDraft.repositoryID == nil {
+            creationDraft.repositoryID = repositories.first?.id
+        }
+        guard creationDraft.repositoryID != nil else {
+            errorMessage = "Register a repository before creating a task."
+            return false
+        }
+        return true
     }
 
     public func updateTaskFromDraft(taskID: UUID) throws -> CursorTask {
