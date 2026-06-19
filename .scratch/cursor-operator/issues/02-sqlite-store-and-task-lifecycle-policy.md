@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # Local SQLite store and task lifecycle policy
 
@@ -14,14 +14,14 @@ This slice should establish the deep persistence and lifecycle modules that late
 
 ## Acceptance criteria
 
-- [ ] Cursor Operator stores repositories, tasks, and run attempt metadata in a local SQLite database under the Cursor Operator app data directory.
-- [ ] Ready, Running, Done, and Archived task states are represented in the domain model and persistence layer.
-- [ ] Ready tasks are editable.
-- [ ] Running, Done, and Archived task content is immutable.
-- [ ] Running tasks can be manually marked Done.
-- [ ] Ready, Running, and Done tasks can be archived, and archived tasks are hidden from the default board.
-- [ ] The lifecycle policy prevents hard delete and rerun-after-success behavior at the domain level.
-- [ ] Tests cover allowed and disallowed lifecycle transitions, immutability, archive behavior, and persistence across store reload.
+- [x] Cursor Operator stores repositories, tasks, and run attempt metadata in a local SQLite database under the Cursor Operator app data directory.
+- [x] Ready, Running, Done, and Archived task states are represented in the domain model and persistence layer.
+- [x] Ready tasks are editable.
+- [x] Running, Done, and Archived task content is immutable.
+- [x] Running tasks can be manually marked Done.
+- [x] Ready, Running, and Done tasks can be archived, and archived tasks are hidden from the default board.
+- [x] The lifecycle policy prevents hard delete and rerun-after-success behavior at the domain level.
+- [x] Tests cover allowed and disallowed lifecycle transitions, immutability, archive behavior, and persistence across store reload.
 
 ## Blocked by
 

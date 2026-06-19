@@ -1,6 +1,14 @@
 import Foundation
 
 public enum CursorOperatorAppBootstrap {
+    public static func initializeStore(databaseURL: URL? = nil) throws -> CursorOperatorStore {
+        if let databaseURL {
+            return try CursorOperatorStore(databaseURL: databaseURL)
+        }
+
+        return try CursorOperatorStore(databaseURL: Self.databaseURL())
+    }
+
     public static func applicationDataURL(
         appSpec: CursorOperatorAppSpec = .mvp,
         fileManager: FileManager = .default

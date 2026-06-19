@@ -4,6 +4,7 @@ import SwiftUI
 @main
 struct CursorOperatorApp: App {
     private let appDataURL: URL
+    private let store: CursorOperatorStore
 
     init() {
         do {
@@ -11,6 +12,9 @@ struct CursorOperatorApp: App {
             try FileManager.default.createDirectory(
                 at: appDataURL,
                 withIntermediateDirectories: true
+            )
+            store = try CursorOperatorAppBootstrap.initializeStore(
+                databaseURL: appDataURL.appending(path: CursorOperatorAppSpec.mvp.databaseFileName)
             )
             print("Cursor Operator app data: \(appDataURL.path)")
         } catch {
@@ -20,7 +24,7 @@ struct CursorOperatorApp: App {
 
     var body: some Scene {
         WindowGroup("Cursor Operator") {
-            CursorOperatorRootView(appDataURL: appDataURL)
+            CursorOperatorRootView(store: store, appDataURL: appDataURL)
                 .frame(minWidth: 1_040, minHeight: 680)
         }
         .windowResizability(.contentMinSize)

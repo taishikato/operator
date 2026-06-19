@@ -1,0 +1,52 @@
+import Foundation
+import Testing
+@testable import CursorOperatorCore
+
+@MainActor
+@Test func boardModelCreatesLocalPlaceholderTaskForMVPDemo() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let model = CursorBoardModel(store: store)
+
+    try model.createLocalTask(title: "Local task", prompt: "Use the local store")
+
+    #expect(model.projection.columns.flatMap(\.cards).map(\.title) == ["Local task"])
+    #expect(try store.repositories().first?.name == "Local Cursor Repository")
+}
+
+@MainActor
+@Test func boardModelMovesRunningTasksToDoneAndArchivesActiveTasks() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Finish", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        cursorAgentID: "agent-123",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-123")!
+    )
+    let model = CursorBoardModel(store: store)
+    try model.load()
+
+    try model.markDone(taskID: task.id)
+    #expect(try store.task(id: task.id)?.status == .done)
+
+    try model.archive(taskID: task.id)
+    #expect(try store.task(id: task.id)?.status == .archived)
+    #expect(model.projection.columns.flatMap(\.cards).isEmpty)
+}
+
+private func temporaryBoardModelDatabaseURL() throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "CursorBoardModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    return directory.appending(path: "cursor-operator.sqlite")
+}

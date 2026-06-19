@@ -17,8 +17,16 @@ let package = Package(
             targets: ["CursorOperatorApp"]
         )
     ],
+    dependencies: [
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.10.0")
+    ],
     targets: [
-        .target(name: "CursorOperatorCore"),
+        .target(
+            name: "CursorOperatorCore",
+            dependencies: [
+                .product(name: "GRDB", package: "GRDB.swift")
+            ]
+        ),
         .executableTarget(
             name: "CursorOperatorApp",
             dependencies: ["CursorOperatorCore"]

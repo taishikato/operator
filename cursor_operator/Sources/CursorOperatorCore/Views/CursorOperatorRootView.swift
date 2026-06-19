@@ -3,14 +3,17 @@ import SwiftUI
 public struct CursorOperatorRootView: View {
     private let shell: CursorOperatorShellSpec
     private let appDataURL: URL
+    private let store: CursorOperatorStore
 
     @State private var selection: CursorOperatorSidebarSelection
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     public init(
+        store: CursorOperatorStore,
         shell: CursorOperatorShellSpec = .mvp,
         appDataURL: URL
     ) {
+        self.store = store
         self.shell = shell
         self.appDataURL = appDataURL
         _selection = State(initialValue: CursorOperatorSidebarSelection(destination: shell.launchDestination) ?? .board)
@@ -42,7 +45,7 @@ public struct CursorOperatorRootView: View {
         } detail: {
             switch selection {
             case .board:
-                CursorBoardView(shell: shell, appDataURL: appDataURL)
+                CursorBoardView(shell: shell, store: store, appDataURL: appDataURL)
                     .navigationTitle("Board")
             case .archived:
                 CursorArchivedView()
@@ -76,10 +79,23 @@ public struct CursorOperatorRootView: View {
 
 private struct CursorBoardView: View {
     let shell: CursorOperatorShellSpec
+    @StateObject private var model: CursorBoardModel
     let appDataURL: URL
+
+    init(shell: CursorOperatorShellSpec, store: CursorOperatorStore, appDataURL: URL) {
+        self.shell = shell
+        self.appDataURL = appDataURL
+        _model = StateObject(wrappedValue: CursorBoardModel(store: store))
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let errorMessage = model.errorMessage {
+                Text(errorMessage)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+            }
+
             Text("Cursor Cloud Agent starts from the remote default branch.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -90,16 +106,26 @@ private struct CursorBoardView: View {
                         Text(column.title)
                             .font(.headline)
 
-                        VStack(spacing: 8) {
-                            Text(shell.board.emptyState.title)
-                                .font(.callout.weight(.medium))
-                            Text(shell.board.emptyState.message)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
+                        if projectionColumn(for: column.id).cards.isEmpty {
+                            VStack(spacing: 8) {
+                                Text(shell.board.emptyState.title)
+                                    .font(.callout.weight(.medium))
+                                Text(shell.board.emptyState.message)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: 140)
+                            .padding(12)
+                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                        } else {
+                            ForEach(projectionColumn(for: column.id).cards) { card in
+                                CursorTaskCardView(card: card) {
+                                    model.markDoneReportingErrors(taskID: card.id)
+                                } archive: {
+                                    model.archiveReportingErrors(taskID: card.id)
+                                }
+                            }
                         }
-                        .frame(maxWidth: .infinity, minHeight: 140)
-                        .padding(12)
-                        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
@@ -115,6 +141,46 @@ private struct CursorBoardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .toolbar {
+            ToolbarItem {
+                Button {
+                    model.createLocalTaskReportingErrors()
+                } label: {
+                    Label("New Local Task", systemImage: "plus")
+                }
+                .help("New Local Task")
+            }
+        }
+        .onAppear {
+            model.loadReportingErrors()
+        }
+    }
+
+    private func projectionColumn(for id: CursorBoardColumnID) -> CursorBoardColumnProjection {
+        model.projection.columns.first { $0.id == id } ?? CursorBoardColumnProjection(id: id, title: "", cards: [])
+    }
+}
+
+private struct CursorTaskCardView: View {
+    let card: CursorTaskCardProjection
+    let markDone: () -> Void
+    let archive: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(card.title)
+                .font(.callout.weight(.medium))
+
+            HStack {
+                Button("Done", action: markDone)
+                    .controlSize(.small)
+                Button("Archive", action: archive)
+                    .controlSize(.small)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(12)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
     }
 }
 
