@@ -18,7 +18,8 @@ import Testing
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let missingCredentialModel = CursorBoardModel(
         store: store,
-        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:])
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        nodeResolver: CompatibleBoardModelNodeResolver()
     )
 
     try missingCredentialModel.load()
@@ -37,13 +38,40 @@ import Testing
         credentialProvider: CursorCredentialProvider(
             store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
             environment: [:]
-        )
+        ),
+        nodeResolver: CompatibleBoardModelNodeResolver()
     )
 
     try readyModel.load()
     #expect(readyModel.setupStatus.repositoryState == .registered(count: 1))
     #expect(readyModel.setupStatus.credentialState == .ready)
+    #expect(readyModel.setupStatus.nodeState == .ready(version: "v22.13.0"))
     #expect(readyModel.setupStatus.canSend)
+}
+
+@MainActor
+@Test func boardModelBlocksSendReadinessWhenNodeIsMissing() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    _ = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        nodeResolver: MissingBoardModelNodeResolver()
+    )
+
+    try model.load()
+
+    #expect(model.setupStatus.nodeState == .missing)
+    #expect(model.setupStatus.nodeMessage == "Node.js: 22.13+ required")
+    #expect(model.setupStatus.canSend == false)
 }
 
 @MainActor
@@ -321,6 +349,21 @@ private final class BoardModelMonitoringRuntime: CursorCloudAgentRuntime, @unche
     func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
         waits.append(reference)
         return completion
+    }
+}
+
+private struct CompatibleBoardModelNodeResolver: CursorNodeResolving {
+    func resolve() throws -> CursorNodeResolution {
+        CursorNodeResolution(
+            executableURL: URL(filePath: "/opt/homebrew/bin/node"),
+            version: "v22.13.0"
+        )
+    }
+}
+
+private struct MissingBoardModelNodeResolver: CursorNodeResolving {
+    func resolve() throws -> CursorNodeResolution {
+        throw CursorNodeResolutionError.missingCompatibleNode
     }
 }
 

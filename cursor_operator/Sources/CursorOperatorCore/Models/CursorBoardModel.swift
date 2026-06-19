@@ -13,6 +13,7 @@ public final class CursorBoardModel: ObservableObject {
     private let store: CursorOperatorStore
     private let repositoryRegistrationService: CursorRepositoryRegistrationService
     private let credentialProvider: CursorCredentialProvider
+    private let nodeResolver: any CursorNodeResolving
     private let runtime: any CursorCloudAgentRuntime
     private let externalOpener: any CursorExternalOpening
 
@@ -20,11 +21,13 @@ public final class CursorBoardModel: ObservableObject {
         store: CursorOperatorStore,
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
+        nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
         runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
         externalOpener: any CursorExternalOpening = SystemCursorExternalOpener()
     ) {
         self.store = store
         self.credentialProvider = credentialProvider
+        self.nodeResolver = nodeResolver
         self.runtime = runtime
         self.externalOpener = externalOpener
         repositoryRegistrationService = CursorRepositoryRegistrationService(
@@ -41,7 +44,8 @@ public final class CursorBoardModel: ObservableObject {
         repositories = try store.repositories()
         setupStatus = try CursorSetupStatusProjection(
             repositoryState: repositories.isEmpty ? .missing : .registered(count: repositories.count),
-            credentialState: CursorSendReadiness(provider: credentialProvider).credentialState()
+            credentialState: CursorSendReadiness(provider: credentialProvider).credentialState(),
+            nodeState: nodeSetupState()
         )
         projection = try CursorBoardProjection.load(from: store)
         errorMessage = nil
@@ -273,6 +277,15 @@ public final class CursorBoardModel: ObservableObject {
             githubURL: URL(string: "https://github.com/local/cursor-operator-placeholder")!,
             defaultBranch: "main"
         )
+    }
+
+    private func nodeSetupState() -> CursorNodeSetupState {
+        do {
+            let resolution = try nodeResolver.resolve()
+            return .ready(version: resolution.version)
+        } catch {
+            return .missing
+        }
     }
 
     private static func userFacingMessage(for error: Error) -> String {

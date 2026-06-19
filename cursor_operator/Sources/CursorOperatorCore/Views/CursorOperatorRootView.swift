@@ -133,6 +133,8 @@ private struct CursorBoardView: View {
                                 } archive: {
                                     model.archiveReportingErrors(taskID: card.id)
                                 }
+                                .sendDisabled(!model.setupStatus.canSend)
+                                .sendDisabledReason(model.setupStatus.sendDisabledReason)
                             }
                         }
                     }
@@ -210,6 +212,7 @@ private struct CursorBoardView: View {
         return HStack(spacing: 14) {
             Label(model.setupStatus.repositoryMessage, systemImage: model.setupStatus.repositoryIconName)
             Label(model.setupStatus.credentialMessage, systemImage: model.setupStatus.credentialIconName)
+            Label(model.setupStatus.nodeMessage, systemImage: model.setupStatus.nodeIconName)
         }
         .font(.callout)
         .foregroundStyle(foregroundStyle)
@@ -302,6 +305,8 @@ private struct CursorTaskCardView: View {
     let openInCursor: () -> Void
     let markDone: () -> Void
     let archive: () -> Void
+    @Environment(\.cursorOperatorSendDisabled) private var sendDisabled
+    @Environment(\.cursorOperatorSendDisabledReason) private var sendDisabledReason
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -318,6 +323,8 @@ private struct CursorTaskCardView: View {
                 if card.status == .ready {
                     Button("Send", action: send)
                         .controlSize(.small)
+                        .disabled(sendDisabled)
+                        .help(sendDisabled ? sendDisabledReason : "")
                 }
                 if card.canOpenInCursor {
                     Button("Open in Cursor", action: openInCursor)
@@ -336,6 +343,36 @@ private struct CursorTaskCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct CursorOperatorSendDisabledKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+private struct CursorOperatorSendDisabledReasonKey: EnvironmentKey {
+    static let defaultValue = ""
+}
+
+private extension EnvironmentValues {
+    var cursorOperatorSendDisabled: Bool {
+        get { self[CursorOperatorSendDisabledKey.self] }
+        set { self[CursorOperatorSendDisabledKey.self] = newValue }
+    }
+
+    var cursorOperatorSendDisabledReason: String {
+        get { self[CursorOperatorSendDisabledReasonKey.self] }
+        set { self[CursorOperatorSendDisabledReasonKey.self] = newValue }
+    }
+}
+
+private extension View {
+    func sendDisabled(_ disabled: Bool) -> some View {
+        environment(\.cursorOperatorSendDisabled, disabled)
+    }
+
+    func sendDisabledReason(_ reason: String) -> some View {
+        environment(\.cursorOperatorSendDisabledReason, reason)
     }
 }
 

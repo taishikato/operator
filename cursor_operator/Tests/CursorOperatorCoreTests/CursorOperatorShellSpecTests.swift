@@ -66,9 +66,23 @@ import Testing
 @Test func setupStatusUsesConservativeSFSymbolNames() {
     let ready = CursorSetupStatusProjection(
         repositoryState: .registered(count: 1),
-        credentialState: .ready
+        credentialState: .ready,
+        nodeState: .ready(version: "v22.13.0")
     )
 
     #expect(ready.repositoryIconName == "folder")
     #expect(ready.credentialIconName == "key")
+    #expect(ready.nodeIconName == "checkmark.circle")
+}
+
+@Test func setupStatusRequiresCompatibleNodeBeforeSending() {
+    let missingNode = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready,
+        nodeState: .missing
+    )
+
+    #expect(missingNode.canSend == false)
+    #expect(missingNode.nodeMessage == "Node.js: 22.13+ required")
+    #expect(missingNode.nodeIconName == "exclamationmark.triangle")
 }

@@ -3,23 +3,35 @@ public enum CursorRepositorySetupState: Equatable, Sendable {
     case registered(count: Int)
 }
 
+public enum CursorNodeSetupState: Equatable, Sendable {
+    case missing
+    case ready(version: String)
+}
+
 public struct CursorSetupStatusProjection: Equatable, Sendable {
     public let repositoryState: CursorRepositorySetupState
     public let credentialState: CursorCredentialState
+    public let nodeState: CursorNodeSetupState
 
     public static let empty = CursorSetupStatusProjection(
         repositoryState: .missing,
-        credentialState: .missing
+        credentialState: .missing,
+        nodeState: .missing
     )
 
-    public init(repositoryState: CursorRepositorySetupState, credentialState: CursorCredentialState) {
+    public init(
+        repositoryState: CursorRepositorySetupState,
+        credentialState: CursorCredentialState,
+        nodeState: CursorNodeSetupState
+    ) {
         self.repositoryState = repositoryState
         self.credentialState = credentialState
+        self.nodeState = nodeState
     }
 
     public var canSend: Bool {
-        switch (repositoryState, credentialState) {
-        case (.registered, .ready):
+        switch (repositoryState, credentialState, nodeState) {
+        case (.registered, .ready, .ready):
             true
         default:
             false
@@ -44,6 +56,28 @@ public struct CursorSetupStatusProjection: Equatable, Sendable {
         }
     }
 
+    public var nodeMessage: String {
+        switch nodeState {
+        case .missing:
+            "Node.js: 22.13+ required"
+        case let .ready(version):
+            "Node.js: \(version)"
+        }
+    }
+
+    public var sendDisabledReason: String {
+        switch (repositoryState, credentialState, nodeState) {
+        case (.missing, _, _):
+            "Register a repository before sending."
+        case (_, .missing, _):
+            "Cursor API key is required before sending."
+        case (_, _, .missing):
+            "Node.js 22.13 or newer is required for the Cursor SDK."
+        case (.registered, .ready, .ready):
+            ""
+        }
+    }
+
     public var repositoryIconName: String {
         switch repositoryState {
         case .missing:
@@ -59,6 +93,15 @@ public struct CursorSetupStatusProjection: Equatable, Sendable {
             "key.slash"
         case .ready:
             "key"
+        }
+    }
+
+    public var nodeIconName: String {
+        switch nodeState {
+        case .missing:
+            "exclamationmark.triangle"
+        case .ready:
+            "checkmark.circle"
         }
     }
 }
