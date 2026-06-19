@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # Task creation and send preview
 
@@ -14,13 +14,13 @@ This slice should not send anything to Cursor yet. It should make the eventual s
 
 ## Acceptance criteria
 
-- [ ] Users can create Ready tasks with title, repository, prompt, and auto-create PR setting.
-- [ ] Users can edit Ready tasks before sending.
-- [ ] Task prompt is stored and previewed exactly as written.
-- [ ] Auto-create PR is a task-level toggle that defaults off.
-- [ ] The send preview displays repository URL, starting ref, fixed `composer-2.5` model, auto-create PR value, and prompt text.
-- [ ] No model selector, reasoning selector, acceptance criteria field, labels, priority, due date, or dependency UI is introduced.
-- [ ] Tests cover task creation, Ready task editing, auto-create PR defaulting, fixed model display, and prompt-as-written preview behavior.
+- [x] Users can create Ready tasks with title, repository, prompt, and auto-create PR setting.
+- [x] Users can edit Ready tasks before sending.
+- [x] Task prompt is stored and previewed exactly as written.
+- [x] Auto-create PR is a task-level toggle that defaults off.
+- [x] The send preview displays repository URL, starting ref, fixed `composer-2.5` model, auto-create PR value, and prompt text.
+- [x] No model selector, reasoning selector, acceptance criteria field, labels, priority, due date, or dependency UI is introduced.
+- [x] Tests cover task creation, Ready task editing, auto-create PR defaulting, fixed model display, and prompt-as-written preview behavior.
 
 ## Blocked by
 

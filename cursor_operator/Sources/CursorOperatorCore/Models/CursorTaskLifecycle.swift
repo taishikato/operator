@@ -16,6 +16,7 @@ public struct CursorTask: Codable, Equatable, Identifiable, Sendable {
     public var repositoryID: UUID
     public var title: String
     public var prompt: String
+    public var autoCreatePR: Bool
     public var status: CursorTaskStatus
     public var createdAt: Date
     public var updatedAt: Date
@@ -25,6 +26,7 @@ public struct CursorTask: Codable, Equatable, Identifiable, Sendable {
         repositoryID: UUID,
         title: String,
         prompt: String,
+        autoCreatePR: Bool = false,
         now: Date = Date()
     ) -> CursorTask {
         CursorTask(
@@ -32,6 +34,7 @@ public struct CursorTask: Codable, Equatable, Identifiable, Sendable {
             repositoryID: repositoryID,
             title: title,
             prompt: prompt,
+            autoCreatePR: autoCreatePR,
             status: .ready,
             createdAt: now,
             updatedAt: now

@@ -30,10 +30,12 @@ public struct CursorBoardColumnProjection: Equatable, Identifiable, Sendable {
 public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let title: String
+    public let status: CursorTaskStatus
 
     public init(task: CursorTask) {
         id = task.id
         title = task.title
+        status = task.status
     }
 }
 

@@ -82,6 +82,7 @@ private struct CursorBoardView: View {
     let shell: CursorOperatorShellSpec
     @StateObject private var model: CursorBoardModel
     @State private var defaultBranchDraft = ""
+    @State private var showCreateTaskSheet = false
     let appDataURL: URL
 
     init(shell: CursorOperatorShellSpec, store: CursorOperatorStore, appDataURL: URL) {
@@ -146,11 +147,15 @@ private struct CursorBoardView: View {
         .toolbar {
             ToolbarItem {
                 Button {
-                    model.createLocalTaskReportingErrors()
+                    if model.creationDraft.repositoryID == nil {
+                        model.creationDraft.repositoryID = model.repositories.first?.id
+                    }
+                    showCreateTaskSheet = true
                 } label: {
-                    Label("New Local Task", systemImage: "plus")
+                    Label("New Task", systemImage: "plus")
                 }
-                .help("New Local Task")
+                .help("New Task")
+                .disabled(model.repositories.isEmpty)
             }
 
             ToolbarItem {
@@ -173,6 +178,9 @@ private struct CursorBoardView: View {
             ) {
                 model.savePendingRepositoryReportingErrors(defaultBranch: defaultBranchDraft)
             }
+        }
+        .sheet(isPresented: $showCreateTaskSheet) {
+            CursorTaskCreationSheet(model: model, isPresented: $showCreateTaskSheet)
         }
     }
 
@@ -274,8 +282,10 @@ private struct CursorTaskCardView: View {
                 .font(.callout.weight(.medium))
 
             HStack {
-                Button("Done", action: markDone)
-                    .controlSize(.small)
+                if card.status == .running {
+                    Button("Done", action: markDone)
+                        .controlSize(.small)
+                }
                 Button("Archive", action: archive)
                     .controlSize(.small)
             }
@@ -283,6 +293,117 @@ private struct CursorTaskCardView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
         .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+    }
+}
+
+private struct CursorTaskCreationSheet: View {
+    @ObservedObject var model: CursorBoardModel
+    @Binding var isPresented: Bool
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            TextField("Task title", text: titleBinding)
+                .textFieldStyle(.plain)
+                .font(.title3.weight(.semibold))
+
+            HStack {
+                Picker("Repository", selection: repositoryBinding) {
+                    ForEach(model.repositories) { repository in
+                        Text(repository.name).tag(Optional(repository.id))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Toggle("Auto-create PR", isOn: autoCreatePRBinding)
+                    .toggleStyle(.checkbox)
+            }
+
+            TextEditor(text: promptBinding)
+                .font(.body)
+                .frame(minHeight: 160)
+                .accessibilityLabel("Task prompt")
+
+            if let preview = preview {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Send Preview")
+                        .font(.headline)
+                    Text("Repository: \(preview.repositoryURL.absoluteString)")
+                    Text("Starting ref: \(preview.startingRef)")
+                    Text("Model: \(preview.model)")
+                    Text("Auto-create PR: \(preview.autoCreatePR ? "On" : "Off")")
+                    Text(preview.prompt)
+                        .font(.callout)
+                        .textSelection(.enabled)
+                }
+                .font(.callout)
+                .foregroundStyle(.secondary)
+            }
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    isPresented = false
+                }
+                .keyboardShortcut(.cancelAction)
+
+                Button {
+                    if model.createTaskFromDraftReportingErrors() {
+                        isPresented = false
+                    }
+                } label: {
+                    Label("Create Task", systemImage: "plus")
+                }
+                .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(24)
+        .frame(width: 560)
+    }
+
+    private var preview: CursorSendPreview? {
+        guard let repositoryID = model.creationDraft.repositoryID,
+              let repository = model.repositories.first(where: { $0.id == repositoryID }) else {
+            return nil
+        }
+        let task = CursorTask.new(
+            repositoryID: repository.id,
+            title: model.creationDraft.title,
+            prompt: model.creationDraft.prompt,
+            autoCreatePR: model.creationDraft.autoCreatePR
+        )
+        return try? CursorSendPreview(task: task, repository: repository)
+    }
+
+    private var titleBinding: Binding<String> {
+        Binding {
+            model.creationDraft.title
+        } set: {
+            model.creationDraft.title = $0
+        }
+    }
+
+    private var promptBinding: Binding<String> {
+        Binding {
+            model.creationDraft.prompt
+        } set: {
+            model.creationDraft.prompt = $0
+        }
+    }
+
+    private var repositoryBinding: Binding<UUID?> {
+        Binding {
+            model.creationDraft.repositoryID
+        } set: {
+            model.creationDraft.repositoryID = $0
+        }
+    }
+
+    private var autoCreatePRBinding: Binding<Bool> {
+        Binding {
+            model.creationDraft.autoCreatePR
+        } set: {
+            model.creationDraft.autoCreatePR = $0
+        }
     }
 }
 

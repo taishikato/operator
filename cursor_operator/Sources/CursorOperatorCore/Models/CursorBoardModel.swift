@@ -4,8 +4,10 @@ import Foundation
 @MainActor
 public final class CursorBoardModel: ObservableObject {
     @Published public private(set) var projection: CursorBoardProjection
+    @Published public private(set) var repositories: [CursorRepository]
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var pendingRepositoryDraft: CursorRepositoryRegistrationDraft?
+    @Published public var creationDraft: CursorTaskCreationDraft
 
     private let store: CursorOperatorStore
     private let repositoryRegistrationService: CursorRepositoryRegistrationService
@@ -20,9 +22,12 @@ public final class CursorBoardModel: ObservableObject {
             inspector: repositoryInspector
         )
         projection = CursorBoardProjection(tasks: [])
+        repositories = []
+        creationDraft = CursorTaskCreationDraft()
     }
 
     public func load() throws {
+        repositories = try store.repositories()
         projection = try CursorBoardProjection.load(from: store)
         errorMessage = nil
     }
@@ -35,6 +40,39 @@ public final class CursorBoardModel: ObservableObject {
             prompt: prompt
         )
         try load()
+    }
+
+    public func createTaskFromDraft() throws -> CursorTask {
+        let task = try creationDraft.createTask(in: store)
+        creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
+        try load()
+        return task
+    }
+
+    public func updateTaskFromDraft(taskID: UUID) throws -> CursorTask {
+        guard !creationDraft.title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CursorTaskCreationError.titleRequired
+        }
+        guard !creationDraft.prompt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw CursorTaskCreationError.promptRequired
+        }
+
+        let task = try store.updateTaskContent(
+            id: taskID,
+            title: creationDraft.title.trimmingCharacters(in: .whitespacesAndNewlines),
+            prompt: creationDraft.prompt,
+            autoCreatePR: creationDraft.autoCreatePR
+        )
+        try load()
+        return task
+    }
+
+    public func sendPreview(taskID: UUID) throws -> CursorSendPreview {
+        guard let task = try store.task(id: taskID),
+              let repository = try store.repository(id: task.repositoryID) else {
+            throw CursorOperatorStoreError.taskNotFound
+        }
+        return try CursorSendPreview(task: task, repository: repository)
     }
 
     public func markDone(taskID: UUID) throws {
@@ -80,6 +118,16 @@ public final class CursorBoardModel: ObservableObject {
             )
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func createTaskFromDraftReportingErrors() -> Bool {
+        do {
+            _ = try createTaskFromDraft()
+            return true
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return false
         }
     }
 

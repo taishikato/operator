@@ -131,6 +131,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         repositoryID: UUID,
         title: String,
         prompt: String,
+        autoCreatePR: Bool = false,
         now: Date = Date()
     ) throws -> CursorTask {
         try dbQueue.write { db in
@@ -143,6 +144,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 repositoryID: repositoryID,
                 title: title,
                 prompt: prompt,
+                autoCreatePR: autoCreatePR,
                 now: now
             )
             try insert(task: task, db: db)
@@ -168,6 +170,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         id: UUID,
         title: String,
         prompt: String,
+        autoCreatePR: Bool? = nil,
         now: Date = Date()
     ) throws -> CursorTask {
         try dbQueue.write { db in
@@ -175,6 +178,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
             try CursorTaskLifecyclePolicy.ensureEditable(task)
             task.title = title
             task.prompt = prompt
+            if let autoCreatePR {
+                task.autoCreatePR = autoCreatePR
+            }
             task.updatedAt = now
             try update(task: task, db: db)
             return task
@@ -322,14 +328,15 @@ public final class CursorOperatorStore: @unchecked Sendable {
     private func insert(task: CursorTask, db: Database) throws {
         try db.execute(
             sql: """
-                INSERT INTO tasks (id, repositoryID, title, prompt, status, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tasks (id, repositoryID, title, prompt, autoCreatePR, status, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 task.id.uuidString,
                 task.repositoryID.uuidString,
                 task.title,
                 task.prompt,
+                task.autoCreatePR,
                 task.status.rawValue,
                 task.createdAt.storageValue,
                 task.updatedAt.storageValue
@@ -341,12 +348,13 @@ public final class CursorOperatorStore: @unchecked Sendable {
         try db.execute(
             sql: """
                 UPDATE tasks
-                SET title = ?, prompt = ?, status = ?, updatedAt = ?
+                SET title = ?, prompt = ?, autoCreatePR = ?, status = ?, updatedAt = ?
                 WHERE id = ?
                 """,
             arguments: [
                 task.title,
                 task.prompt,
+                task.autoCreatePR,
                 task.status.rawValue,
                 task.updatedAt.storageValue,
                 task.id.uuidString
@@ -430,6 +438,12 @@ private extension CursorOperatorStore {
             try db.execute(sql: "CREATE UNIQUE INDEX runAttempts_one_success_per_task ON runAttempts(taskID) WHERE status = 'succeeded'")
         }
 
+        migrator.registerMigration("addTaskAutoCreatePR") { db in
+            try db.alter(table: "tasks") { table in
+                table.add(column: "autoCreatePR", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 
@@ -459,6 +473,7 @@ private extension CursorOperatorStore {
             repositoryID: try uuid(row["repositoryID"]),
             title: row["title"],
             prompt: row["prompt"],
+            autoCreatePR: row["autoCreatePR"],
             status: status,
             createdAt: Date(storageValue: row["createdAt"]),
             updatedAt: Date(storageValue: row["updatedAt"])

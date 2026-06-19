@@ -67,6 +67,33 @@ import Testing
     #expect(try store.repositories().first?.defaultBranch == "trunk")
 }
 
+@MainActor
+@Test func boardModelCreatesReadyTaskFromDraftAndBuildsSendPreview() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let model = CursorBoardModel(store: store)
+    model.creationDraft = CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "Preview task",
+        prompt: "Prompt exactly",
+        autoCreatePR: true
+    )
+
+    let task = try model.createTaskFromDraft()
+    let preview = try model.sendPreview(taskID: task.id)
+
+    #expect(task.autoCreatePR)
+    #expect(preview.repositoryURL == repository.githubURL)
+    #expect(preview.startingRef == "main")
+    #expect(preview.model == CursorModel.fixed)
+    #expect(preview.prompt == "Prompt exactly")
+}
+
 private struct BoardModelStubRepositoryInspector: CursorRepositoryInspecting {
     let inspection: CursorRepositoryInspection
 
