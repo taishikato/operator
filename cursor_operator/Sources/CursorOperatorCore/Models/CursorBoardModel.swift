@@ -18,7 +18,7 @@ public final class CursorBoardModel: ObservableObject {
         store: CursorOperatorStore,
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
-        runtime: any CursorCloudAgentRuntime = FakeCursorCloudAgentRuntime()
+        runtime: any CursorCloudAgentRuntime = CursorCloudAgentRESTClient()
     ) {
         self.store = store
         self.credentialProvider = credentialProvider

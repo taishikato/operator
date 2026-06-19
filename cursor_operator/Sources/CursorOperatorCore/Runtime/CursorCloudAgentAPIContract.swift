@@ -85,6 +85,10 @@ public enum CursorCloudAgentAPIContract {
         )
     }
 
+    public static func jsonBodyData(for contract: CursorCloudAgentRequestContract) throws -> Data {
+        try JSONSerialization.data(withJSONObject: jsonObject(contract.body), options: [.sortedKeys])
+    }
+
     public static func decodeCreateAgentResponse(_ data: Data) throws -> CursorCloudAgentReference {
         let response = try JSONDecoder().decode(CreateAgentResponse.self, from: data)
         guard let openURL = URL(string: response.agent.url) else {
@@ -110,6 +114,20 @@ public enum CursorCloudAgentAPIContract {
 
     public static func sanitizedNetworkFailure(_ error: Error) -> String {
         "Unable to reach Cursor Cloud Agent."
+    }
+
+    private static func jsonObject(_ value: AnySendable) -> Any {
+        jsonObject(value.value)
+    }
+
+    private static func jsonObject(_ value: Any) -> Any {
+        if let dictionary = value as? [String: AnySendable] {
+            return dictionary.mapValues(jsonObject)
+        }
+        if let array = value as? [AnySendable] {
+            return array.map(jsonObject)
+        }
+        return value
     }
 }
 

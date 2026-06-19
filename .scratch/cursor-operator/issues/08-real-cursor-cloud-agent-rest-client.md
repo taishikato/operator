@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # Real Cursor Cloud Agent REST client
 
@@ -14,13 +14,15 @@ This slice should preserve all send-flow behavior proven by the fake runtime: Re
 
 ## Acceptance criteria
 
-- [ ] The send flow can use the real Cursor Cloud Agent runtime client behind the same narrow interface as the fake client.
-- [ ] The real request sends prompt text, repository URL, starting ref, `composer-2.5`, and auto-create PR according to the schema spike.
-- [ ] Successful responses store Cursor agent id and open URL.
-- [ ] Auth failure, validation failure, malformed response, and network failure map to short sanitized send failures.
-- [ ] The app does not store raw HTTP bodies, API keys, event streams, transcripts, diffs, commits, or PR status.
-- [ ] Tests use fake HTTP transport or fixtures rather than live Cursor calls.
-- [ ] If the spike selected a Node SDK helper fallback, the helper is invoked through the same runtime interface and the distribution/runtime tradeoff is documented.
+- [x] The send flow can use the real Cursor Cloud Agent runtime client behind the same narrow interface as the fake client.
+- [x] The real request sends prompt text, repository URL, starting ref, `composer-2.5`, and auto-create PR according to the schema spike.
+- [x] Successful responses store Cursor agent id and open URL.
+- [x] Auth failure, validation failure, malformed response, and network failure map to short sanitized send failures.
+- [x] The app does not store raw HTTP bodies, API keys, event streams, transcripts, diffs, commits, or PR status.
+- [x] Tests use fake HTTP transport or fixtures rather than live Cursor calls.
+- [x] If the spike selected a Node SDK helper fallback, the helper is invoked through the same runtime interface and the distribution/runtime tradeoff is documented.
+
+Note: Issue 06 selected the REST API path for the MVP, so no Node SDK helper fallback is included in this slice.
 
 ## Blocked by
 
