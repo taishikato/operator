@@ -137,6 +137,22 @@ import Testing
     #expect(attempt.cursorURL == URL(string: "https://cursor.com/agents/agent-orphan")!)
 }
 
+@Test func boardProjectionSurfacesLatestFailedSendAttemptOnReadyCard() async throws {
+    let fixture = try SendServiceFixture()
+    let runtime = FakeCursorRuntime(result: .failure(CursorRuntimeFailure(message: "Cursor rejected the run request.")))
+    let service = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    _ = try await service.send(taskID: fixture.task.id)
+
+    let projection = try CursorBoardProjection.load(from: fixture.store)
+    let readyCard = try #require(projection.columns.first { $0.id == .ready }?.cards.first)
+    #expect(readyCard.failedSendMessage == "Cursor rejected the run request.")
+}
+
 private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
     var result: Result<CursorCloudAgentReference, CursorRuntimeFailure>
     private(set) var requests: [CursorCloudAgentRequestPreview] = []

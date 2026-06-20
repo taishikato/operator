@@ -319,6 +319,12 @@ private struct CursorTaskCardView: View {
                     .foregroundStyle(card.status == .done ? .green : .secondary)
             }
 
+            if let failedSendMessage = card.failedSendMessage {
+                Label(failedSendMessage, systemImage: "exclamationmark.triangle")
+                    .font(.caption)
+                    .foregroundStyle(.orange)
+            }
+
             HStack {
                 if card.status == .ready {
                     Button("Send", action: send)

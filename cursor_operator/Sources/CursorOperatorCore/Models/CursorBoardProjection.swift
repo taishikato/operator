@@ -7,8 +7,10 @@ public struct CursorBoardProjection: Equatable, Sendable {
     public static func load(from store: CursorOperatorStore) throws -> CursorBoardProjection {
         let tasks = try store.tasks()
         var runReferencesByTaskID: [UUID: CursorTaskRunReference] = [:]
+        var failedSendMessagesByTaskID: [UUID: String] = [:]
         for task in tasks {
-            let successfulAttempt = try store.runAttempts(taskID: task.id)
+            let attempts = try store.runAttempts(taskID: task.id)
+            let successfulAttempt = attempts
                 .last { $0.status == .succeeded }
             if let successfulAttempt {
                 runReferencesByTaskID[task.id] = CursorTaskRunReference(
@@ -17,11 +19,23 @@ public struct CursorBoardProjection: Equatable, Sendable {
                     cursorURL: successfulAttempt.cursorURL
                 )
             }
+            if let failedAttempt = attempts.last(where: { $0.status == .failed }),
+               let errorMessage = failedAttempt.errorMessage {
+                failedSendMessagesByTaskID[task.id] = errorMessage
+            }
         }
-        return CursorBoardProjection(tasks: tasks, runReferencesByTaskID: runReferencesByTaskID)
+        return CursorBoardProjection(
+            tasks: tasks,
+            runReferencesByTaskID: runReferencesByTaskID,
+            failedSendMessagesByTaskID: failedSendMessagesByTaskID
+        )
     }
 
-    public init(tasks: [CursorTask], runReferencesByTaskID: [UUID: CursorTaskRunReference] = [:]) {
+    public init(
+        tasks: [CursorTask],
+        runReferencesByTaskID: [UUID: CursorTaskRunReference] = [:],
+        failedSendMessagesByTaskID: [UUID: String] = [:]
+    ) {
         let activeTasks = tasks.filter { $0.status != .archived }
         columns = [CursorTaskStatus.ready, .running, .done].map { status in
             CursorBoardColumnProjection(
@@ -29,12 +43,24 @@ public struct CursorBoardProjection: Equatable, Sendable {
                 title: status.columnTitle,
                 cards: activeTasks
                     .filter { $0.status == status }
-                    .map { CursorTaskCardProjection(task: $0, runReference: runReferencesByTaskID[$0.id]) }
+                    .map {
+                        CursorTaskCardProjection(
+                            task: $0,
+                            runReference: runReferencesByTaskID[$0.id],
+                            failedSendMessage: failedSendMessagesByTaskID[$0.id]
+                        )
+                    }
             )
         }
         archivedCards = tasks
             .filter { $0.status == .archived }
-            .map { CursorTaskCardProjection(task: $0, runReference: runReferencesByTaskID[$0.id]) }
+            .map {
+                CursorTaskCardProjection(
+                    task: $0,
+                    runReference: runReferencesByTaskID[$0.id],
+                    failedSendMessage: failedSendMessagesByTaskID[$0.id]
+                )
+            }
     }
 }
 
@@ -51,14 +77,20 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     public let hasCursorReference: Bool
     public let cursorRunID: String?
     public let cursorURL: URL?
+    public let failedSendMessage: String?
 
-    public init(task: CursorTask, runReference: CursorTaskRunReference? = nil) {
+    public init(
+        task: CursorTask,
+        runReference: CursorTaskRunReference? = nil,
+        failedSendMessage: String? = nil
+    ) {
         id = task.id
         title = task.title
         status = task.status
         hasCursorReference = runReference != nil
         cursorRunID = runReference?.cursorRunID
         cursorURL = runReference?.cursorURL
+        self.failedSendMessage = failedSendMessage
     }
 
     public var canOpenInCursor: Bool {
