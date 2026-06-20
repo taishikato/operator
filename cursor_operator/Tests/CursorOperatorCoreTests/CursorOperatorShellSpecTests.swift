@@ -10,7 +10,7 @@ import Testing
 @Test func boardShowsOnlyActiveCursorColumnsByDefault() {
     let shell = CursorOperatorShellSpec.mvp
 
-    #expect(shell.board.columns.map(\.title) == ["Ready", "Running", "Done"])
+    #expect(shell.board.columns.map(\.title) == ["Ready", "Running", "Failed", "Done"])
     #expect(!shell.board.columns.map(\.id).contains(.archived))
 }
 

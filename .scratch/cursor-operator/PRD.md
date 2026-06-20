@@ -25,7 +25,7 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 1. As a developer, I want Cursor Operator to be a native macOS desktop app, so that it feels like a local companion to my coding workflow.
 2. As a developer, I want Cursor Operator to be separate from Codex Operator, so that each Operator codebase stays small and focused.
 3. As a developer, I want Cursor Operator to open directly to a task board, so that I can immediately see work that can be sent to Cursor.
-4. As a developer, I want a board with Ready, Running, Done, and Archived states, so that the task lifecycle stays simple.
+4. As a developer, I want a board with Ready, Running, Failed, Done, and Archived states, so that the task lifecycle stays simple.
 5. As a developer, I want Archived tasks hidden from the default board, so that old work does not clutter active planning.
 6. As a developer, I want to register a local Git repository, so that Cursor Operator can bind tasks to a real codebase on my machine.
 7. As a developer, I want repository registration to require a GitHub origin, so that Cursor Cloud Agent can run from a remote repository it can access.
@@ -61,7 +61,7 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 37. As a developer, I want completed Cursor runs to move their tasks to Done automatically, so that the board reflects completed handoffs without manual polling.
 38. As a developer, I want webhooks to be out of scope, so that the MVP does not need a public callback endpoint.
 39. As a developer, I want Done not to imply that Cursor produced correct code, so that Operator does not overstate agent results.
-40. As a developer, I want to archive Ready, Running, or Done tasks, so that I can remove work from the active board without deleting history.
+40. As a developer, I want to archive Ready, Running, Failed, or Done tasks, so that I can remove work from the active board without deleting history.
 41. As a developer, I want no hard delete in the MVP, so that local task history is not accidentally destroyed.
 42. As a developer, I want a failed send to leave the task in Ready, so that I can edit and retry it.
 43. As a developer, I want each failed retry to create a separate run attempt, so that failed attempts remain auditable.
@@ -92,13 +92,14 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 - The primary scene is a desktop board window. Settings is a native Settings scene, not a route inside the main board.
 - The main window should use desktop SwiftUI patterns: sidebar or board navigation, task detail/inspector surface, toolbar actions, command menu actions, keyboard shortcuts, and stable selection state.
 - The app should keep root view composition small and split app entry, views, models, stores, services, and support helpers by responsibility.
-- The board states are Ready, Running, Done, and Archived.
+- The board states are Ready, Running, Failed, Done, and Archived.
 - Ready tasks are editable and sendable.
 - Running, Done, and Archived task content is immutable.
-- Running to Done is automatic when the SDK wait path reports that the saved run is complete. Manual Done remains available as a user override.
+- Running to Done is automatic when the SDK wait path reports that the saved run succeeded. Running to Failed is automatic when the SDK wait path reports a terminal unsuccessful run.
 - A successful send moves a task from Ready to Running.
 - A failed send leaves a task in Ready with a failure badge.
 - Archived tasks are hidden from the default board.
+- Failed tasks remain visible on the default board until archived and retain the Cursor run reference when one is available.
 - Hard delete is out of scope.
 - Rerun after a successful send is out of scope.
 - Each task can have at most one successful Cursor run reference.

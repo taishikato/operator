@@ -43,6 +43,33 @@ import Testing
     #expect(try fixture.store.task(id: fixture.task.id)?.status == .running)
 }
 
+@Test func runMonitorMovesTerminalFailedRunToFailedTaskAndPersistsMessage() async throws {
+    let fixture = try RunMonitorFixture()
+    let runtime = FakeRunMonitoringRuntime(completion: CursorCloudAgentRunCompletion(
+        status: "failed",
+        result: "Cursor run failed during execution."
+    ))
+    let service = CursorRunMonitorService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    let outcomes = try await service.resumeRunningTasks()
+
+    #expect(outcomes == [.failed(
+        taskID: fixture.task.id,
+        runID: "run-monitor",
+        message: "Cursor run failed during execution."
+    )])
+    #expect(try fixture.store.task(id: fixture.task.id)?.status == .failed)
+
+    let projection = try CursorBoardProjection.load(from: fixture.store)
+    let failedCard = try #require(projection.columns.first { $0.id == .failed }?.cards.first)
+    #expect(failedCard.runStatusText == "Run failed")
+    #expect(failedCard.failedSendMessage == "Cursor run failed during execution.")
+}
+
 @Test func runningTaskCardShowsIncompleteRunStatusAndDoneCardShowsCompletedRunStatus() throws {
     let runningTask = CursorTask.new(repositoryID: UUID(), title: "Running", prompt: "Prompt")
     let doneTask = CursorTask.new(repositoryID: UUID(), title: "Done", prompt: "Prompt")

@@ -55,9 +55,11 @@ async function waitForRun(request) {
     apiKey: request.apiKey,
   });
   const completedRun = await run.wait();
+  const status = completedRun.status ?? run.status;
+  requireString(status, "status");
 
   writeJSON({
-    status: completedRun.status ?? run.status ?? "finished",
+    status,
     result: completedRun.result ?? null,
   });
 }

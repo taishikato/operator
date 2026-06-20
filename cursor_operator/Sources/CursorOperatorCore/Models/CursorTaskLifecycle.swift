@@ -7,6 +7,7 @@ public enum CursorModel {
 public enum CursorTaskStatus: String, Codable, CaseIterable, Sendable {
     case ready
     case running
+    case failed
     case done
     case archived
 }
@@ -74,8 +75,16 @@ public enum CursorTaskLifecyclePolicy {
         return task.with(status: .done, now: now)
     }
 
+    public static func markFailed(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
+        guard task.status == .running else {
+            throw CursorTaskLifecycleError.transitionNotAllowed
+        }
+
+        return task.with(status: .failed, now: now)
+    }
+
     public static func archive(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
-        guard [.ready, .running, .done].contains(task.status) else {
+        guard [.ready, .running, .failed, .done].contains(task.status) else {
             throw CursorTaskLifecycleError.transitionNotAllowed
         }
 

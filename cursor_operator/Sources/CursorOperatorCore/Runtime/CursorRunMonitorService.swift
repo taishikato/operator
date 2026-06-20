@@ -2,6 +2,7 @@ import Foundation
 
 public enum CursorRunMonitorOutcome: Equatable, Sendable {
     case completed(taskID: UUID, runID: String)
+    case failed(taskID: UUID, runID: String, message: String)
     case stillRunning(taskID: UUID, runID: String)
 }
 
@@ -75,6 +76,22 @@ public struct CursorRunMonitorService: Sendable {
             return .completed(taskID: runningReference.taskID, runID: runningReference.reference.runID)
         }
 
+        if completion.isTerminalFailure {
+            let message = completion.terminalFailureMessage
+            if try store.task(id: runningReference.taskID)?.status == .running {
+                _ = try store.recordRunFailure(
+                    taskID: runningReference.taskID,
+                    runID: runningReference.reference.runID,
+                    errorMessage: message
+                )
+            }
+            return .failed(
+                taskID: runningReference.taskID,
+                runID: runningReference.reference.runID,
+                message: message
+            )
+        }
+
         return .stillRunning(taskID: runningReference.taskID, runID: runningReference.reference.runID)
     }
 }
@@ -87,7 +104,7 @@ private struct RunningRunReference: Sendable {
 private extension CursorRunMonitorOutcome {
     var sortKey: String {
         switch self {
-        case let .completed(taskID, runID), let .stillRunning(taskID, runID):
+        case let .completed(taskID, runID), let .failed(taskID, runID, _), let .stillRunning(taskID, runID):
             "\(taskID.uuidString)-\(runID)"
         }
     }

@@ -19,7 +19,7 @@ public struct CursorBoardProjection: Equatable, Sendable {
                     cursorURL: successfulAttempt.cursorURL
                 )
             }
-            if let failedAttempt = attempts.last(where: { $0.status == .failed }),
+            if let failedAttempt = attempts.last(where: { $0.errorMessage != nil }),
                let errorMessage = failedAttempt.errorMessage {
                 failedSendMessagesByTaskID[task.id] = errorMessage
             }
@@ -37,7 +37,7 @@ public struct CursorBoardProjection: Equatable, Sendable {
         failedSendMessagesByTaskID: [UUID: String] = [:]
     ) {
         let activeTasks = tasks.filter { $0.status != .archived }
-        columns = [CursorTaskStatus.ready, .running, .done].map { status in
+        columns = [CursorTaskStatus.ready, .running, .failed, .done].map { status in
             CursorBoardColumnProjection(
                 id: CursorBoardColumnID(status: status),
                 title: status.columnTitle,
@@ -103,6 +103,8 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
             nil
         case .running:
             "Run in progress"
+        case .failed:
+            "Run failed"
         case .done:
             "Run complete"
         case .archived:
@@ -130,6 +132,8 @@ private extension CursorBoardColumnID {
             self = .ready
         case .running:
             self = .running
+        case .failed:
+            self = .failed
         case .done:
             self = .done
         case .archived:
@@ -145,6 +149,8 @@ private extension CursorTaskStatus {
             "Ready"
         case .running:
             "Running"
+        case .failed:
+            "Failed"
         case .done:
             "Done"
         case .archived:

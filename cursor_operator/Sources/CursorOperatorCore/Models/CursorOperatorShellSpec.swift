@@ -12,6 +12,7 @@ public struct CursorOperatorShellSpec: Equatable, Sendable {
             columns: [
                 CursorBoardColumnSpec(id: .ready, title: "Ready"),
                 CursorBoardColumnSpec(id: .running, title: "Running"),
+                CursorBoardColumnSpec(id: .failed, title: "Failed"),
                 CursorBoardColumnSpec(id: .done, title: "Done")
             ],
             commands: [
@@ -75,6 +76,7 @@ public struct CursorBoardCommandSpec: Equatable, Identifiable, Sendable {
 public enum CursorBoardColumnID: Equatable, Sendable {
     case ready
     case running
+    case failed
     case done
     case archived
 }

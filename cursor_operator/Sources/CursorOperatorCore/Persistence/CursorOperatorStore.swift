@@ -195,6 +195,12 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func markTaskFailed(id: UUID, now: Date = Date()) throws -> CursorTask {
+        try updateTask(id: id) { task in
+            try CursorTaskLifecyclePolicy.markFailed(task, now: now)
+        }
+    }
+
     public func archiveTask(id: UUID, now: Date = Date()) throws -> CursorTask {
         try updateTask(id: id) { task in
             try CursorTaskLifecyclePolicy.archive(task, now: now)
@@ -306,6 +312,40 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 cursorURL: cursorURL,
                 errorMessage: nil,
                 createdAt: pendingAttempt.createdAt,
+                completedAt: now
+            )
+            try update(runAttempt: attempt, db: db)
+            return attempt
+        }
+    }
+
+    public func recordRunFailure(
+        taskID: UUID,
+        runID: String,
+        errorMessage: String,
+        now: Date = Date()
+    ) throws -> CursorRunAttempt {
+        try dbQueue.write { db in
+            let task = try requiredTask(id: taskID, db: db)
+            let updatedTask = try CursorTaskLifecyclePolicy.markFailed(task, now: now)
+            try update(task: updatedTask, db: db)
+
+            let existingAttempt = try requiredSuccessfulRunAttempt(taskID: taskID, runID: runID, db: db)
+            let attempt = CursorRunAttempt(
+                id: existingAttempt.id,
+                taskID: existingAttempt.taskID,
+                repositoryID: existingAttempt.repositoryID,
+                status: existingAttempt.status,
+                repositoryURL: existingAttempt.repositoryURL,
+                startingRef: existingAttempt.startingRef,
+                model: existingAttempt.model,
+                autoCreatePR: existingAttempt.autoCreatePR,
+                prompt: existingAttempt.prompt,
+                cursorAgentID: existingAttempt.cursorAgentID,
+                cursorRunID: existingAttempt.cursorRunID,
+                cursorURL: existingAttempt.cursorURL,
+                errorMessage: errorMessage,
+                createdAt: existingAttempt.createdAt,
                 completedAt: now
             )
             try update(runAttempt: attempt, db: db)
@@ -437,6 +477,17 @@ public final class CursorOperatorStore: @unchecked Sendable {
 
     private func requiredRunAttempt(id: UUID, db: Database) throws -> CursorRunAttempt {
         guard let row = try Row.fetchOne(db, sql: "SELECT * FROM runAttempts WHERE id = ?", arguments: [id.uuidString]) else {
+            throw CursorOperatorStoreError.taskNotFound
+        }
+        return try Self.runAttempt(from: row)
+    }
+
+    private func requiredSuccessfulRunAttempt(taskID: UUID, runID: String, db: Database) throws -> CursorRunAttempt {
+        guard let row = try Row.fetchOne(
+            db,
+            sql: "SELECT * FROM runAttempts WHERE taskID = ? AND cursorRunID = ? AND status = ?",
+            arguments: [taskID.uuidString, runID, CursorRunAttemptStatus.succeeded.rawValue]
+        ) else {
             throw CursorOperatorStoreError.taskNotFound
         }
         return try Self.runAttempt(from: row)

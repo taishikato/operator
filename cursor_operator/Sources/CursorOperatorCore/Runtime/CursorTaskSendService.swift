@@ -50,6 +50,19 @@ public struct CursorCloudAgentRunCompletion: Equatable, Sendable {
         let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return ["completed", "complete", "finished", "done", "succeeded", "success"].contains(normalized)
     }
+
+    public var isTerminalFailure: Bool {
+        let normalized = status.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return ["failed", "failure", "cancelled", "canceled", "error", "expired"].contains(normalized)
+    }
+
+    public var terminalFailureMessage: String {
+        let trimmedResult = result?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let trimmedResult, !trimmedResult.isEmpty {
+            return trimmedResult
+        }
+        return "Cursor run ended with status: \(status)."
+    }
 }
 
 public extension CursorCloudAgentRuntime {

@@ -32,12 +32,21 @@ import Testing
     #expect(failedTask.status == .ready)
 }
 
+@Test func lifecycleAllowsRunningToFailedToArchived() throws {
+    let runningTask = try CursorTaskLifecyclePolicy.recordSuccessfulSend(for: readyTask())
+    let failedTask = try CursorTaskLifecyclePolicy.markFailed(runningTask)
+    #expect(failedTask.status == .failed)
+
+    let archivedTask = try CursorTaskLifecyclePolicy.archive(failedTask)
+    #expect(archivedTask.status == .archived)
+}
+
 @Test func onlyReadyTasksAreEditable() {
     #expect(throws: Never.self) {
         try CursorTaskLifecyclePolicy.ensureEditable(readyTask())
     }
 
-    for status in [CursorTaskStatus.running, .done, .archived] {
+    for status in [CursorTaskStatus.running, .failed, .done, .archived] {
         #expect(throws: CursorTaskLifecycleError.taskIsImmutable) {
             try CursorTaskLifecyclePolicy.ensureEditable(task(status: status))
         }
@@ -47,6 +56,9 @@ import Testing
 @Test func lifecycleRejectsInvalidTransitionsAndHardDelete() {
     #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
         try CursorTaskLifecyclePolicy.markDone(readyTask())
+    }
+    #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
+        try CursorTaskLifecyclePolicy.markFailed(readyTask())
     }
     #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
         try CursorTaskLifecyclePolicy.recordSuccessfulSend(for: task(status: .running))
