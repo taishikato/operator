@@ -6,15 +6,17 @@ Status: ready-for-agent
 
 The user has a native Codex Operator desktop app that provides a small local task board for sending work to Codex App. The user now wants a separate Cursor-focused Operator that keeps the same disciplined product shape, but targets Cursor Cloud Agent instead of Codex.
 
-The existing Cursor-oriented web app is too broad for this direction. It acts as a local Cursor SDK runner, owns branch setup, raw logs, result classification, scheduling, and draft PR creation. The user wants the Cursor version to be a native macOS desktop app, not a Next.js web app, and wants each Operator codebase to stay small by keeping the Cursor app separate from the Codex app.
+The existing Cursor-oriented web app is too broad for this direction. It acts as a broad local Cursor orchestration surface, owns branch setup, raw logs, result classification, scheduling, and draft PR creation. The user wants the Cursor version to be a native macOS desktop app, not a Next.js web app, and wants each Operator codebase to stay small by keeping the Cursor app separate from the Codex app.
 
 The MVP should not become a general project management tool, a GitHub PR orchestrator, a local agent runtime, or a Cursor result judge. It should be a desktop queue for preparing tasks and starting Cursor Cloud Agent runs from GitHub repositories that are already represented by local checkouts.
 
 ## Solution
 
-Build a separate native SwiftUI macOS app called Cursor Operator. The app gives the user a local Kanban board for Cursor tasks. The user registers local Git repositories that have a GitHub origin, creates Ready tasks with a title, repository, prompt, and auto-create PR setting, then sends a task to Cursor Cloud Agent.
+Build a separate native SwiftUI macOS app called Cursor Operator. The app gives the user a local Kanban board for Cursor tasks. The user registers local Git repositories that have a GitHub origin, creates Ready tasks with a title, repository, prompt, and auto-create PR setting, then sends a task to Cursor Cloud Agent through the official Cursor SDK.
 
-Cursor Operator starts a Cursor Cloud Agent run from the repository's remote default branch. The app sends the task prompt exactly as written, passes the Cursor model as a runtime parameter, and saves the resulting Cursor agent reference and open URL. Cursor remains the source of truth for agent progress, work continuation, generated branches, PRs, code review, and final outcome.
+Cursor Operator starts a Cursor Cloud Agent run from the repository's remote default branch. The app sends the task prompt exactly as written, passes the Cursor model as a runtime parameter, and saves the resulting Cursor agent id, run id, and open URL. Cursor remains the source of truth for work continuation, generated branches, PRs, code review, and final outcome. Cursor Operator uses the SDK's run wait capability to reconnect to saved running tasks, detect completion, and move completed tasks to Done automatically.
+
+The desktop app does not bundle Node. Instead, it detects a user-installed Node.js 22.13+ runtime and uses a small bundled helper script with the Cursor SDK dependency. Missing or old Node versions are shown in Settings and on the board before the user sends a task.
 
 The MVP is a native desktop app, not a web app. It is a separate Swift package and app from Codex Operator, with separate persistence, settings, bundle identity, and Application Support data. Existing Codex Operator code and the old Cursor web app may be used as reference material, but there is no shared package in the MVP.
 
@@ -55,9 +57,9 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 33. As a developer, I want Running tasks to expose Open in Cursor, so that I can inspect or continue the run in Cursor's own surface.
 34. As a developer, I want Open in Cursor to open the Cursor Cloud Agent web URL in the default browser, so that the MVP uses the most reliable available destination.
 35. As a developer, I want Cursor Desktop deep links to be out of scope, so that the MVP does not depend on unstable desktop linking behavior.
-36. As a developer, I want Cursor run status polling to be out of scope, so that Cursor remains the source of truth for progress.
-37. As a developer, I want webhooks to be out of scope, so that the MVP does not need a public callback endpoint.
-38. As a developer, I want Done to be a manual state, so that I decide when the task is cleared from the active workflow.
+36. As a developer, I want Cursor Operator to reconnect to saved running Cursor SDK runs on app launch, so that closing and reopening the app does not lose completion tracking.
+37. As a developer, I want completed Cursor runs to move their tasks to Done automatically, so that the board reflects completed handoffs without manual polling.
+38. As a developer, I want webhooks to be out of scope, so that the MVP does not need a public callback endpoint.
 39. As a developer, I want Done not to imply that Cursor produced correct code, so that Operator does not overstate agent results.
 40. As a developer, I want to archive Ready, Running, or Done tasks, so that I can remove work from the active board without deleting history.
 41. As a developer, I want no hard delete in the MVP, so that local task history is not accidentally destroyed.
@@ -69,17 +71,18 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 47. As a developer, I want Settings to let me paste, validate, mask, and delete the Cursor API key, so that credential management is understandable.
 48. As a developer, I want a development fallback to the CURSOR_API_KEY environment variable, so that local development and tests remain convenient.
 49. As a developer, I want Send disabled or blocked when no Cursor API key is available, so that I get a clear setup failure before a run attempt.
-50. As a developer, I want Cursor Operator to call Cursor Cloud Agent through a native Swift REST client if possible, so that the desktop app does not need to bundle Node.
-51. As a developer, I want an API schema spike before implementation relies on the REST client, so that endpoint paths, request fields, response fields, and error shapes are verified against Cursor's current API.
-52. As a developer, I want a Node helper using the Cursor SDK to stay a fallback option, so that implementation can recover if the REST API is not stable enough.
+50. As a developer, I want Cursor Operator to call Cursor Cloud Agent through the official Cursor SDK, so that start and wait semantics match Cursor's supported surface.
+51. As a developer, I want Cursor Operator to use the Node runtime already installed on my laptop, so that the app does not grow by bundling Node.
+52. As a developer, I want Send disabled and clearly explained when Node.js 22.13+ is missing, so that I know how to fix the setup before creating a failed run attempt.
 53. As a developer, I want Cursor Operator to keep raw agent logs out of scope, so that local storage does not become a transcript database.
 54. As a developer, I want Cursor Operator not to inspect diffs, commits, tests, PR status, or branch names, so that review stays in Cursor and GitHub.
 55. As a developer, I want the app to store tasks, repositories, run attempts, settings metadata, and Cursor run references in a local SQLite database, so that the board is durable.
 56. As a developer, I want the app data path, app identity, and database to be separate from Codex Operator, so that the two apps cannot corrupt each other's state.
 57. As a developer, I want the app to use native macOS settings, toolbar, sidebar, detail, and inspector patterns, so that it behaves like a desktop app rather than a web shell.
 58. As a developer, I want keyboard and menu access for common actions, so that the app is efficient for repeated use.
-59. As a developer, I want repository and Cursor credential status visible in Settings, so that setup issues are easy to diagnose.
-60. As a developer, I want implementation issues to be able to test deep modules in isolation, so that API, persistence, repository detection, and lifecycle behavior are reliable without UI-heavy tests.
+59. As a developer, I want repository, Cursor credential, and Node readiness status visible on the board and in Settings, so that setup issues are easy to diagnose.
+60. As a developer, I want implementation issues to be able to test deep modules in isolation, so that SDK runtime, persistence, repository detection, and lifecycle behavior are reliable without UI-heavy tests.
+61. As a developer, I want a manual UI Send smoke script, so that the actual macOS Send button path can be verified end to end when Accessibility permission and a real Cursor API key are available.
 
 ## Implementation Decisions
 
@@ -92,7 +95,7 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 - The board states are Ready, Running, Done, and Archived.
 - Ready tasks are editable and sendable.
 - Running, Done, and Archived task content is immutable.
-- Running to Done is manual in the MVP.
+- Running to Done is automatic when the SDK wait path reports that the saved run is complete. Manual Done remains available as a user override.
 - A successful send moves a task from Ready to Running.
 - A failed send leaves a task in Ready with a failure badge.
 - Archived tasks are hidden from the default board.
@@ -123,14 +126,16 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 - Cursor API key is stored in macOS Keychain.
 - SQLite and UserDefaults must not store the raw Cursor API key.
 - Settings supports entering, masking, validating, and deleting the Cursor API key.
-- A development fallback to the CURSOR_API_KEY environment variable is allowed.
-- The Cursor runtime client is a deep module with a narrow interface for starting a Cloud Agent run.
-- The preferred MVP implementation is a Swift REST client using URLSession.
-- The first implementation chunk must include an API schema spike that verifies Cursor Cloud Agent endpoint path, auth header, request body, success response, error response, agent URL field, run id field, and auto-create PR field.
-- If the REST API is not stable enough for a native client, a Node helper using the Cursor SDK remains an implementation fallback.
+- A development fallback to the CURSOR_API_KEY environment variable is allowed and should be preferred before Keychain when present, so Finder-launched smoke tests can run without Keychain prompts.
+- The Cursor runtime client is a deep module with a narrow interface for starting a Cloud Agent run and waiting for a saved run reference.
+- The MVP implementation uses a small Node helper around the official Cursor SDK for Cloud Agent start and wait operations.
+- The app does not bundle a Node binary. It detects a user-installed Node.js 22.13+ executable from CURSOR_NODE_PATH, PATH, common install locations, and nvm.
+- Missing or incompatible Node should be visible in Settings and on the board. Send should be disabled before a run attempt when Node.js 22.13+ is unavailable.
+- The earlier REST API schema spike remains historical context, but the REST client is no longer the preferred MVP runtime path.
+- A native Swift REST client can be revisited only if Cursor exposes a stable supported Cloud Agent REST surface that matches SDK start and wait behavior.
 - Cursor Operator saves only trigger-level metadata for a run attempt: task, repository, starting ref, fixed model, auto-create PR value, status, timestamps, Cursor agent id, open URL, and short failure error.
 - Raw Cursor event streams, transcripts, full HTTP bodies, and secrets are not stored.
-- Cursor run status polling is out of scope.
+- Raw Cursor run status polling, event streaming, and local progress reconstruction are out of scope. SDK wait-based completion detection for saved running tasks is in scope.
 - Cursor webhook support is out of scope.
 - Open in Cursor opens the saved Cursor Cloud Agent web URL in the default browser.
 - If a direct agent URL is unavailable, the app should provide a fallback that lets the user copy the run id or open Cursor's Cloud Agent dashboard.
@@ -141,7 +146,7 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 - The repository detection module is a deep module with a stable interface that returns Git validity, origin URL, GitHub URL, and default branch metadata.
 - The task lifecycle policy is a deep module that owns allowed transitions, immutability rules, retry rules, and one-successful-run constraints.
 - The Keychain credential store is a deep module with a narrow save/load/delete/validate-facing interface.
-- The app should keep API client, repository detection, credential storage, lifecycle policy, and persistence testable without SwiftUI.
+- The app should keep SDK runtime, repository detection, credential storage, lifecycle policy, and persistence testable without SwiftUI.
 
 ## Testing Decisions
 
@@ -155,15 +160,17 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 - Task lifecycle tests should verify that a task cannot be successfully sent twice.
 - Task lifecycle tests should verify that failed retries create separate run attempts.
 - Persistence tests should cover repository creation, task creation, run attempt creation, failed attempt metadata, successful Cursor references, archived tasks, and immutable sent task records.
-- Cursor API client tests should use a fake HTTP transport.
-- Cursor API client tests should verify the request sends prompt text, repository URL, starting ref, composer-2.5, and auto-create PR as API fields rather than hidden prompt text.
-- Cursor API client tests should verify success response mapping into agent id and open URL.
-- Cursor API client tests should verify authentication failures, validation failures, malformed responses, network failures, and short sanitized error messages.
-- Cursor API schema spike should be captured as either a test-backed fixture or a short implementation note before the runtime client is considered complete.
+- Cursor SDK runtime tests should use a fake helper runner.
+- Cursor SDK runtime tests should verify the helper request sends prompt text, repository URL, starting ref, composer-2.5, and auto-create PR as SDK fields rather than hidden prompt text.
+- Cursor SDK runtime tests should verify start response mapping into agent id, run id, and open URL.
+- Cursor SDK runtime tests should verify wait response mapping into completed and still-running outcomes.
+- Cursor SDK helper runner tests should verify missing or old Node maps to a short user-facing failure.
+- Cursor SDK helper errors should be sanitized so secrets and noisy SDK details are not stored.
 - Keychain credential store tests should use an injectable credential storage abstraction so unit tests do not depend on the developer's real Keychain entries.
 - Settings model tests should verify key present/missing status, environment fallback behavior, validation result mapping, and deletion behavior.
 - Open in Cursor tests should verify URL selection and fallback behavior separately from OS-level browser opening.
 - UI tests should focus on high-value flows only: add repository, create task, send with fake Cursor runtime, see Running card, open task detail, mark Done, and archive.
+- A manual UI Send smoke script should verify the real macOS Send button path with a real Cursor API key when the runner has Accessibility permission. The smoke must use temporary app data and clean up launchd environment variables.
 - Prior art exists in the native Codex app tests for SQLite persistence, repository registration, task lifecycle policy, runtime guardrails, and trigger service tests.
 - Prior art exists in the old Cursor web app tests for Cursor-oriented run orchestration concepts, but the MVP should not copy its local SDK runner, raw log, branch classification, scheduling, or PR creation assumptions.
 
@@ -173,11 +180,11 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 - Sharing a codebase, database, or runtime package with Codex Operator.
 - GitHub-only repository registration.
 - Local Cursor Desktop runtime.
-- Local Cursor SDK runner behavior.
+- Broad local Cursor SDK runner behavior that owns logs, scheduling, branch classification, or PR orchestration.
 - Bundling Node as the default runtime path.
 - Scheduling, cron, timezone handling, missed schedule catch-up, and batch queues.
 - Raw log capture, raw event storage, transcript storage, and log viewer UI.
-- Cursor run status polling.
+- Raw Cursor run status polling, event streaming, and local progress reconstruction.
 - Cursor webhook support.
 - Cursor Desktop deep links.
 - Dynamic model discovery.
@@ -207,6 +214,6 @@ The MVP is a native desktop app, not a web app. It is a separate Swift package a
 - The selected product direction is Cursor Cloud Agent first, not local Cursor first.
 - The selected app shape is a native SwiftUI macOS desktop app, not a web app.
 - The selected codebase shape is a separate Cursor Operator package/app, not a unified Codex-plus-Cursor Operator.
-- The selected runtime direction is REST first with an API schema spike required before implementation depends on specific Cursor Cloud Agent request and response shapes.
-- Public Cursor material shows SDK Cloud Agent creation with repository URL, starting ref, model id, auto-create PR, and prompt. The REST API details must still be verified during the spike because the public surface can change.
+- The selected runtime direction is Cursor SDK first through a small Node helper, using the user's installed Node.js 22.13+ runtime.
+- Public Cursor material shows SDK Cloud Agent creation and run wait semantics with repository URL, starting ref, model id, auto-create PR, and prompt. The app should stay close to this supported SDK surface unless Cursor provides an equally stable REST surface later.
 - Cursor Cloud Agent web URL is the MVP continuation surface. Cursor Desktop integration can be revisited after the cloud flow is proven.
