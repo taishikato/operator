@@ -94,16 +94,7 @@ public struct CursorOperatorSettingsView: View {
     }
 
     private var validationStatusText: String {
-        switch credentialModel.validationStatus {
-        case .notValidated:
-            "Not validated"
-        case .validating:
-            "Validating..."
-        case .valid:
-            "Valid"
-        case let .invalid(message):
-            message
-        }
+        credentialModel.validationStatus.displayMessage
     }
 
     private func refreshNodeProjection() {

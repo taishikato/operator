@@ -71,6 +71,13 @@ import Testing
     #expect(try CursorSendReadiness(provider: model.provider).credentialState() == .ready)
 }
 
+@Test func credentialValidationStatusLabelsPrefixCheckAsFormatOnly() {
+    #expect(CursorCredentialValidationStatus.valid.displayMessage == "Format looks valid")
+    #expect(CursorCredentialValidationStatus.validating.displayMessage == "Validating...")
+    #expect(CursorCredentialValidationStatus.notValidated.displayMessage == "Not validated")
+    #expect(CursorCredentialValidationStatus.invalid("Unauthorized").displayMessage == "Unauthorized")
+}
+
 @MainActor
 @Test func settingsModelSurfacesCredentialStoreFailures() throws {
     let storage = ThrowingCursorCredentialStore(saveError: CursorCredentialError.keychain(-25293))

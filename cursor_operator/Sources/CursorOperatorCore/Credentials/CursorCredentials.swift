@@ -129,6 +129,19 @@ public enum CursorCredentialValidationStatus: Equatable, Sendable {
     case validating
     case valid
     case invalid(String)
+
+    public var displayMessage: String {
+        switch self {
+        case .notValidated:
+            "Not validated"
+        case .validating:
+            "Validating..."
+        case .valid:
+            "Format looks valid"
+        case let .invalid(message):
+            message
+        }
+    }
 }
 
 public protocol CursorCredentialValidating: Sendable {
