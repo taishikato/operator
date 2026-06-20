@@ -149,6 +149,7 @@ public final class CursorCredentialSettingsModel: ObservableObject {
 
     @Published public private(set) var status: CursorCredentialPresenceStatus
     @Published public private(set) var validationStatus: CursorCredentialValidationStatus
+    @Published public private(set) var credentialErrorMessage: String?
 
     private let store: any CursorCredentialStoring
     private let validator: any CursorCredentialValidating
@@ -163,6 +164,7 @@ public final class CursorCredentialSettingsModel: ObservableObject {
         self.validator = validator
         status = .missing
         validationStatus = .notValidated
+        credentialErrorMessage = nil
         refreshStatus()
     }
 
@@ -189,8 +191,40 @@ public final class CursorCredentialSettingsModel: ObservableObject {
         refreshStatus()
     }
 
+    @discardableResult
+    public func saveAPIKeyReportingErrors(_ apiKey: String) -> Bool {
+        do {
+            try saveAPIKey(apiKey)
+            return true
+        } catch {
+            credentialErrorMessage = Self.userFacingMessage(for: error)
+            return false
+        }
+    }
+
+    @discardableResult
+    public func deleteAPIKeyReportingErrors() -> Bool {
+        do {
+            try deleteAPIKey()
+            return true
+        } catch {
+            credentialErrorMessage = Self.userFacingMessage(for: error)
+            return false
+        }
+    }
+
     public func validateAPIKey() async {
-        guard let apiKey = try? provider.apiKey(), !apiKey.isEmpty else {
+        let apiKey: String?
+        do {
+            apiKey = try provider.apiKey()
+            credentialErrorMessage = nil
+        } catch {
+            validationStatus = .invalid(Self.userFacingMessage(for: error))
+            credentialErrorMessage = Self.userFacingMessage(for: error)
+            return
+        }
+
+        guard let apiKey, !apiKey.isEmpty else {
             validationStatus = .invalid("Cursor API key is missing.")
             return
         }
@@ -200,11 +234,29 @@ public final class CursorCredentialSettingsModel: ObservableObject {
     }
 
     public func refreshStatus() {
-        guard let apiKey = try? provider.apiKey(), !apiKey.isEmpty else {
+        let apiKey: String?
+        do {
+            apiKey = try provider.apiKey()
+            credentialErrorMessage = nil
+        } catch {
+            status = .missing
+            credentialErrorMessage = Self.userFacingMessage(for: error)
+            return
+        }
+
+        guard let apiKey, !apiKey.isEmpty else {
             status = .missing
             return
         }
         status = .present(maskedValue: Self.mask(apiKey))
+    }
+
+    private static func userFacingMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let errorDescription = localizedError.errorDescription {
+            return errorDescription
+        }
+        return "Cursor Operator could not update the Cursor API key."
     }
 
     private static func mask(_ apiKey: String) -> String {

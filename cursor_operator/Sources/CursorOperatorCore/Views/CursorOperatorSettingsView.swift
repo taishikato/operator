@@ -25,13 +25,18 @@ public struct CursorOperatorSettingsView: View {
             Section("Cursor API Key") {
                 LabeledContent("Status", value: credentialStatusText)
                 LabeledContent("Validation", value: validationStatusText)
+                if let credentialErrorMessage = credentialModel.credentialErrorMessage {
+                    Label(credentialErrorMessage, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
 
                 SecureField("Paste API key", text: $apiKeyDraft)
 
                 HStack {
                     Button("Save") {
-                        try? credentialModel.saveAPIKey(apiKeyDraft)
-                        apiKeyDraft = ""
+                        if credentialModel.saveAPIKeyReportingErrors(apiKeyDraft) {
+                            apiKeyDraft = ""
+                        }
                     }
                     .disabled(apiKeyDraft.isEmpty)
 
@@ -40,7 +45,7 @@ public struct CursorOperatorSettingsView: View {
                     }
 
                     Button("Delete") {
-                        try? credentialModel.deleteAPIKey()
+                        credentialModel.deleteAPIKeyReportingErrors()
                     }
                 }
             }
