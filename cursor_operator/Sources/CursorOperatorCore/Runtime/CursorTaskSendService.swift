@@ -97,27 +97,26 @@ public struct CursorTaskSendService: Sendable {
             autoCreatePR: preview.autoCreatePR
         )
 
+        let pendingAttempt = try store.claimSendAttempt(
+            taskID: task.id,
+            repositoryURL: request.repositoryURL,
+            startingRef: request.startingRef,
+            model: request.model,
+            autoCreatePR: request.autoCreatePR,
+            prompt: request.prompt
+        )
+
         do {
             let reference = try await runtime.startCloudAgent(request: request, apiKey: apiKey)
-            return try store.recordSuccessfulSendAttempt(
-                taskID: task.id,
-                repositoryURL: request.repositoryURL,
-                startingRef: request.startingRef,
-                model: request.model,
-                autoCreatePR: request.autoCreatePR,
-                prompt: request.prompt,
+            return try store.recordSuccessfulClaimedSendAttempt(
+                id: pendingAttempt.id,
                 cursorAgentID: reference.agentID,
                 cursorRunID: reference.runID,
                 cursorURL: reference.openURL
             )
         } catch let failure as CursorRuntimeFailure {
-            return try store.recordFailedSendAttempt(
-                taskID: task.id,
-                repositoryURL: request.repositoryURL,
-                startingRef: request.startingRef,
-                model: request.model,
-                autoCreatePR: request.autoCreatePR,
-                prompt: request.prompt,
+            return try store.recordFailedClaimedSendAttempt(
+                id: pendingAttempt.id,
                 errorMessage: failure.message
             )
         }

@@ -90,6 +90,27 @@ import Testing
     }
 }
 
+@Test func sendServiceClaimsTaskBeforeStartingRuntimeSoConcurrentSendsDoNotDuplicateRuns() async throws {
+    let fixture = try SendServiceFixture()
+    let runtime = SlowCursorRuntime()
+    let service = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    async let firstSend: CursorRunAttempt = service.send(taskID: fixture.task.id)
+    try await Task.sleep(nanoseconds: 20_000_000)
+
+    await #expect(throws: CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun) {
+        try await service.send(taskID: fixture.task.id)
+    }
+
+    let firstAttempt = try await firstSend
+    #expect(firstAttempt.status == .succeeded)
+    #expect(runtime.startCount == 1)
+}
+
 private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
     var result: Result<CursorCloudAgentReference, CursorRuntimeFailure>
     private(set) var requests: [CursorCloudAgentRequestPreview] = []
@@ -101,6 +122,27 @@ private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Senda
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
         requests.append(request)
         return try result.get()
+    }
+}
+
+private final class SlowCursorRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
+    private let lock = NSLock()
+    private var starts = 0
+
+    var startCount: Int {
+        lock.withLock { starts }
+    }
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        lock.withLock {
+            starts += 1
+        }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        return CursorCloudAgentReference(
+            agentID: "agent-slow",
+            runID: "run-slow",
+            openURL: URL(string: "https://cursor.com/agents/agent-slow")!
+        )
     }
 }
 

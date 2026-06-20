@@ -12,6 +12,7 @@ public struct CursorRepository: Equatable, Identifiable, Sendable {
 }
 
 public enum CursorRunAttemptStatus: String, Codable, CaseIterable, Sendable {
+    case pending
     case failed
     case succeeded
 }
@@ -235,6 +236,118 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func claimSendAttempt(
+        id: UUID = UUID(),
+        taskID: UUID,
+        repositoryURL: URL,
+        startingRef: String,
+        model: String,
+        autoCreatePR: Bool,
+        prompt: String,
+        now: Date = Date()
+    ) throws -> CursorRunAttempt {
+        try dbQueue.write { db in
+            let task = try requiredTask(id: taskID, db: db)
+            _ = try CursorTaskLifecyclePolicy.recordFailedSend(for: task)
+            guard try activeRunAttemptCount(taskID: task.id, db: db) == 0 else {
+                throw CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun
+            }
+
+            let attempt = CursorRunAttempt(
+                id: id,
+                taskID: task.id,
+                repositoryID: task.repositoryID,
+                status: .pending,
+                repositoryURL: repositoryURL,
+                startingRef: startingRef,
+                model: model,
+                autoCreatePR: autoCreatePR,
+                prompt: prompt,
+                cursorAgentID: nil,
+                cursorRunID: nil,
+                cursorURL: nil,
+                errorMessage: nil,
+                createdAt: now,
+                completedAt: now
+            )
+            try insert(runAttempt: attempt, db: db)
+            return attempt
+        }
+    }
+
+    public func recordSuccessfulClaimedSendAttempt(
+        id: UUID,
+        cursorAgentID: String,
+        cursorRunID: String,
+        cursorURL: URL?,
+        now: Date = Date()
+    ) throws -> CursorRunAttempt {
+        try dbQueue.write { db in
+            let pendingAttempt = try requiredRunAttempt(id: id, db: db)
+            guard pendingAttempt.status == .pending else {
+                throw CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun
+            }
+            let task = try requiredTask(id: pendingAttempt.taskID, db: db)
+            let updatedTask = try CursorTaskLifecyclePolicy.recordSuccessfulSend(for: task, now: now)
+            try update(task: updatedTask, db: db)
+
+            let attempt = CursorRunAttempt(
+                id: pendingAttempt.id,
+                taskID: pendingAttempt.taskID,
+                repositoryID: pendingAttempt.repositoryID,
+                status: .succeeded,
+                repositoryURL: pendingAttempt.repositoryURL,
+                startingRef: pendingAttempt.startingRef,
+                model: pendingAttempt.model,
+                autoCreatePR: pendingAttempt.autoCreatePR,
+                prompt: pendingAttempt.prompt,
+                cursorAgentID: cursorAgentID,
+                cursorRunID: cursorRunID,
+                cursorURL: cursorURL,
+                errorMessage: nil,
+                createdAt: pendingAttempt.createdAt,
+                completedAt: now
+            )
+            try update(runAttempt: attempt, db: db)
+            return attempt
+        }
+    }
+
+    public func recordFailedClaimedSendAttempt(
+        id: UUID,
+        errorMessage: String,
+        now: Date = Date()
+    ) throws -> CursorRunAttempt {
+        try dbQueue.write { db in
+            let pendingAttempt = try requiredRunAttempt(id: id, db: db)
+            guard pendingAttempt.status == .pending else {
+                throw CursorTaskLifecycleError.transitionNotAllowed
+            }
+            let task = try requiredTask(id: pendingAttempt.taskID, db: db)
+            _ = try CursorTaskLifecyclePolicy.recordFailedSend(for: task)
+
+            let attempt = CursorRunAttempt(
+                id: pendingAttempt.id,
+                taskID: pendingAttempt.taskID,
+                repositoryID: pendingAttempt.repositoryID,
+                status: .failed,
+                repositoryURL: pendingAttempt.repositoryURL,
+                startingRef: pendingAttempt.startingRef,
+                model: pendingAttempt.model,
+                autoCreatePR: pendingAttempt.autoCreatePR,
+                prompt: pendingAttempt.prompt,
+                cursorAgentID: nil,
+                cursorRunID: nil,
+                cursorURL: nil,
+                errorMessage: errorMessage,
+                createdAt: pendingAttempt.createdAt,
+                completedAt: now
+            )
+            try update(runAttempt: attempt, db: db)
+            return attempt
+        }
+    }
+
     public func recordSuccessfulSendAttempt(
         id: UUID = UUID(),
         taskID: UUID,
@@ -321,11 +434,30 @@ public final class CursorOperatorStore: @unchecked Sendable {
         return try Self.task(from: row)
     }
 
+    private func requiredRunAttempt(id: UUID, db: Database) throws -> CursorRunAttempt {
+        guard let row = try Row.fetchOne(db, sql: "SELECT * FROM runAttempts WHERE id = ?", arguments: [id.uuidString]) else {
+            throw CursorOperatorStoreError.taskNotFound
+        }
+        return try Self.runAttempt(from: row)
+    }
+
     private func successfulRunAttemptCount(taskID: UUID, db: Database) throws -> Int {
         try Int.fetchOne(
             db,
             sql: "SELECT COUNT(*) FROM runAttempts WHERE taskID = ? AND status = ?",
             arguments: [taskID.uuidString, CursorRunAttemptStatus.succeeded.rawValue]
+        ) ?? 0
+    }
+
+    private func activeRunAttemptCount(taskID: UUID, db: Database) throws -> Int {
+        try Int.fetchOne(
+            db,
+            sql: "SELECT COUNT(*) FROM runAttempts WHERE taskID = ? AND status IN (?, ?)",
+            arguments: [
+                taskID.uuidString,
+                CursorRunAttemptStatus.pending.rawValue,
+                CursorRunAttemptStatus.succeeded.rawValue
+            ]
         ) ?? 0
     }
 
@@ -394,6 +526,25 @@ public final class CursorOperatorStore: @unchecked Sendable {
             ]
         )
     }
+
+    private func update(runAttempt: CursorRunAttempt, db: Database) throws {
+        try db.execute(
+            sql: """
+                UPDATE runAttempts
+                SET status = ?, cursorAgentID = ?, cursorRunID = ?, cursorURL = ?, errorMessage = ?, completedAt = ?
+                WHERE id = ?
+                """,
+            arguments: [
+                runAttempt.status.rawValue,
+                runAttempt.cursorAgentID,
+                runAttempt.cursorRunID,
+                runAttempt.cursorURL?.absoluteString,
+                runAttempt.errorMessage,
+                runAttempt.completedAt.storageValue,
+                runAttempt.id.uuidString
+            ]
+        )
+    }
 }
 
 private extension CursorOperatorStore {
@@ -453,6 +604,10 @@ private extension CursorOperatorStore {
             try db.alter(table: "runAttempts") { table in
                 table.add(column: "cursorRunID", .text)
             }
+        }
+
+        migrator.registerMigration("addActiveSendAttemptGuard") { db in
+            try db.execute(sql: "CREATE UNIQUE INDEX runAttempts_one_active_send_per_task ON runAttempts(taskID) WHERE status IN ('pending', 'succeeded')")
         }
 
         return migrator
