@@ -12,6 +12,13 @@ if (isMainModule()) {
     } else {
       throw new Error("Unsupported Cursor SDK helper action.");
     }
+    // Exit explicitly once the result has been written. The Cursor cloud SDK
+    // keeps a run-event stream open after the run is created, which would
+    // otherwise keep this process alive until the run finishes. The Swift
+    // runner only reads stdout after the process exits, so a lingering process
+    // would block the "start" result until the run completed. Completion is
+    // tracked separately through the "wait" action.
+    process.exit(0);
   } catch (error) {
     console.error(sanitizeError(error));
     process.exit(1);
@@ -44,7 +51,7 @@ async function startRun(request) {
   requireString(agentID, "agentID");
   requireString(run.id, "runID");
 
-  writeJSON({
+  await writeJSON({
     agentID,
     runID: run.id,
     openURL: `https://cursor.com/agents/${agentID}`,
@@ -65,7 +72,7 @@ async function waitForRun(request) {
   const status = completedRun.status ?? run.status;
   requireString(status, "status");
 
-  writeJSON({
+  await writeJSON({
     status,
     result: completedRun.result ?? null,
   });
@@ -84,7 +91,17 @@ async function readJSONFromStdin() {
 }
 
 function writeJSON(value) {
-  process.stdout.write(`${JSON.stringify(value)}\n`);
+  // Resolve only once the line has been flushed to stdout so the explicit
+  // process.exit(0) in the main module cannot truncate the result.
+  return new Promise((resolve, reject) => {
+    process.stdout.write(`${JSON.stringify(value)}\n`, (error) => {
+      if (error) {
+        reject(error);
+      } else {
+        resolve();
+      }
+    });
+  });
 }
 
 function requireString(value, name) {
