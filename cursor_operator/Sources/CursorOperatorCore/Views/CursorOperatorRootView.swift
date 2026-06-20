@@ -212,15 +212,55 @@ private struct CursorBoardView: View {
     }
 
     private var setupStatusView: some View {
-        let foregroundStyle: Color = model.setupStatus.canSend ? .secondary : .orange
-
-        return HStack(spacing: 14) {
-            Label(model.setupStatus.repositoryMessage, systemImage: model.setupStatus.repositoryIconName)
-            Label(model.setupStatus.credentialMessage, systemImage: model.setupStatus.credentialIconName)
-            Label(model.setupStatus.nodeMessage, systemImage: model.setupStatus.nodeIconName)
+        HStack(spacing: 14) {
+            setupStatusLabel(
+                model.setupStatus.repositoryMessage,
+                systemImage: model.setupStatus.repositoryIconName,
+                isValid: isRepositoryValid
+            )
+            setupStatusLabel(
+                model.setupStatus.credentialMessage,
+                systemImage: model.setupStatus.credentialIconName,
+                isValid: isCredentialValid
+            )
+            setupStatusLabel(
+                model.setupStatus.nodeMessage,
+                systemImage: model.setupStatus.nodeIconName,
+                isValid: isNodeValid
+            )
         }
         .font(.callout)
-        .foregroundStyle(foregroundStyle)
+    }
+
+    private var isRepositoryValid: Bool {
+        switch model.setupStatus.repositoryState {
+        case .missing:
+            false
+        case .registered:
+            true
+        }
+    }
+
+    private var isCredentialValid: Bool {
+        model.setupStatus.credentialState == .ready
+    }
+
+    private var isNodeValid: Bool {
+        switch model.setupStatus.nodeState {
+        case .missing:
+            false
+        case .ready:
+            true
+        }
+    }
+
+    private func setupStatusLabel(
+        _ title: String,
+        systemImage: String,
+        isValid: Bool
+    ) -> some View {
+        Label(title, systemImage: systemImage)
+            .foregroundStyle(isValid ? .green : .yellow)
     }
 
     private func selectRepositoryFolder() {
