@@ -111,6 +111,32 @@ import Testing
     #expect(runtime.startCount == 1)
 }
 
+@Test func sendServiceSurfacesStartedRunReferenceWhenRecordingSuccessFails() async throws {
+    let fixture = try SendServiceFixture()
+    let runtime = ArchivingCursorRuntime(store: fixture.store, taskID: fixture.task.id)
+    let service = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    await #expect(throws: CursorTaskSendError.startedRunCouldNotBeRecorded(
+        CursorCloudAgentReference(
+            agentID: "agent-orphan",
+            runID: "run-orphan",
+            openURL: URL(string: "https://cursor.com/agents/agent-orphan")!
+        )
+    )) {
+        try await service.send(taskID: fixture.task.id)
+    }
+
+    let attempt = try #require(fixture.store.runAttempts(taskID: fixture.task.id).last)
+    #expect(attempt.status == .failed)
+    #expect(attempt.cursorAgentID == "agent-orphan")
+    #expect(attempt.cursorRunID == "run-orphan")
+    #expect(attempt.cursorURL == URL(string: "https://cursor.com/agents/agent-orphan")!)
+}
+
 private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
     var result: Result<CursorCloudAgentReference, CursorRuntimeFailure>
     private(set) var requests: [CursorCloudAgentRequestPreview] = []
@@ -122,6 +148,25 @@ private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Senda
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
         requests.append(request)
         return try result.get()
+    }
+}
+
+private final class ArchivingCursorRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
+    let store: CursorOperatorStore
+    let taskID: UUID
+
+    init(store: CursorOperatorStore, taskID: UUID) {
+        self.store = store
+        self.taskID = taskID
+    }
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        _ = try store.archiveTask(id: taskID)
+        return CursorCloudAgentReference(
+            agentID: "agent-orphan",
+            runID: "run-orphan",
+            openURL: URL(string: "https://cursor.com/agents/agent-orphan")!
+        )
     }
 }
 

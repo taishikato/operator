@@ -315,6 +315,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
 
     public func recordFailedClaimedSendAttempt(
         id: UUID,
+        cursorAgentID: String? = nil,
+        cursorRunID: String? = nil,
+        cursorURL: URL? = nil,
         errorMessage: String,
         now: Date = Date()
     ) throws -> CursorRunAttempt {
@@ -323,8 +326,6 @@ public final class CursorOperatorStore: @unchecked Sendable {
             guard pendingAttempt.status == .pending else {
                 throw CursorTaskLifecycleError.transitionNotAllowed
             }
-            let task = try requiredTask(id: pendingAttempt.taskID, db: db)
-            _ = try CursorTaskLifecyclePolicy.recordFailedSend(for: task)
 
             let attempt = CursorRunAttempt(
                 id: pendingAttempt.id,
@@ -336,9 +337,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: pendingAttempt.model,
                 autoCreatePR: pendingAttempt.autoCreatePR,
                 prompt: pendingAttempt.prompt,
-                cursorAgentID: nil,
-                cursorRunID: nil,
-                cursorURL: nil,
+                cursorAgentID: cursorAgentID,
+                cursorRunID: cursorRunID,
+                cursorURL: cursorURL,
                 errorMessage: errorMessage,
                 createdAt: pendingAttempt.createdAt,
                 completedAt: now

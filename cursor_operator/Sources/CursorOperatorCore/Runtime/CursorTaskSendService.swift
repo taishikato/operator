@@ -58,8 +58,18 @@ public extension CursorCloudAgentRuntime {
     }
 }
 
-public enum CursorTaskSendError: Error, Equatable, Sendable {
+public enum CursorTaskSendError: Error, Equatable, LocalizedError, Sendable {
     case missingCredentials
+    case startedRunCouldNotBeRecorded(CursorCloudAgentReference)
+
+    public var errorDescription: String? {
+        switch self {
+        case .missingCredentials:
+            "Cursor API key is required before sending."
+        case let .startedRunCouldNotBeRecorded(reference):
+            "Cursor run started but could not be saved. Agent: \(reference.agentID). Run: \(reference.runID). Open: \(reference.openURL.absoluteString)"
+        }
+    }
 }
 
 public struct CursorTaskSendService: Sendable {
@@ -108,12 +118,24 @@ public struct CursorTaskSendService: Sendable {
 
         do {
             let reference = try await runtime.startCloudAgent(request: request, apiKey: apiKey)
-            return try store.recordSuccessfulClaimedSendAttempt(
-                id: pendingAttempt.id,
-                cursorAgentID: reference.agentID,
-                cursorRunID: reference.runID,
-                cursorURL: reference.openURL
-            )
+            do {
+                return try store.recordSuccessfulClaimedSendAttempt(
+                    id: pendingAttempt.id,
+                    cursorAgentID: reference.agentID,
+                    cursorRunID: reference.runID,
+                    cursorURL: reference.openURL
+                )
+            } catch {
+                _ = try? store.recordFailedClaimedSendAttempt(
+                    id: pendingAttempt.id,
+                    cursorAgentID: reference.agentID,
+                    cursorRunID: reference.runID,
+                    cursorURL: reference.openURL,
+                    errorMessage: CursorTaskSendError.startedRunCouldNotBeRecorded(reference).errorDescription
+                        ?? "Cursor run started but could not be saved."
+                )
+                throw CursorTaskSendError.startedRunCouldNotBeRecorded(reference)
+            }
         } catch let failure as CursorRuntimeFailure {
             return try store.recordFailedClaimedSendAttempt(
                 id: pendingAttempt.id,
