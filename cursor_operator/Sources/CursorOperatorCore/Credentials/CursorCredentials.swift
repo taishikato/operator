@@ -183,12 +183,14 @@ public final class CursorCredentialSettingsModel: ObservableObject {
         try store.saveAPIKey(apiKey)
         validationStatus = .notValidated
         refreshStatus()
+        NotificationCenter.default.post(name: .cursorOperatorCredentialsChanged, object: nil)
     }
 
     public func deleteAPIKey() throws {
         try store.deleteAPIKey()
         validationStatus = .notValidated
         refreshStatus()
+        NotificationCenter.default.post(name: .cursorOperatorCredentialsChanged, object: nil)
     }
 
     @discardableResult

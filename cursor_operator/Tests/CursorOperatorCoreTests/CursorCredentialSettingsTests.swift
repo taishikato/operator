@@ -84,6 +84,29 @@ import Testing
     #expect(model.credentialErrorMessage == "Unable to access the Cursor API key in Keychain.")
 }
 
+@MainActor
+@Test func settingsModelPostsCredentialChangeNotificationAfterSuccessfulSave() throws {
+    let storage = InMemoryCursorCredentialStore()
+    let model = CursorCredentialSettingsModel(
+        provider: CursorCredentialProvider(store: storage, environment: [:]),
+        store: storage,
+        validator: FakeCursorCredentialValidator(result: .valid)
+    )
+    let recorder = NotificationRecorder()
+    let observer = NotificationCenter.default.addObserver(
+        forName: .cursorOperatorCredentialsChanged,
+        object: nil,
+        queue: nil
+    ) { notification in
+        recorder.append(notification.name)
+    }
+    defer { NotificationCenter.default.removeObserver(observer) }
+
+    #expect(model.saveAPIKeyReportingErrors("crsr_secret") == true)
+
+    #expect(recorder.names == [.cursorOperatorCredentialsChanged])
+}
+
 private final class FakeCursorCredentialValidator: CursorCredentialValidating, @unchecked Sendable {
     let result: CursorCredentialValidationStatus
     private(set) var validatedKeys: [String] = []
@@ -125,6 +148,21 @@ private final class ThrowingCursorCredentialStore: CursorCredentialStoring, @unc
     func deleteAPIKey() throws {
         if let deleteError {
             throw deleteError
+        }
+    }
+}
+
+private final class NotificationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recordedNames: [Notification.Name] = []
+
+    var names: [Notification.Name] {
+        lock.withLock { recordedNames }
+    }
+
+    func append(_ name: Notification.Name) {
+        lock.withLock {
+            recordedNames.append(name)
         }
     }
 }

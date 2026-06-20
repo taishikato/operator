@@ -180,6 +180,9 @@ private struct CursorBoardView: View {
         .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorAddRepositoryCommand)) { _ in
             selectRepositoryFolder()
         }
+        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorCredentialsChanged)) { _ in
+            model.loadReportingErrors()
+        }
         .onChange(of: model.pendingRepositoryDraft) { _, draft in
             defaultBranchDraft = draft?.defaultBranch ?? ""
         }
