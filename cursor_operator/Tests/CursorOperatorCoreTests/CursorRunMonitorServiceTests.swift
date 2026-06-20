@@ -70,6 +70,74 @@ import Testing
     #expect(failedCard.failedSendMessage == "Cursor run failed during execution.")
 }
 
+@Test func runMonitorContinuesAfterOneRuntimeWaitFails() async throws {
+    let store = try CursorOperatorStore(databaseURL: RunMonitorFixture.temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator-run-monitor-many",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let failingTaskID = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
+    let completingTaskID = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
+    let failingTask = try store.createTask(
+        id: failingTaskID,
+        repositoryID: repository.id,
+        title: "Transient failure",
+        prompt: "Prompt"
+    )
+    let completingTask = try store.createTask(
+        id: completingTaskID,
+        repositoryID: repository.id,
+        title: "Complete",
+        prompt: "Prompt"
+    )
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: failingTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: failingTask.prompt,
+        cursorAgentID: "agent-failing",
+        cursorRunID: "run-failing",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-failing")!
+    )
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: completingTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: completingTask.prompt,
+        cursorAgentID: "agent-completing",
+        cursorRunID: "run-completing",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-completing")!
+    )
+    let runtime = SelectiveRunMonitoringRuntime(results: [
+        "run-failing": .failure(CursorRuntimeFailure(message: "temporary network failure")),
+        "run-completing": .success(CursorCloudAgentRunCompletion(status: "finished", result: "Done"))
+    ])
+    let service = CursorRunMonitorService(
+        store: store,
+        credentialReadiness: CursorSendReadiness(provider: RunMonitorFixture.readyProvider()),
+        runtime: runtime
+    )
+
+    let outcomes = try await service.resumeRunningTasks()
+
+    #expect(outcomes == [
+        .monitoringFailed(
+            taskID: failingTaskID,
+            runID: "run-failing",
+            message: "temporary network failure"
+        ),
+        .completed(taskID: completingTaskID, runID: "run-completing")
+    ])
+    #expect(try store.task(id: failingTaskID)?.status == .running)
+    #expect(try store.task(id: completingTaskID)?.status == .done)
+}
+
 @Test func runningTaskCardShowsIncompleteRunStatusAndDoneCardShowsCompletedRunStatus() throws {
     let runningTask = CursorTask.new(repositoryID: UUID(), title: "Running", prompt: "Prompt")
     let doneTask = CursorTask.new(repositoryID: UUID(), title: "Done", prompt: "Prompt")
@@ -103,6 +171,33 @@ private final class FakeRunMonitoringRuntime: CursorCloudAgentRuntime, @unchecke
     func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
         waits.append(reference)
         return completion
+    }
+}
+
+private final class SelectiveRunMonitoringRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
+    let results: [String: Result<CursorCloudAgentRunCompletion, Error>]
+
+    init(results: [String: Result<CursorCloudAgentRunCompletion, Error>]) {
+        self.results = results
+    }
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        CursorCloudAgentReference(
+            agentID: "unused",
+            runID: "unused",
+            openURL: URL(string: "https://cursor.com/agents/unused")!
+        )
+    }
+
+    func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
+        switch results[reference.runID] {
+        case let .success(completion):
+            return completion
+        case let .failure(error):
+            throw error
+        case nil:
+            throw CursorRuntimeFailure(message: "Unexpected run.")
+        }
     }
 }
 
@@ -141,7 +236,14 @@ private struct RunMonitorFixture {
         )
     }
 
-    private static func temporaryDatabaseURL() throws -> URL {
+    static func readyProvider() -> CursorCredentialProvider {
+        CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        )
+    }
+
+    static func temporaryDatabaseURL() throws -> URL {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "CursorRunMonitorServiceTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

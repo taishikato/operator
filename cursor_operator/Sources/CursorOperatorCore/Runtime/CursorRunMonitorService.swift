@@ -3,6 +3,7 @@ import Foundation
 public enum CursorRunMonitorOutcome: Equatable, Sendable {
     case completed(taskID: UUID, runID: String)
     case failed(taskID: UUID, runID: String, message: String)
+    case monitoringFailed(taskID: UUID, runID: String, message: String)
     case stillRunning(taskID: UUID, runID: String)
 }
 
@@ -64,10 +65,19 @@ public struct CursorRunMonitorService: Sendable {
         _ runningReference: RunningRunReference,
         apiKey: String
     ) async throws -> CursorRunMonitorOutcome {
-        let completion = try await runtime.waitForRun(
-            reference: runningReference.reference,
-            apiKey: apiKey
-        )
+        let completion: CursorCloudAgentRunCompletion
+        do {
+            completion = try await runtime.waitForRun(
+                reference: runningReference.reference,
+                apiKey: apiKey
+            )
+        } catch {
+            return .monitoringFailed(
+                taskID: runningReference.taskID,
+                runID: runningReference.reference.runID,
+                message: Self.userFacingMessage(for: error)
+            )
+        }
 
         if completion.isComplete {
             if try store.task(id: runningReference.taskID)?.status == .running {
@@ -94,6 +104,17 @@ public struct CursorRunMonitorService: Sendable {
 
         return .stillRunning(taskID: runningReference.taskID, runID: runningReference.reference.runID)
     }
+
+    private static func userFacingMessage(for error: Error) -> String {
+        if let runtimeFailure = error as? CursorRuntimeFailure {
+            return runtimeFailure.message
+        }
+        if let localizedError = error as? LocalizedError,
+           let errorDescription = localizedError.errorDescription {
+            return errorDescription
+        }
+        return "Cursor Operator could not confirm the run status."
+    }
 }
 
 private struct RunningRunReference: Sendable {
@@ -104,7 +125,10 @@ private struct RunningRunReference: Sendable {
 private extension CursorRunMonitorOutcome {
     var sortKey: String {
         switch self {
-        case let .completed(taskID, runID), let .failed(taskID, runID, _), let .stillRunning(taskID, runID):
+        case let .completed(taskID, runID),
+             let .failed(taskID, runID, _),
+             let .monitoringFailed(taskID, runID, _),
+             let .stillRunning(taskID, runID):
             "\(taskID.uuidString)-\(runID)"
         }
     }
