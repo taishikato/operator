@@ -72,6 +72,40 @@ import Testing
     }
 }
 
+@Test func processSDKHelperRunnerDrainsLargeOutputBeforeWaitingForExit() async throws {
+    let helperScriptURL = try temporaryHelperScript(contents: """
+    dd if=/dev/zero bs=1024 count=128 2>/dev/null | tr '\\0' 'x'
+    dd if=/dev/zero bs=1024 count=128 2>/dev/null | tr '\\0' 'y' >&2
+    printf '{"ok":true}\\n'
+    """)
+    let runner = ProcessCursorSDKHelperRunner(
+        nodeResolver: ShellNodeResolver(),
+        timeout: 2
+    )
+
+    let output = try await runner.run(
+        helperScriptURL: helperScriptURL,
+        request: CursorSDKHelperRequest(action: .wait, apiKey: "crsr_test_key")
+    )
+
+    #expect(output.count > 128 * 1024)
+}
+
+@Test func processSDKHelperRunnerTimesOutHungHelper() async throws {
+    let helperScriptURL = try temporaryHelperScript(contents: "sleep 5\n")
+    let runner = ProcessCursorSDKHelperRunner(
+        nodeResolver: ShellNodeResolver(),
+        timeout: 0.1
+    )
+
+    await #expect(throws: CursorRuntimeFailure(message: "Cursor SDK helper timed out.")) {
+        _ = try await runner.run(
+            helperScriptURL: helperScriptURL,
+            request: CursorSDKHelperRequest(action: .wait, apiKey: "crsr_test_key")
+        )
+    }
+}
+
 @Test func nodeSettingsProjectionReportsDetectedNodeAndMissingNode() {
     let detected = CursorNodeSettingsProjection(
         result: .success(CursorNodeResolution(
@@ -111,4 +145,19 @@ private struct MissingNodeResolver: CursorNodeResolving {
     func resolve() throws -> CursorNodeResolution {
         throw CursorNodeResolutionError.missingCompatibleNode
     }
+}
+
+private struct ShellNodeResolver: CursorNodeResolving {
+    func resolve() throws -> CursorNodeResolution {
+        CursorNodeResolution(executableURL: URL(filePath: "/bin/sh"), version: "v22.13.0")
+    }
+}
+
+private func temporaryHelperScript(contents: String) throws -> URL {
+    let directory = FileManager.default.temporaryDirectory
+        .appending(path: "CursorSDKHelperRunnerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let scriptURL = directory.appending(path: "helper.sh")
+    try contents.data(using: .utf8)?.write(to: scriptURL)
+    return scriptURL
 }

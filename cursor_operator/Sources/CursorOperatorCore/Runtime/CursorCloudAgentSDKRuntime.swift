@@ -128,9 +128,14 @@ public struct CursorCloudAgentSDKRuntime: CursorCloudAgentRuntime {
 
 public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
     private let nodeResolver: any CursorNodeResolving
+    private let timeout: TimeInterval
 
-    public init(nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver()) {
+    public init(
+        nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
+        timeout: TimeInterval = 120
+    ) {
         self.nodeResolver = nodeResolver
+        self.timeout = timeout
     }
 
     public func run(helperScriptURL: URL, request: CursorSDKHelperRequest) async throws -> Data {
@@ -143,6 +148,7 @@ public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
             throw CursorRuntimeFailure(message: "Unable to locate Node.js for the Cursor SDK helper.")
         }
 
+        let timeout = timeout
         return try await Task.detached(priority: .utility) {
             let process = Process()
             process.executableURL = node.executableURL
@@ -155,25 +161,74 @@ public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
             process.standardOutput = stdout
             process.standardError = stderr
 
+            let output = LockedProcessOutput()
+            let errorOutput = LockedProcessOutput()
+            stdout.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    output.append(data)
+                }
+            }
+            stderr.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if !data.isEmpty {
+                    errorOutput.append(data)
+                }
+            }
+
             do {
                 try process.run()
                 try stdin.fileHandleForWriting.write(contentsOf: JSONEncoder().encode(request))
                 try stdin.fileHandleForWriting.close()
-                process.waitUntilExit()
             } catch {
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
                 throw CursorRuntimeFailure(message: "Unable to launch Cursor SDK helper.")
             }
 
-            let output = stdout.fileHandleForReading.readDataToEndOfFile()
-            let errorOutput = stderr.fileHandleForReading.readDataToEndOfFile()
+            let deadline = Date().addingTimeInterval(timeout)
+            while process.isRunning && Date() < deadline {
+                try await Task.sleep(nanoseconds: 20_000_000)
+            }
+
+            if process.isRunning {
+                process.terminate()
+                let terminationDeadline = Date().addingTimeInterval(2)
+                while process.isRunning && Date() < terminationDeadline {
+                    try await Task.sleep(nanoseconds: 20_000_000)
+                }
+                stdout.fileHandleForReading.readabilityHandler = nil
+                stderr.fileHandleForReading.readabilityHandler = nil
+                throw CursorRuntimeFailure(message: "Cursor SDK helper timed out.")
+            }
+
+            stdout.fileHandleForReading.readabilityHandler = nil
+            stderr.fileHandleForReading.readabilityHandler = nil
+            output.append(stdout.fileHandleForReading.readDataToEndOfFile())
+            errorOutput.append(stderr.fileHandleForReading.readDataToEndOfFile())
 
             guard process.terminationStatus == 0 else {
-                let message = String(data: errorOutput, encoding: .utf8) ?? "Cursor SDK helper failed."
+                let message = String(data: errorOutput.data, encoding: .utf8) ?? "Cursor SDK helper failed."
                 throw CursorRuntimeFailure(message: message)
             }
 
-            return output
+            return output.data
         }.value
+    }
+}
+
+private final class LockedProcessOutput: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage = Data()
+
+    var data: Data {
+        lock.withLock { storage }
+    }
+
+    func append(_ data: Data) {
+        lock.withLock {
+            storage.append(data)
+        }
     }
 }
 
