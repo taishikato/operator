@@ -237,6 +237,44 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelPreparesReadyTaskDraftForEditingAndUpdatesIt() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Original",
+        prompt: "Original prompt",
+        autoCreatePR: false
+    )
+    let model = CursorBoardModel(store: store)
+
+    #expect(model.prepareEditTaskDraftForPresentation(taskID: task.id))
+    #expect(model.editingTaskID == task.id)
+    #expect(model.creationDraft == CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "Original",
+        prompt: "Original prompt",
+        autoCreatePR: false
+    ))
+
+    model.creationDraft.title = "Edited"
+    model.creationDraft.prompt = "Edited prompt"
+    model.creationDraft.autoCreatePR = true
+    #expect(model.saveTaskDraftReportingErrors())
+
+    let updated = try #require(try store.task(id: task.id))
+    #expect(updated.title == "Edited")
+    #expect(updated.prompt == "Edited prompt")
+    #expect(updated.autoCreatePR)
+    #expect(model.editingTaskID == nil)
+}
+
+@MainActor
 @Test func boardModelSendsReadyTaskWithInjectedRuntime() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(

@@ -126,6 +126,8 @@ private struct CursorBoardView: View {
                             ForEach(projectionColumn(for: column.id).cards) { card in
                                 CursorTaskCardView(card: card) {
                                     model.sendReportingErrors(taskID: card.id)
+                                } edit: {
+                                    presentEditTaskSheet(taskID: card.id)
                                 } openInCursor: {
                                     model.openInCursorReportingErrors(taskID: card.id)
                                 } markDone: {
@@ -238,6 +240,10 @@ private struct CursorBoardView: View {
     private func presentCreateTaskSheet() {
         showCreateTaskSheet = model.prepareCreateTaskDraftForPresentation()
     }
+
+    private func presentEditTaskSheet(taskID: UUID) {
+        showCreateTaskSheet = model.prepareEditTaskDraftForPresentation(taskID: taskID)
+    }
 }
 
 extension CursorRepositoryRegistrationDraft: Identifiable {
@@ -305,6 +311,7 @@ private struct CursorRepositoryReviewSheet: View {
 private struct CursorTaskCardView: View {
     let card: CursorTaskCardProjection
     let send: () -> Void
+    let edit: () -> Void
     let openInCursor: () -> Void
     let markDone: () -> Void
     let archive: () -> Void
@@ -330,6 +337,9 @@ private struct CursorTaskCardView: View {
 
             HStack {
                 if card.status == .ready {
+                    Button("Edit", action: edit)
+                        .controlSize(.small)
+
                     Button("Send", action: send)
                         .controlSize(.small)
                         .disabled(sendDisabled)
@@ -436,11 +446,11 @@ private struct CursorTaskCreationSheet: View {
                 .keyboardShortcut(.cancelAction)
 
                 Button {
-                    if model.createTaskFromDraftReportingErrors() {
+                    if model.saveTaskDraftReportingErrors() {
                         isPresented = false
                     }
                 } label: {
-                    Label("Create Task", systemImage: "plus")
+                    Label(primaryActionTitle, systemImage: primaryActionIconName)
                 }
                 .keyboardShortcut(.defaultAction)
             }
@@ -461,6 +471,14 @@ private struct CursorTaskCreationSheet: View {
             autoCreatePR: model.creationDraft.autoCreatePR
         )
         return try? CursorSendPreview(task: task, repository: repository)
+    }
+
+    private var primaryActionTitle: String {
+        model.editingTaskID == nil ? "Create Task" : "Save Changes"
+    }
+
+    private var primaryActionIconName: String {
+        model.editingTaskID == nil ? "plus" : "checkmark"
     }
 
     private var titleBinding: Binding<String> {
@@ -516,6 +534,7 @@ private struct CursorArchivedView: View {
                     LazyVStack(alignment: .leading, spacing: 12) {
                         ForEach(model.projection.archivedCards) { card in
                             CursorTaskCardView(card: card) {
+                            } edit: {
                             } openInCursor: {
                                 model.openInCursorReportingErrors(taskID: card.id)
                             } markDone: {

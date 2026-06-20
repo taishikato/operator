@@ -8,6 +8,7 @@ public final class CursorBoardModel: ObservableObject {
     @Published public private(set) var setupStatus: CursorSetupStatusProjection
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var pendingRepositoryDraft: CursorRepositoryRegistrationDraft?
+    @Published public private(set) var editingTaskID: UUID?
     @Published public var creationDraft: CursorTaskCreationDraft
 
     private let store: CursorOperatorStore
@@ -37,6 +38,7 @@ public final class CursorBoardModel: ObservableObject {
         projection = CursorBoardProjection(tasks: [])
         repositories = []
         setupStatus = .empty
+        editingTaskID = nil
         creationDraft = CursorTaskCreationDraft()
     }
 
@@ -64,11 +66,13 @@ public final class CursorBoardModel: ObservableObject {
     public func createTaskFromDraft() throws -> CursorTask {
         let task = try creationDraft.createTask(in: store)
         creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
+        editingTaskID = nil
         try load()
         return task
     }
 
     public func prepareCreateTaskDraftForPresentation() -> Bool {
+        editingTaskID = nil
         if creationDraft.repositoryID == nil {
             creationDraft.repositoryID = repositories.first?.id
         }
@@ -77,6 +81,27 @@ public final class CursorBoardModel: ObservableObject {
             return false
         }
         return true
+    }
+
+    public func prepareEditTaskDraftForPresentation(taskID: UUID) -> Bool {
+        do {
+            guard let task = try store.task(id: taskID) else {
+                throw CursorOperatorStoreError.taskNotFound
+            }
+            try CursorTaskLifecyclePolicy.ensureEditable(task)
+            creationDraft = CursorTaskCreationDraft(
+                repositoryID: task.repositoryID,
+                title: task.title,
+                prompt: task.prompt,
+                autoCreatePR: task.autoCreatePR
+            )
+            editingTaskID = task.id
+            errorMessage = nil
+            return true
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return false
+        }
     }
 
     public func updateTaskFromDraft(taskID: UUID) throws -> CursorTask {
@@ -93,6 +118,8 @@ public final class CursorBoardModel: ObservableObject {
             prompt: creationDraft.prompt,
             autoCreatePR: creationDraft.autoCreatePR
         )
+        creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
+        editingTaskID = nil
         try load()
         return task
     }
@@ -196,6 +223,29 @@ public final class CursorBoardModel: ObservableObject {
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
             return false
+        }
+    }
+
+    public func updateEditingTaskFromDraftReportingErrors() -> Bool {
+        guard let editingTaskID else {
+            errorMessage = "Choose a task before saving changes."
+            return false
+        }
+
+        do {
+            _ = try updateTaskFromDraft(taskID: editingTaskID)
+            return true
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+            return false
+        }
+    }
+
+    public func saveTaskDraftReportingErrors() -> Bool {
+        if editingTaskID != nil {
+            updateEditingTaskFromDraftReportingErrors()
+        } else {
+            createTaskFromDraftReportingErrors()
         }
     }
 
