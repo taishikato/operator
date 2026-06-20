@@ -154,6 +154,12 @@ public struct CursorTaskSendService: Sendable {
                 id: pendingAttempt.id,
                 errorMessage: failure.message
             )
+        } catch {
+            _ = try? store.recordFailedClaimedSendAttempt(
+                id: pendingAttempt.id,
+                errorMessage: "Cursor send was interrupted before Cursor returned a run reference."
+            )
+            throw error
         }
     }
 }

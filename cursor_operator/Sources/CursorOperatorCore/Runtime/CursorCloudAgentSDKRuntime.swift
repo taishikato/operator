@@ -128,14 +128,26 @@ public struct CursorCloudAgentSDKRuntime: CursorCloudAgentRuntime {
 
 public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
     private let nodeResolver: any CursorNodeResolving
-    private let timeout: TimeInterval
+    private let startTimeout: TimeInterval
+    private let waitTimeout: TimeInterval
 
     public init(
         nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
-        timeout: TimeInterval = 120
+        startTimeout: TimeInterval = 120,
+        waitTimeout: TimeInterval = 12 * 60 * 60
     ) {
         self.nodeResolver = nodeResolver
-        self.timeout = timeout
+        self.startTimeout = startTimeout
+        self.waitTimeout = waitTimeout
+    }
+
+    public init(
+        nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
+        timeout: TimeInterval
+    ) {
+        self.nodeResolver = nodeResolver
+        startTimeout = timeout
+        waitTimeout = timeout
     }
 
     public func run(helperScriptURL: URL, request: CursorSDKHelperRequest) async throws -> Data {
@@ -148,7 +160,7 @@ public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
             throw CursorRuntimeFailure(message: "Unable to locate Node.js for the Cursor SDK helper.")
         }
 
-        let timeout = timeout
+        let timeout = timeout(for: request.action)
         return try await Task.detached(priority: .utility) {
             let process = Process()
             process.executableURL = node.executableURL
@@ -214,6 +226,15 @@ public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
 
             return output.data
         }.value
+    }
+
+    private func timeout(for action: CursorSDKHelperAction) -> TimeInterval {
+        switch action {
+        case .start:
+            startTimeout
+        case .wait:
+            waitTimeout
+        }
     }
 }
 

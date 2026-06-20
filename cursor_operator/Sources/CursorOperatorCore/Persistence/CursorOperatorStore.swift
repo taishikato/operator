@@ -56,6 +56,8 @@ public enum CursorOperatorStoreError: Error, Equatable, LocalizedError, Sendable
 }
 
 public final class CursorOperatorStore: @unchecked Sendable {
+    private static let stalePendingSendAttemptMessage = "Previous Cursor send was interrupted before Cursor returned a run reference."
+
     private let dbQueue: DatabaseQueue
 
     public init(databaseURL: URL) throws {
@@ -250,11 +252,18 @@ public final class CursorOperatorStore: @unchecked Sendable {
         model: String,
         autoCreatePR: Bool,
         prompt: String,
-        now: Date = Date()
+        now: Date = Date(),
+        stalePendingAge: TimeInterval = 10 * 60
     ) throws -> CursorRunAttempt {
         try dbQueue.write { db in
             let task = try requiredTask(id: taskID, db: db)
             _ = try CursorTaskLifecyclePolicy.recordFailedSend(for: task)
+            try expireStalePendingSendAttempts(
+                taskID: task.id,
+                cutoff: now.addingTimeInterval(-stalePendingAge),
+                now: now,
+                db: db
+            )
             guard try activeRunAttemptCount(taskID: task.id, db: db) == 0 else {
                 throw CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun
             }
@@ -511,6 +520,29 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 CursorRunAttemptStatus.succeeded.rawValue
             ]
         ) ?? 0
+    }
+
+    private func expireStalePendingSendAttempts(
+        taskID: UUID,
+        cutoff: Date,
+        now: Date,
+        db: Database
+    ) throws {
+        try db.execute(
+            sql: """
+                UPDATE runAttempts
+                SET status = ?, errorMessage = ?, completedAt = ?
+                WHERE taskID = ? AND status = ? AND createdAt < ?
+                """,
+            arguments: [
+                CursorRunAttemptStatus.failed.rawValue,
+                Self.stalePendingSendAttemptMessage,
+                now.storageValue,
+                taskID.uuidString,
+                CursorRunAttemptStatus.pending.rawValue,
+                cutoff.storageValue
+            ]
+        )
     }
 
     private func insert(task: CursorTask, db: Database) throws {

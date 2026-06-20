@@ -137,6 +137,39 @@ import Testing
     #expect(attempt.cursorURL == URL(string: "https://cursor.com/agents/agent-orphan")!)
 }
 
+@Test func sendServiceClearsPendingClaimWhenRuntimeThrowsUnexpectedError() async throws {
+    let fixture = try SendServiceFixture()
+    let failingService = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: UnexpectedErrorCursorRuntime()
+    )
+
+    do {
+        _ = try await failingService.send(taskID: fixture.task.id)
+        Issue.record("Send should rethrow the unexpected runtime error.")
+    } catch UnexpectedRuntimeError.interrupted {
+    }
+
+    let failedAttempt = try #require(fixture.store.runAttempts(taskID: fixture.task.id).last)
+    #expect(failedAttempt.status == .failed)
+    #expect(failedAttempt.errorMessage == "Cursor send was interrupted before Cursor returned a run reference.")
+
+    let retryService = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: FakeCursorRuntime(result: .success(CursorCloudAgentReference(
+            agentID: "agent-retry",
+            runID: "run-retry",
+            openURL: URL(string: "https://cursor.com/agents/agent-retry")!
+        )))
+    )
+    let retryAttempt = try await retryService.send(taskID: fixture.task.id)
+
+    #expect(retryAttempt.status == .succeeded)
+    #expect(try fixture.store.runAttempts(taskID: fixture.task.id).map(\.status) == [.failed, .succeeded])
+}
+
 @Test func boardProjectionSurfacesLatestFailedSendAttemptOnReadyCard() async throws {
     let fixture = try SendServiceFixture()
     let runtime = FakeCursorRuntime(result: .failure(CursorRuntimeFailure(message: "Cursor rejected the run request.")))
@@ -164,6 +197,16 @@ private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Senda
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
         requests.append(request)
         return try result.get()
+    }
+}
+
+private enum UnexpectedRuntimeError: Error, Equatable {
+    case interrupted
+}
+
+private struct UnexpectedErrorCursorRuntime: CursorCloudAgentRuntime {
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        throw UnexpectedRuntimeError.interrupted
     }
 }
 

@@ -106,6 +106,25 @@ import Testing
     }
 }
 
+@Test func processSDKHelperRunnerUsesWaitSpecificTimeout() async throws {
+    let helperScriptURL = try temporaryHelperScript(contents: """
+    sleep 0.2
+    printf '{"ok":true}\\n'
+    """)
+    let runner = ProcessCursorSDKHelperRunner(
+        nodeResolver: ShellNodeResolver(),
+        startTimeout: 0.05,
+        waitTimeout: 1
+    )
+
+    let output = try await runner.run(
+        helperScriptURL: helperScriptURL,
+        request: CursorSDKHelperRequest(action: .wait, apiKey: "crsr_test_key")
+    )
+
+    #expect(String(data: output, encoding: .utf8) == "{\"ok\":true}\n")
+}
+
 @Test func nodeSettingsProjectionReportsDetectedNodeAndMissingNode() {
     let detected = CursorNodeSettingsProjection(
         result: .success(CursorNodeResolution(

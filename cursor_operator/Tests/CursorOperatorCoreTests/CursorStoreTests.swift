@@ -209,6 +209,46 @@ import Testing
     }
 }
 
+@Test func storeExpiresStalePendingSendClaimsBeforeRetry() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Retry stale pending", prompt: "Prompt")
+    let now = Date(timeIntervalSince1970: 1_000)
+    let staleDate = now.addingTimeInterval(-3_600)
+
+    _ = try store.claimSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        now: staleDate,
+        stalePendingAge: 60
+    )
+
+    let retryClaim = try store.claimSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        now: now,
+        stalePendingAge: 60
+    )
+
+    let attempts = try store.runAttempts(taskID: task.id)
+    #expect(attempts.map(\.status) == [.failed, .pending])
+    #expect(attempts.first?.errorMessage == "Previous Cursor send was interrupted before Cursor returned a run reference.")
+    #expect(attempts.last?.id == retryClaim.id)
+}
+
 private func temporaryDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorOperatorStoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)
