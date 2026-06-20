@@ -56,6 +56,85 @@ import Testing
     #expect(runner.inputs.first?.runID == "run-sdk")
 }
 
+@Test func sdkRuntimeRejectsUnexpectedHelperResponses() async throws {
+    let startRuntime = CursorCloudAgentSDKRuntime(
+        helperScriptURL: URL(filePath: "/tmp/cursor-sdk-helper.mjs"),
+        runner: FakeSDKHelperRunner(response: Data("""
+            {"agentID":"agent-sdk","runID":"run-sdk","openURL":"http://[::1"}
+            """.utf8))
+    )
+    await #expect(throws: CursorRuntimeFailure(message: "Cursor SDK helper returned an invalid agent URL.")) {
+        _ = try await startRuntime.startCloudAgent(
+            request: CursorCloudAgentRequestPreview(
+                prompt: "Prompt",
+                repositoryURL: URL(string: "https://github.com/example/operator")!,
+                startingRef: "main",
+                model: CursorModel.fixed,
+                autoCreatePR: false
+            ),
+            apiKey: "crsr_test_key"
+        )
+    }
+
+    let waitRuntime = CursorCloudAgentSDKRuntime(
+        helperScriptURL: URL(filePath: "/tmp/cursor-sdk-helper.mjs"),
+        runner: FakeSDKHelperRunner(response: Data("""
+            {"result":"missing status"}
+            """.utf8))
+    )
+    await #expect(throws: CursorRuntimeFailure(message: "Cursor SDK helper returned an unexpected wait response.")) {
+        _ = try await waitRuntime.waitForRun(
+            reference: CursorCloudAgentReference(
+                agentID: "agent-sdk",
+                runID: "run-sdk",
+                openURL: URL(string: "https://cursor.com/agents/agent-sdk")!
+            ),
+            apiKey: "crsr_test_key"
+        )
+    }
+}
+
+@Test func cursorRuntimeFailureSanitizesSensitiveAndVerboseMessages() {
+    #expect(CursorRuntimeFailure(message: "").message == "Cursor run failed.")
+    #expect(CursorRuntimeFailure(message: "Cursor SDK stderr").message == "Cursor SDK stderr")
+    #expect(CursorRuntimeFailure(message: "Authorization failed").message == "Cursor run failed. See Cursor for details.")
+    #expect(CursorRuntimeFailure(message: "Bad token crsr_secret_123").message == "Cursor run failed. See Cursor for details.")
+    #expect(CursorRuntimeFailure(message: String(repeating: "x", count: 200)).message.count == 160)
+}
+
+@Test func sdkHelperSanitizeErrorRedactsCursorAPIKeys() throws {
+    guard let nodeURL = nodeExecutableURL() else {
+        return
+    }
+
+    let helperDirectory = URL(filePath: FileManager.default.currentDirectoryPath)
+        .appending(path: "Resources", directoryHint: .isDirectory)
+        .appending(path: "CursorSDKHelper", directoryHint: .isDirectory)
+    let process = Process()
+    process.executableURL = nodeURL
+    process.currentDirectoryURL = helperDirectory
+    process.arguments = [
+        "--input-type=module",
+        "-e",
+        """
+        import { sanitizeError } from "./cursor-sdk-helper.mjs";
+        process.stdout.write(sanitizeError(new Error("failed with crsr_secret_123")));
+        """
+    ]
+
+    let stdout = Pipe()
+    let stderr = Pipe()
+    process.standardOutput = stdout
+    process.standardError = stderr
+    try process.run()
+    process.waitUntilExit()
+
+    let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+    _ = stderr.fileHandleForReading.readDataToEndOfFile()
+    #expect(process.terminationStatus == 0)
+    #expect(output == "failed with crsr_[redacted]")
+}
+
 private final class FakeSDKHelperRunner: CursorSDKHelperRunning, @unchecked Sendable {
     let response: Data
     private(set) var inputs: [CursorSDKHelperRequest] = []
@@ -68,4 +147,12 @@ private final class FakeSDKHelperRunner: CursorSDKHelperRunning, @unchecked Send
         inputs.append(request)
         return response
     }
+}
+
+private func nodeExecutableURL() -> URL? {
+    ProcessInfo.processInfo.environment["PATH"]?
+        .split(separator: ":")
+        .map(String.init)
+        .map { URL(filePath: $0).appending(path: "node") }
+        .first { FileManager.default.isExecutableFile(atPath: $0.path) }
 }

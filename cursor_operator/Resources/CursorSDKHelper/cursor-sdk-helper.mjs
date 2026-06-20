@@ -1,18 +1,25 @@
 import { Agent } from "@cursor/sdk";
+import { pathToFileURL } from "node:url";
 
-const input = await readJSONFromStdin();
+if (isMainModule()) {
+  const input = await readJSONFromStdin();
 
-try {
-  if (input.action === "start") {
-    await startRun(input);
-  } else if (input.action === "wait") {
-    await waitForRun(input);
-  } else {
-    throw new Error("Unsupported Cursor SDK helper action.");
+  try {
+    if (input.action === "start") {
+      await startRun(input);
+    } else if (input.action === "wait") {
+      await waitForRun(input);
+    } else {
+      throw new Error("Unsupported Cursor SDK helper action.");
+    }
+  } catch (error) {
+    console.error(sanitizeError(error));
+    process.exit(1);
   }
-} catch (error) {
-  console.error(sanitizeError(error));
-  process.exit(1);
+}
+
+function isMainModule() {
+  return process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 }
 
 async function startRun(request) {
@@ -86,7 +93,7 @@ function requireString(value, name) {
   }
 }
 
-function sanitizeError(error) {
+export function sanitizeError(error) {
   const message = error instanceof Error ? error.message : String(error);
   return message.replace(/crsr_[A-Za-z0-9_-]+/g, "crsr_[redacted]");
 }
