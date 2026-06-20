@@ -1,0 +1,9 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@cursor/sdk": "1.0.19"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
