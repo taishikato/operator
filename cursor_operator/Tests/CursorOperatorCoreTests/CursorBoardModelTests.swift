@@ -306,6 +306,57 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelIgnoresDuplicateSendReportsWhileTaskIsAlreadySending() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Send once", prompt: "Prompt")
+    let runtime = BoardModelSuspendingRuntime(reference: CursorCloudAgentReference(
+        agentID: "agent-board",
+        runID: "run-board",
+        openURL: URL(string: "https://cursor.com/agents/agent-board")!
+    ))
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        runtime: runtime
+    )
+    try model.load()
+
+    model.sendReportingErrors(taskID: task.id)
+    try await runtime.waitUntilStarted()
+    #expect(model.isSending(taskID: task.id))
+    #expect(model.sendStatusText(taskID: task.id) == "Sending to Cursor...")
+
+    model.sendReportingErrors(taskID: task.id)
+    try await Task.sleep(nanoseconds: 20_000_000)
+
+    #expect(model.errorMessage == nil)
+    #expect(runtime.startCount == 1)
+
+    runtime.complete()
+    try await waitUntil {
+        try store.task(id: task.id)?.status == .running && !model.isSending(taskID: task.id)
+    }
+    #expect(model.isSending(taskID: task.id) == false)
+    #expect(model.sendStatusText(taskID: task.id) == nil)
+}
+
+@Test func lifecycleErrorsHaveUserFacingDescriptions() {
+    #expect(localizedDescription(for: CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun) == "This task is already being sent or already has a Cursor run.")
+    #expect(localizedDescription(for: CursorTaskLifecycleError.transitionNotAllowed) == "This task cannot be moved to that state.")
+    #expect(localizedDescription(for: CursorTaskLifecycleError.taskIsImmutable) == "This task can no longer be edited.")
+    #expect(localizedDescription(for: CursorTaskLifecycleError.hardDeleteNotAllowed) == "Tasks can be archived, but not permanently deleted.")
+}
+
+@MainActor
 @Test func boardModelCanResumeMonitoringAndMoveCompletedRunDone() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
@@ -368,6 +419,54 @@ private final class BoardModelFakeRuntime: CursorCloudAgentRuntime, @unchecked S
     }
 }
 
+private final class BoardModelSuspendingRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
+    let reference: CursorCloudAgentReference
+    private let lock = NSLock()
+    private var starts = 0
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var completionContinuation: CheckedContinuation<Void, Never>?
+
+    var startCount: Int {
+        lock.withLock { starts }
+    }
+
+    init(reference: CursorCloudAgentReference) {
+        self.reference = reference
+    }
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        lock.withLock {
+            starts += 1
+            startContinuation?.resume()
+            startContinuation = nil
+        }
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                completionContinuation = continuation
+            }
+        }
+        return reference
+    }
+
+    func waitUntilStarted() async throws {
+        if startCount > 0 {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                startContinuation = continuation
+            }
+        }
+    }
+
+    func complete() {
+        lock.withLock {
+            completionContinuation?.resume()
+            completionContinuation = nil
+        }
+    }
+}
+
 private final class BoardModelMonitoringRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
     let completion: CursorCloudAgentRunCompletion
     private(set) var waits: [CursorCloudAgentReference] = []
@@ -419,4 +518,23 @@ private func temporaryBoardModelDatabaseURL() throws -> URL {
         .appending(path: "CursorBoardModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appending(path: "cursor-operator.sqlite")
+}
+
+@MainActor
+private func waitUntil(
+    timeout: TimeInterval = 1,
+    condition: @escaping () throws -> Bool
+) async throws {
+    let deadline = Date().addingTimeInterval(timeout)
+    while Date() < deadline {
+        if try condition() {
+            return
+        }
+        try await Task.sleep(nanoseconds: 10_000_000)
+    }
+    Issue.record("Timed out waiting for condition.")
+}
+
+private func localizedDescription(for error: Error) -> String? {
+    (error as? LocalizedError)?.errorDescription
 }

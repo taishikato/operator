@@ -43,11 +43,24 @@ public struct CursorTask: Codable, Equatable, Identifiable, Sendable {
     }
 }
 
-public enum CursorTaskLifecycleError: Error, Equatable, Sendable {
+public enum CursorTaskLifecycleError: Error, Equatable, LocalizedError, Sendable {
     case transitionNotAllowed
     case taskIsImmutable
     case taskAlreadyHasSuccessfulRun
     case hardDeleteNotAllowed
+
+    public var errorDescription: String? {
+        switch self {
+        case .transitionNotAllowed:
+            "This task cannot be moved to that state."
+        case .taskIsImmutable:
+            "This task can no longer be edited."
+        case .taskAlreadyHasSuccessfulRun:
+            "This task is already being sent or already has a Cursor run."
+        case .hardDeleteNotAllowed:
+            "Tasks can be archived, but not permanently deleted."
+        }
+    }
 }
 
 public enum CursorTaskLifecyclePolicy {

@@ -72,6 +72,11 @@ import Testing
     }
 }
 
+@Test func processSDKHelperRunnerDefaultStartTimeoutAllowsSlowCloudAgentCreation() {
+    #expect(ProcessCursorSDKHelperRunner.defaultStartTimeout >= 10 * 60)
+    #expect(ProcessCursorSDKHelperRunner.defaultWaitTimeout == 12 * 60 * 60)
+}
+
 @Test func processSDKHelperRunnerDrainsLargeOutputBeforeWaitingForExit() async throws {
     let helperScriptURL = try temporaryHelperScript(contents: """
     dd if=/dev/zero bs=1024 count=128 2>/dev/null | tr '\\0' 'x'

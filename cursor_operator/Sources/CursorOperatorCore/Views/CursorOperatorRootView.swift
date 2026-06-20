@@ -135,8 +135,9 @@ private struct CursorBoardView: View {
                                 } archive: {
                                     model.archiveReportingErrors(taskID: card.id)
                                 }
-                                .sendDisabled(!model.setupStatus.canSend)
-                                .sendDisabledReason(model.setupStatus.sendDisabledReason)
+                                .sendDisabled(!model.setupStatus.canSend || model.isSending(taskID: card.id))
+                                .sendDisabledReason(model.isSending(taskID: card.id) ? "Send already in progress." : model.setupStatus.sendDisabledReason)
+                                .sendStatusText(model.sendStatusText(taskID: card.id))
                             }
                         }
                     }
@@ -357,11 +358,23 @@ private struct CursorTaskCardView: View {
     let archive: () -> Void
     @Environment(\.cursorOperatorSendDisabled) private var sendDisabled
     @Environment(\.cursorOperatorSendDisabledReason) private var sendDisabledReason
+    @Environment(\.cursorOperatorSendStatusText) private var sendStatusText
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(card.title)
                 .font(.callout.weight(.medium))
+
+            if let sendStatusText {
+                HStack(spacing: 6) {
+                    ProgressView()
+                        .controlSize(.small)
+                    Text(sendStatusText)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityElement(children: .combine)
+            }
 
             if let runStatusText = card.runStatusText {
                 Label(runStatusText, systemImage: card.status == .done ? "checkmark.circle" : "clock")
@@ -369,7 +382,7 @@ private struct CursorTaskCardView: View {
                     .foregroundStyle(card.status == .done ? .green : .secondary)
             }
 
-            if let failedSendMessage = card.failedSendMessage {
+            if sendStatusText == nil, let failedSendMessage = card.failedSendMessage {
                 Label(failedSendMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
                     .foregroundStyle(.orange)
@@ -380,7 +393,7 @@ private struct CursorTaskCardView: View {
                     Button("Edit", action: edit)
                         .controlSize(.small)
 
-                    Button("Send", action: send)
+                    Button(sendStatusText == nil ? "Send" : "Sending", action: send)
                         .controlSize(.small)
                         .disabled(sendDisabled)
                         .help(sendDisabled ? sendDisabledReason : "")
@@ -413,6 +426,10 @@ private struct CursorOperatorSendDisabledReasonKey: EnvironmentKey {
     static let defaultValue = ""
 }
 
+private struct CursorOperatorSendStatusTextKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
 private extension EnvironmentValues {
     var cursorOperatorSendDisabled: Bool {
         get { self[CursorOperatorSendDisabledKey.self] }
@@ -423,6 +440,11 @@ private extension EnvironmentValues {
         get { self[CursorOperatorSendDisabledReasonKey.self] }
         set { self[CursorOperatorSendDisabledReasonKey.self] = newValue }
     }
+
+    var cursorOperatorSendStatusText: String? {
+        get { self[CursorOperatorSendStatusTextKey.self] }
+        set { self[CursorOperatorSendStatusTextKey.self] = newValue }
+    }
 }
 
 private extension View {
@@ -432,6 +454,10 @@ private extension View {
 
     func sendDisabledReason(_ reason: String) -> some View {
         environment(\.cursorOperatorSendDisabledReason, reason)
+    }
+
+    func sendStatusText(_ text: String?) -> some View {
+        environment(\.cursorOperatorSendStatusText, text)
     }
 }
 

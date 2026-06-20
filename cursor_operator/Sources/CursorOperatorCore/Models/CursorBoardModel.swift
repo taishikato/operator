@@ -9,6 +9,7 @@ public final class CursorBoardModel: ObservableObject {
     @Published public private(set) var errorMessage: String?
     @Published public private(set) var pendingRepositoryDraft: CursorRepositoryRegistrationDraft?
     @Published public private(set) var editingTaskID: UUID?
+    @Published public private(set) var sendingTaskIDs: Set<UUID>
     @Published public var creationDraft: CursorTaskCreationDraft
 
     private let store: CursorOperatorStore
@@ -39,6 +40,7 @@ public final class CursorBoardModel: ObservableObject {
         repositories = []
         setupStatus = .empty
         editingTaskID = nil
+        sendingTaskIDs = []
         creationDraft = CursorTaskCreationDraft()
     }
 
@@ -130,6 +132,14 @@ public final class CursorBoardModel: ObservableObject {
             throw CursorOperatorStoreError.taskNotFound
         }
         return try CursorSendPreview(task: task, repository: repository)
+    }
+
+    public func isSending(taskID: UUID) -> Bool {
+        sendingTaskIDs.contains(taskID)
+    }
+
+    public func sendStatusText(taskID: UUID) -> String? {
+        isSending(taskID: taskID) ? "Sending to Cursor..." : nil
     }
 
     public func send(taskID: UUID) async throws {
@@ -250,7 +260,14 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     public func sendReportingErrors(taskID: UUID) {
+        guard !sendingTaskIDs.contains(taskID) else {
+            return
+        }
+        sendingTaskIDs.insert(taskID)
         Task {
+            defer {
+                sendingTaskIDs.remove(taskID)
+            }
             do {
                 try await send(taskID: taskID)
                 resumeRunMonitoringReportingErrors()

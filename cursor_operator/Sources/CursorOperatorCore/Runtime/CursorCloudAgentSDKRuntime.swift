@@ -127,14 +127,17 @@ public struct CursorCloudAgentSDKRuntime: CursorCloudAgentRuntime {
 }
 
 public struct ProcessCursorSDKHelperRunner: CursorSDKHelperRunning {
+    public static let defaultStartTimeout: TimeInterval = 10 * 60
+    public static let defaultWaitTimeout: TimeInterval = 12 * 60 * 60
+
     private let nodeResolver: any CursorNodeResolving
     private let startTimeout: TimeInterval
     private let waitTimeout: TimeInterval
 
     public init(
         nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
-        startTimeout: TimeInterval = 120,
-        waitTimeout: TimeInterval = 12 * 60 * 60
+        startTimeout: TimeInterval = Self.defaultStartTimeout,
+        waitTimeout: TimeInterval = Self.defaultWaitTimeout
     ) {
         self.nodeResolver = nodeResolver
         self.startTimeout = startTimeout

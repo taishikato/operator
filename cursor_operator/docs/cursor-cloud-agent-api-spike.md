@@ -1,8 +1,8 @@
 # Cursor Cloud Agent API Spike
 
-Status: REST remains the MVP implementation path.
+Status: historical REST spike. The MVP runtime now uses the official Cursor SDK through the bundled Node helper.
 
-Verified against Cursor's official Cloud Agents API docs on 2026-06-19:
+The REST contract below was verified against Cursor's official Cloud Agents API docs on 2026-06-19:
 
 - Base URL: `https://api.cursor.com`
 - Create agent endpoint: `POST /v1/agents`
@@ -29,9 +29,12 @@ Uncertainties:
 - The official examples show `composer-2` and model params in the docs payload, while the PRD fixes this app to `composer-2.5`. The request object still uses `model.id`, so the app keeps `composer-2.5` as configured by product decision.
 - The docs include optional fields such as `mcpServers`, `envVars`, `skipReviewerRequest`, and follow-up run endpoints. These are out of scope for the MVP.
 
-Fallback condition:
+Current runtime decision:
 
-- If `POST /v1/agents` rejects `composer-2.5` or changes required fields in a way the Swift REST client cannot keep stable, use a Node helper with `@cursor/sdk` behind the same runtime interface.
+- Cursor Operator starts and waits for Cloud Agent runs through `@cursor/sdk` in `Resources/CursorSDKHelper/cursor-sdk-helper.mjs`.
+- The app requires a user-installed Node.js 22.13+ runtime and does not bundle Node.
+- The Swift REST client remains as historical spike/prototype code, but it is not the preferred MVP runtime path because the product direction requires SDK start and wait semantics.
+- SDK helper startup can take multiple minutes before Cursor returns a run reference; the app should show an in-progress state during send and use a startup timeout long enough for slow Cloud Agent creation.
 
 Sources:
 
