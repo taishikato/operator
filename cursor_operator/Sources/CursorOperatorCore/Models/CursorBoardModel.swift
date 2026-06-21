@@ -18,6 +18,7 @@ public final class CursorBoardModel: ObservableObject {
     private let nodeResolver: any CursorNodeResolving
     private let runtime: any CursorCloudAgentRuntime
     private let externalOpener: any CursorExternalOpening
+    private var cachedNodeState: CursorNodeSetupState?
 
     public init(
         store: CursorOperatorStore,
@@ -347,12 +348,20 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     private func nodeSetupState() -> CursorNodeSetupState {
+        // Resolving Node spawns a subprocess (`node --version`); cache it so
+        // navigation reloads don't block the main thread on every appear.
+        if let cachedNodeState {
+            return cachedNodeState
+        }
+        let state: CursorNodeSetupState
         do {
             let resolution = try nodeResolver.resolve()
-            return .ready(version: resolution.version)
+            state = .ready(version: resolution.version)
         } catch {
-            return .missing
+            state = .missing
         }
+        cachedNodeState = state
+        return state
     }
 
     private static func userFacingMessage(for error: Error) -> String {
