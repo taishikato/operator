@@ -7,7 +7,7 @@ public struct CursorOperatorRootView: View {
 
     @StateObject private var model: CursorBoardModel
     @State private var selection: CursorOperatorSidebarSelection
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
+    @State private var showSidebar = true
 
     public init(
         store: CursorOperatorStore,
@@ -21,18 +21,31 @@ public struct CursorOperatorRootView: View {
     }
 
     public var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            sidebar
-        } detail: {
-            switch selection {
-            case .board:
-                CursorBoardView(shell: shell, model: model, appDataURL: appDataURL)
-                    .navigationTitle("Board")
-            case .archived:
-                CursorArchivedView(model: model)
-                    .navigationTitle("Archived")
+        HStack(spacing: 0) {
+            if showSidebar {
+                sidebar
+                    .frame(width: 230)
+                Rectangle()
+                    .fill(CursorTheme.borderSubtle)
+                    .frame(width: 1)
             }
+
+            NavigationStack {
+                Group {
+                    switch selection {
+                    case .board:
+                        CursorBoardView(shell: shell, model: model, appDataURL: appDataURL)
+                            .navigationTitle("Board")
+                    case .archived:
+                        CursorArchivedView(model: model)
+                            .navigationTitle("Archived")
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(CursorTheme.bgContent)
         .containerBackground(CursorTheme.bgContent, for: .window)
         .preferredColorScheme(.dark)
         .background {
@@ -44,6 +57,20 @@ public struct CursorOperatorRootView: View {
 
     private var sidebar: some View {
         VStack(spacing: 0) {
+            // Top bar leaves room for the window traffic lights and carries the
+            // sidebar toggle, like Cursor.
+            HStack {
+                Spacer()
+                Button(action: toggleSidebar) {
+                    Image(systemName: "sidebar.left")
+                        .foregroundStyle(CursorTheme.textSecondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(height: 28)
+            .padding(.horizontal, 10)
+            .padding(.top, 8)
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     CursorSidebarActionRow(
@@ -86,7 +113,7 @@ public struct CursorOperatorRootView: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.top, 8)
+                .padding(.top, 4)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
@@ -94,7 +121,6 @@ public struct CursorOperatorRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(CursorTheme.bgChrome)
         .safeAreaInset(edge: .bottom) { sidebarFooter }
-        .navigationSplitViewColumnWidth(min: 200, ideal: 230)
         .onAppear { model.loadReportingErrors() }
     }
 
@@ -135,8 +161,8 @@ public struct CursorOperatorRootView: View {
     }
 
     private func toggleSidebar() {
-        withAnimation {
-            columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
+        withAnimation(.easeInOut(duration: 0.15)) {
+            showSidebar.toggle()
         }
     }
 }
@@ -347,24 +373,8 @@ private struct CursorBoardView: View {
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .toolbar {
-            ToolbarItem {
-                Button {
-                    presentCreateTaskSheet()
-                } label: {
-                    Label("New Task", systemImage: "plus")
-                }
-                .help("New Task")
-                .disabled(model.repositories.isEmpty)
-            }
-
-            ToolbarItem {
-                Button(action: selectRepositoryFolder) {
-                    Label("Add Repository", systemImage: "folder.badge.plus")
-                }
-                .help("Add Repository")
-            }
-        }
+        // New Task / Add Repository now live in the sidebar (and the cmd+N /
+        // cmd+O menu commands), so the detail toolbar is intentionally omitted.
         .onAppear {
             model.loadReportingErrors()
             model.resumeRunMonitoringReportingErrors()

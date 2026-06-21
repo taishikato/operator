@@ -33,6 +33,7 @@ struct CursorOperatorApp: App {
                     revealMainWindow()
                 }
         }
+        .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands {
             SidebarCommands()
