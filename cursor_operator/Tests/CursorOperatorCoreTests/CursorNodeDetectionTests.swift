@@ -152,8 +152,18 @@ private struct FakeNodeFileSystem: CursorNodeFileSystem {
         existingFiles.contains(url)
     }
 
-    func descendantFiles(under directory: URL) -> [URL] {
-        existingFiles.filter { $0.path.hasPrefix(directory.path) }
+    func directoryContents(at directory: URL) -> [URL] {
+        let base = directory.standardizedFileURL.path
+        var children: Set<URL> = []
+        for file in existingFiles {
+            let path = file.standardizedFileURL.path
+            guard path.hasPrefix(base + "/") else { continue }
+            let remainder = path.dropFirst(base.count + 1)
+            if let first = remainder.split(separator: "/").first {
+                children.insert(directory.appending(path: String(first)))
+            }
+        }
+        return Array(children)
     }
 }
 
