@@ -19,6 +19,8 @@ APP_BINARY="$APP_MACOS/$APP_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SDK_HELPER_SRC="$ROOT_DIR/Resources/CursorSDKHelper"
 SDK_HELPER_DST="$APP_RESOURCES/CursorSDKHelper"
+APP_ICON_SRC="$ROOT_DIR/Resources/AppIcon.icns"
+APP_ICON_FILE="AppIcon.icns"
 
 cd "$ROOT_DIR"
 
@@ -37,6 +39,10 @@ if [ -d "$SDK_HELPER_SRC" ]; then
   cp -R "$SDK_HELPER_SRC" "$SDK_HELPER_DST"
 fi
 
+if [ -f "$APP_ICON_SRC" ]; then
+  cp "$APP_ICON_SRC" "$APP_RESOURCES/$APP_ICON_FILE"
+fi
+
 cat >"$INFO_PLIST" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -44,6 +50,8 @@ cat >"$INFO_PLIST" <<PLIST
 <dict>
   <key>CFBundleExecutable</key>
   <string>$APP_NAME</string>
+  <key>CFBundleIconFile</key>
+  <string>AppIcon</string>
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>

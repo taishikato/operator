@@ -29,6 +29,15 @@ import Testing
     #expect(script.contains("CFBundleVersion"))
 }
 
+@Test func buildAndRunBundlesAppIconForDistributionDMG() throws {
+    let script = try packageScript(named: "build_and_run.sh")
+
+    #expect(script.contains("Resources/AppIcon.icns"))
+    #expect(script.contains(#"cp "$APP_ICON_SRC" "$APP_RESOURCES/$APP_ICON_FILE""#))
+    #expect(script.contains("CFBundleIconFile"))
+    #expect(script.contains("<string>AppIcon</string>"))
+}
+
 @Test func buildAndRunSupportsReleaseConfigurationForPackaging() throws {
     let script = try packageScript(named: "build_and_run.sh")
 
