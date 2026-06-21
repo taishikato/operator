@@ -23,6 +23,7 @@ import Testing
     #expect(attempt.cursorURL == URL(string: "https://cursor.com/agents/agent-123")!)
     #expect(try fixture.store.task(id: fixture.task.id)?.status == .running)
     #expect(runtime.requests == [CursorCloudAgentRequestPreview(
+        agentName: fixture.task.title,
         prompt: fixture.task.prompt,
         repositoryURL: fixture.repository.githubURL,
         startingRef: fixture.repository.defaultBranch,

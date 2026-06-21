@@ -35,8 +35,11 @@ Current runtime decision:
 - The app requires a user-installed Node.js 22.13+ runtime and does not bundle Node.
 - The Swift REST client remains as historical spike/prototype code, but it is not the preferred MVP runtime path because the product direction requires SDK start and wait semantics.
 - SDK helper startup can take multiple minutes before Cursor returns a run reference; the app should show an in-progress state during send and use a startup timeout long enough for slow Cloud Agent creation.
+- Cursor Web and the Agents Window hide SDK-created cloud agents from the default agent list. Users need `Filter > Source > SDK` to keep Operator-created runs visible in Cursor's sidebar; direct `https://cursor.com/agents/...` URLs still open the run. API-created agents are similarly source-filtered by Cursor, so this app cannot force SDK/API runs into Cursor's default web-created list through the public API.
 
 Sources:
 
 - Cursor Cloud Agents API docs: https://cursor.com/docs/cloud-agent/api/endpoints
+- Cursor TypeScript SDK docs: https://cursor.com/docs/sdk/typescript
 - Cursor SDK launch post: https://cursor.com/blog/typescript-sdk
+- Cursor forum staff note on Source filters: https://forum.cursor.com/t/cloud-agents-showing-in-ide-but-not-in-agents-window/162772

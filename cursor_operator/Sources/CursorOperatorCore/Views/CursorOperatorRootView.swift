@@ -652,6 +652,7 @@ private struct CursorTaskCardView: View {
                 if card.canOpenInCursor {
                     Button("Open in Cursor", action: openInCursor)
                         .buttonStyle(CursorGhostButtonStyle())
+                        .help("Cursor hides SDK agents from the default sidebar. In Cursor, enable Filter > Source > SDK to show Operator runs in the list.")
                 }
                 if card.status == .running {
                     Button("Done", action: markDone)

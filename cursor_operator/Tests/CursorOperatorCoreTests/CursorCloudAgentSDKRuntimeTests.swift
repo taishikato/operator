@@ -13,6 +13,7 @@ import Testing
 
     let reference = try await runtime.startCloudAgent(
         request: CursorCloudAgentRequestPreview(
+            agentName: "SDK send",
             prompt: "Prompt",
             repositoryURL: URL(string: "https://github.com/example/operator")!,
             startingRef: "main",
@@ -28,6 +29,7 @@ import Testing
         openURL: URL(string: "https://cursor.com/agents/agent-sdk")!
     ))
     #expect(runner.inputs.map(\.action) == [.start])
+    #expect(runner.inputs.first?.agentName == "SDK send")
     #expect(runner.inputs.first?.repositoryURL == URL(string: "https://github.com/example/operator")!)
     #expect(runner.inputs.first?.apiKey == "crsr_test_key")
 }
@@ -66,6 +68,7 @@ import Testing
     await #expect(throws: CursorRuntimeFailure(message: "Cursor SDK helper returned an invalid agent URL.")) {
         _ = try await startRuntime.startCloudAgent(
             request: CursorCloudAgentRequestPreview(
+                agentName: "SDK invalid URL",
                 prompt: "Prompt",
                 repositoryURL: URL(string: "https://github.com/example/operator")!,
                 startingRef: "main",

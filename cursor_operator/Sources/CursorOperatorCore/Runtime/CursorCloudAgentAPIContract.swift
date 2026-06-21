@@ -1,13 +1,22 @@
 import Foundation
 
 public struct CursorCloudAgentRequestPreview: Equatable, Sendable {
+    public let agentName: String
     public let prompt: String
     public let repositoryURL: URL
     public let startingRef: String
     public let model: String
     public let autoCreatePR: Bool
 
-    public init(prompt: String, repositoryURL: URL, startingRef: String, model: String, autoCreatePR: Bool) {
+    public init(
+        agentName: String,
+        prompt: String,
+        repositoryURL: URL,
+        startingRef: String,
+        model: String,
+        autoCreatePR: Bool
+    ) {
+        self.agentName = agentName
         self.prompt = prompt
         self.repositoryURL = repositoryURL
         self.startingRef = startingRef

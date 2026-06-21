@@ -113,6 +113,7 @@ public struct CursorTaskSendService: Sendable {
 
         let preview = try CursorSendPreview(task: task, repository: repository)
         let request = CursorCloudAgentRequestPreview(
+            agentName: preview.agentName,
             prompt: preview.prompt,
             repositoryURL: preview.repositoryURL,
             startingRef: preview.startingRef,

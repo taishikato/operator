@@ -48,6 +48,7 @@ public struct CursorTaskCreationDraft: Equatable, Sendable {
 }
 
 public struct CursorSendPreview: Equatable, Sendable {
+    public let agentName: String
     public let repositoryURL: URL
     public let startingRef: String
     public let model: String
@@ -59,6 +60,8 @@ public struct CursorSendPreview: Equatable, Sendable {
             throw CursorOperatorStoreError.repositoryNotFound
         }
 
+        let trimmedTitle = task.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        agentName = trimmedTitle.isEmpty ? "Operator Task" : trimmedTitle
         repositoryURL = repository.githubURL
         startingRef = repository.defaultBranch
         model = CursorModel.fixed

@@ -8,6 +8,7 @@ public enum CursorSDKHelperAction: String, Codable, Equatable, Sendable {
 public struct CursorSDKHelperRequest: Codable, Equatable, Sendable {
     public let action: CursorSDKHelperAction
     public let apiKey: String
+    public let agentName: String?
     public let prompt: String?
     public let repositoryURL: URL?
     public let startingRef: String?
@@ -19,6 +20,7 @@ public struct CursorSDKHelperRequest: Codable, Equatable, Sendable {
     public init(
         action: CursorSDKHelperAction,
         apiKey: String,
+        agentName: String? = nil,
         prompt: String? = nil,
         repositoryURL: URL? = nil,
         startingRef: String? = nil,
@@ -29,6 +31,7 @@ public struct CursorSDKHelperRequest: Codable, Equatable, Sendable {
     ) {
         self.action = action
         self.apiKey = apiKey
+        self.agentName = agentName
         self.prompt = prompt
         self.repositoryURL = repositoryURL
         self.startingRef = startingRef
@@ -65,6 +68,7 @@ public struct CursorCloudAgentSDKRuntime: CursorCloudAgentRuntime {
             request: CursorSDKHelperRequest(
                 action: .start,
                 apiKey: apiKey,
+                agentName: request.agentName,
                 prompt: request.prompt,
                 repositoryURL: request.repositoryURL,
                 startingRef: request.startingRef,

@@ -67,6 +67,7 @@ import Testing
 
     let preview = try CursorSendPreview(task: task, repository: repository)
 
+    #expect(preview.agentName == "Preview")
     #expect(preview.repositoryURL == repository.githubURL)
     #expect(preview.startingRef == "trunk")
     #expect(preview.model == CursorModel.fixed)

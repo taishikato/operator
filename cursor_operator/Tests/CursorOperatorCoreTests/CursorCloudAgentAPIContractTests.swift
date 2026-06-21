@@ -4,6 +4,7 @@ import Testing
 
 @Test func cloudAgentContractBuildsOfficialCreateAgentRequestShape() throws {
     let preview = CursorCloudAgentRequestPreview(
+        agentName: "README setup",
         prompt: "Add a README with setup instructions",
         repositoryURL: URL(string: "https://github.com/your-org/your-repo")!,
         startingRef: "main",
@@ -60,6 +61,7 @@ import Testing
 
 @Test func cloudAgentContractExcludesMVPOutOfScopeOwnershipFields() throws {
     let preview = CursorCloudAgentRequestPreview(
+        agentName: "Exact prompt task",
         prompt: "Exact prompt",
         repositoryURL: URL(string: "https://github.com/example/operator")!,
         startingRef: "main",

@@ -31,6 +31,7 @@ function isMainModule() {
 
 async function startRun(request) {
   requireString(request.apiKey, "apiKey");
+  requireString(request.agentName, "agentName");
   requireString(request.prompt, "prompt");
   requireString(request.repositoryURL, "repositoryURL");
   requireString(request.startingRef, "startingRef");
@@ -38,6 +39,7 @@ async function startRun(request) {
 
   const agent = await Agent.create({
     apiKey: request.apiKey,
+    name: request.agentName,
     model: { id: request.model },
     cloud: {
       repos: [{ url: request.repositoryURL, startingRef: request.startingRef }],

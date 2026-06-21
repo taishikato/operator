@@ -24,6 +24,7 @@ import Testing
         transport: transport
     )
     let preview = CursorCloudAgentRequestPreview(
+        agentName: "REST send",
         prompt: "Prompt exactly",
         repositoryURL: URL(string: "https://github.com/example/operator")!,
         startingRef: "main",
@@ -83,6 +84,7 @@ import Testing
         transport: FakeCursorHTTPTransport(error: URLError(.notConnectedToInternet))
     )
     let preview = CursorCloudAgentRequestPreview(
+        agentName: "REST failure",
         prompt: "Prompt",
         repositoryURL: URL(string: "https://github.com/example/operator")!,
         startingRef: "main",
