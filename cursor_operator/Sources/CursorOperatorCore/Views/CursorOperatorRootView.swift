@@ -311,7 +311,8 @@ private struct CursorRepositoryReviewSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Review Repository")
-                .font(.title3.weight(.semibold))
+                .font(.pageTitle)
+                .foregroundStyle(CursorTheme.textPrimary)
 
             LabeledContent("GitHub") {
                 Text(draft.githubURL.absoluteString)
@@ -335,13 +336,14 @@ private struct CursorRepositoryReviewSheet: View {
 
             Text("Cursor Cloud Agent starts from the remote default branch. Local-only dirty files and unpushed commits are not included.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CursorTheme.textSecondary)
 
             HStack {
                 Spacer()
                 Button("Cancel") {
                     dismiss()
                 }
+                .buttonStyle(CursorGhostButtonStyle())
                 .keyboardShortcut(.cancelAction)
 
                 Button {
@@ -350,6 +352,7 @@ private struct CursorRepositoryReviewSheet: View {
                 } label: {
                     Label("Save Repository", systemImage: "checkmark")
                 }
+                .buttonStyle(CursorPrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
                 .disabled(defaultBranch.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
@@ -484,7 +487,8 @@ private struct CursorTaskCreationSheet: View {
         VStack(alignment: .leading, spacing: 14) {
             TextField("Task title", text: titleBinding)
                 .textFieldStyle(.plain)
-                .font(.title3.weight(.semibold))
+                .font(.pageTitle)
+                .foregroundStyle(CursorTheme.textPrimary)
 
             HStack {
                 Picker("Repository", selection: repositoryBinding) {
@@ -506,7 +510,8 @@ private struct CursorTaskCreationSheet: View {
             if let preview = preview {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("Send Preview")
-                        .font(.headline)
+                        .font(.rowTitle)
+                        .foregroundStyle(CursorTheme.textPrimary)
                     Text("Repository: \(preview.repositoryURL.absoluteString)")
                     Text("Starting ref: \(preview.startingRef)")
                     Text("Model: \(preview.model)")
@@ -516,7 +521,7 @@ private struct CursorTaskCreationSheet: View {
                         .textSelection(.enabled)
                 }
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CursorTheme.textSecondary)
             }
 
             HStack {
@@ -524,6 +529,7 @@ private struct CursorTaskCreationSheet: View {
                 Button("Cancel") {
                     isPresented = false
                 }
+                .buttonStyle(CursorGhostButtonStyle())
                 .keyboardShortcut(.cancelAction)
 
                 Button {
@@ -533,6 +539,7 @@ private struct CursorTaskCreationSheet: View {
                 } label: {
                     Label(primaryActionTitle, systemImage: primaryActionIconName)
                 }
+                .buttonStyle(CursorPrimaryButtonStyle())
                 .keyboardShortcut(.defaultAction)
             }
         }
