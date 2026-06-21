@@ -22,39 +22,7 @@ public struct CursorOperatorRootView: View {
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            VStack(alignment: .leading, spacing: 2) {
-                CursorSidebarRow(
-                    title: "Board",
-                    systemImage: "rectangle.grid.3x2",
-                    isSelected: selection == .board
-                ) { selection = .board }
-
-                CursorSidebarRow(
-                    title: "Archived",
-                    systemImage: "archivebox",
-                    isSelected: selection == .archived
-                ) { selection = .archived }
-
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 8)
-            .padding(.top, 8)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(CursorTheme.bgChrome)
-            .safeAreaInset(edge: .bottom) {
-                SettingsLink {
-                    Label("Settings", systemImage: "gearshape")
-                        .font(.body13)
-                        .foregroundStyle(CursorTheme.textSecondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, 10)
-                .padding(.bottom, 10)
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+            sidebar
         } detail: {
             switch selection {
             case .board:
@@ -71,6 +39,98 @@ public struct CursorOperatorRootView: View {
             Button("Toggle Sidebar", action: toggleSidebar)
                 .keyboardShortcut("b", modifiers: .command)
                 .hidden()
+        }
+    }
+
+    private var sidebar: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    CursorSidebarActionRow(
+                        title: "New Task",
+                        systemImage: "square.and.pencil",
+                        shortcut: "⌘N"
+                    ) { startNewTask() }
+
+                    CursorSidebarRow(
+                        title: "Board",
+                        systemImage: "rectangle.grid.3x2",
+                        isSelected: selection == .board
+                    ) { selection = .board }
+
+                    CursorSidebarRow(
+                        title: "Archived",
+                        systemImage: "archivebox",
+                        isSelected: selection == .archived
+                    ) { selection = .archived }
+
+                    CursorSidebarSectionHeader(
+                        title: "Workspaces",
+                        actionSystemImage: "folder.badge.plus",
+                        action: { startAddRepository() }
+                    )
+
+                    if model.repositories.isEmpty {
+                        Text("No repositories yet")
+                            .font(.caption11)
+                            .foregroundStyle(CursorTheme.textPlaceholder)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 6)
+                    } else {
+                        ForEach(model.repositories) { repository in
+                            CursorWorkspaceRow(
+                                name: repository.name,
+                                branch: repository.defaultBranch
+                            )
+                        }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.top, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollContentBackground(.hidden)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(CursorTheme.bgChrome)
+        .safeAreaInset(edge: .bottom) { sidebarFooter }
+        .navigationSplitViewColumnWidth(min: 200, ideal: 230)
+        .onAppear { model.loadReportingErrors() }
+    }
+
+    private var sidebarFooter: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(CursorTheme.borderSubtle)
+                .frame(height: 1)
+
+            SettingsLink {
+                Label("Settings", systemImage: "gearshape")
+                    .font(.body13)
+                    .foregroundStyle(CursorTheme.textSecondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+        }
+        .background(CursorTheme.bgChrome)
+    }
+
+    private func startNewTask() {
+        selection = .board
+        // Defer so the board view is mounted and listening before the command fires.
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .cursorOperatorNewTaskCommand, object: nil)
+        }
+    }
+
+    private func startAddRepository() {
+        selection = .board
+        DispatchQueue.main.async {
+            NotificationCenter.default.post(name: .cursorOperatorAddRepositoryCommand, object: nil)
         }
     }
 
@@ -113,6 +173,94 @@ private struct CursorSidebarRow: View {
             return CursorTheme.selectActive
         }
         return isHovering ? CursorTheme.selectHover : .clear
+    }
+}
+
+private struct CursorSidebarActionRow: View {
+    let title: String
+    let systemImage: String
+    var shortcut: String? = nil
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemImage)
+                    .frame(width: 16)
+                Text(title)
+                Spacer(minLength: 4)
+                if let shortcut {
+                    Text(shortcut)
+                        .foregroundStyle(CursorTheme.textPlaceholder)
+                }
+            }
+            .font(.body13)
+            .foregroundStyle(CursorTheme.textSecondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(
+                RoundedRectangle(cornerRadius: CursorTheme.radiusMD)
+                    .fill(isHovering ? CursorTheme.selectHover : .clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: CursorTheme.radiusMD))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+}
+
+private struct CursorSidebarSectionHeader: View {
+    let title: String
+    var actionSystemImage: String? = nil
+    var action: (() -> Void)? = nil
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Text(title)
+                .font(.sectionLabel)
+                .foregroundStyle(CursorTheme.textPlaceholder)
+            Spacer()
+            if let actionSystemImage, let action {
+                Button(action: action) {
+                    Image(systemName: actionSystemImage)
+                        .font(.system(size: 12))
+                        .foregroundStyle(CursorTheme.textPlaceholder)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 8)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+    }
+}
+
+private struct CursorWorkspaceRow: View {
+    let name: String
+    let branch: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "folder")
+                .frame(width: 16)
+                .foregroundStyle(CursorTheme.textSecondary)
+            Text(name)
+                .font(.body13)
+                .foregroundStyle(CursorTheme.textSecondary)
+                .lineLimit(1)
+                .truncationMode(.tail)
+            Spacer(minLength: 4)
+            Text(branch)
+                .font(.caption11)
+                .foregroundStyle(CursorTheme.textPlaceholder)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
     }
 }
 
