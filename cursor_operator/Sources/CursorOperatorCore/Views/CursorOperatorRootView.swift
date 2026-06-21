@@ -100,14 +100,14 @@ private struct CursorBoardView: View {
             if let errorMessage = model.errorMessage {
                 Text(errorMessage)
                     .font(.callout)
-                    .foregroundStyle(.red)
+                    .foregroundStyle(CursorTheme.danger)
             }
 
             setupStatusView
 
             Text("Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.")
                 .font(.callout)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CursorTheme.textSecondary)
 
             HStack(alignment: .top, spacing: 16) {
                 ForEach(shell.board.columns) { column in
@@ -121,11 +121,15 @@ private struct CursorBoardView: View {
                                     .font(.callout.weight(.medium))
                                 Text(shell.board.emptyState.message)
                                     .font(.caption)
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(CursorTheme.textSecondary)
                             }
                             .frame(maxWidth: .infinity, minHeight: 140)
                             .padding(12)
-                            .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+                            .background(CursorTheme.surfaceWash, in: RoundedRectangle(cornerRadius: CursorTheme.radiusLG))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: CursorTheme.radiusLG)
+                                .stroke(CursorTheme.borderSubtle, lineWidth: 1)
+                        )
                         } else {
                             ForEach(projectionColumn(for: column.id).cards) { card in
                                 CursorTaskCardView(card: card) {
@@ -152,7 +156,7 @@ private struct CursorBoardView: View {
 
             Text("App data: \(appDataURL.path)")
                 .font(.caption)
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(CursorTheme.textPlaceholder)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(appDataURL.path)
@@ -265,7 +269,7 @@ private struct CursorBoardView: View {
         isValid: Bool
     ) -> some View {
         Label(title, systemImage: systemImage)
-            .foregroundStyle(isValid ? .green : .yellow)
+            .foregroundStyle(isValid ? CursorTheme.green : CursorTheme.orange)
     }
 
     private func selectRepositoryFolder() {
@@ -375,7 +379,7 @@ private struct CursorTaskCardView: View {
                         .controlSize(.small)
                     Text(sendStatusText)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CursorTheme.textSecondary)
                 }
                 .accessibilityElement(children: .combine)
             }
@@ -383,13 +387,13 @@ private struct CursorTaskCardView: View {
             if let runStatusText = card.runStatusText {
                 Label(runStatusText, systemImage: card.status == .done ? "checkmark.circle" : "clock")
                     .font(.caption)
-                    .foregroundStyle(card.status == .done ? .green : .secondary)
+                    .foregroundStyle(card.status == .done ? CursorTheme.green : CursorTheme.textSecondary)
             }
 
             if sendStatusText == nil, let failedSendMessage = card.failedSendMessage {
                 Label(failedSendMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(CursorTheme.orange)
             }
 
             HStack {
@@ -418,7 +422,11 @@ private struct CursorTaskCardView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(12)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 8))
+        .background(CursorTheme.surfaceWash, in: RoundedRectangle(cornerRadius: CursorTheme.radiusLG))
+        .overlay(
+            RoundedRectangle(cornerRadius: CursorTheme.radiusLG)
+                .stroke(CursorTheme.borderSubtle, lineWidth: 1)
+        )
     }
 }
 
