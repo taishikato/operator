@@ -45,6 +45,16 @@ import Testing
     #expect(script.contains(#"swift build -c "$SWIFT_CONFIGURATION""#))
 }
 
+@Test func buildAndRunBundlesCLIAndAgentSkillForDMGInstalls() throws {
+    let script = try packageScript(named: "build_and_run.sh")
+
+    #expect(script.contains("APP_HELPERS"))
+    #expect(script.contains("cursor-operator-cli"))
+    #expect(script.contains(#"cp "$BUILD_CLI" "$APP_CLI""#))
+    #expect(script.contains("skills/cursor-operator"))
+    #expect(script.contains(#"cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/cursor-operator""#))
+}
+
 @Test func packageDistributionBuildsSignedNotarizableDMG() throws {
     let script = try packageScript(named: "package_distribution.sh")
 

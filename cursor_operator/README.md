@@ -20,4 +20,9 @@ Build a release DMG:
 ./script/package_distribution.sh dmg
 ```
 
+The DMG installs `CursorOperator.app`. After launching the app, open Settings
+and use the Agent Support section to install or repair the `cursor-operator`
+CLI and agent skills. The CLI is linked into `~/.local/bin`, and skills are
+linked into Codex, Cursor, and Claude skill directories.
+
 For Developer ID signing and notarization, see [docs/distribution.md](docs/distribution.md).

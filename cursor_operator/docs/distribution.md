@@ -28,6 +28,17 @@ Outputs:
 - `dist/release/CursorOperator-<version>.dmg`
 - `dist/release/CursorOperator-<version>.dmg.sha256`
 
+The DMG contains `CursorOperator.app` plus bundled agent support files:
+
+- `Contents/Library/Helpers/cursor-operator-cli`
+- `Contents/Resources/CursorSDKHelper`
+- `Contents/Resources/skills/cursor-operator`
+
+Users install the CLI and skills from the app's Settings window. The app links
+`cursor-operator` into `~/.local/bin`, copies the SDK helper next to that
+symlink, and links the skill into `~/.codex/skills`, `~/.cursor/skills`, and
+`~/.claude/skills`.
+
 By default, the script uses the latest `v*` git tag as the app version, falling back to `0.1.0`. Override it explicitly for release builds:
 
 ```bash
