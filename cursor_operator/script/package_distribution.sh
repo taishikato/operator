@@ -6,6 +6,7 @@ DISPLAY_NAME="Cursor Operator"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
+APP_CONTENTS="$APP_BUNDLE/Contents"
 RELEASE_DIR="${CURSOR_OPERATOR_RELEASE_DIR:-$DIST_DIR/release}"
 STAGING_DIR="$DIST_DIR/dmg-staging"
 
@@ -53,6 +54,8 @@ sign_app_if_requested() {
     return
   fi
 
+  sign_nested_mach_o_files "$identity"
+
   /usr/bin/codesign \
     --force \
     --options runtime \
@@ -60,6 +63,21 @@ sign_app_if_requested() {
     --sign "$identity" \
     "$APP_BUNDLE"
   /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+}
+
+sign_nested_mach_o_files() {
+  local identity="$1"
+
+  while IFS= read -r -d '' candidate; do
+    if /usr/bin/file "$candidate" | /usr/bin/grep -q "Mach-O"; then
+      /usr/bin/codesign \
+        --force \
+        --options runtime \
+        --timestamp \
+        --sign "$identity" \
+        "$candidate"
+    fi
+  done < <(/usr/bin/find "$APP_CONTENTS" -type f -perm -111 -print0)
 }
 
 create_dmg() {
@@ -81,6 +99,10 @@ create_dmg() {
 
 notarize_dmg_if_requested() {
   local dmg_path="$1"
+  local auth_args=()
+  local notary_result="$RELEASE_DIR/notarytool-$APP_NAME-$VERSION.json"
+  local submission_id
+  local status
 
   if [[ "${CURSOR_OPERATOR_NOTARIZE:-0}" != "1" ]]; then
     echo "Skipping notarization; set CURSOR_OPERATOR_NOTARIZE=1 after configuring notarytool credentials."
@@ -93,18 +115,33 @@ notarize_dmg_if_requested() {
   fi
 
   if [[ -n "${CURSOR_OPERATOR_NOTARY_PROFILE:-}" ]]; then
-    /usr/bin/xcrun notarytool submit "$dmg_path" \
-      --keychain-profile "$CURSOR_OPERATOR_NOTARY_PROFILE" \
-      --wait
+    auth_args=(--keychain-profile "$CURSOR_OPERATOR_NOTARY_PROFILE")
   else
     : "${APPLE_ID:?Set APPLE_ID or CURSOR_OPERATOR_NOTARY_PROFILE for notarization.}"
     : "${APPLE_TEAM_ID:?Set APPLE_TEAM_ID or CURSOR_OPERATOR_NOTARY_PROFILE for notarization.}"
     : "${APPLE_APP_SPECIFIC_PASSWORD:?Set APPLE_APP_SPECIFIC_PASSWORD or CURSOR_OPERATOR_NOTARY_PROFILE for notarization.}"
-    /usr/bin/xcrun notarytool submit "$dmg_path" \
-      --apple-id "$APPLE_ID" \
-      --team-id "$APPLE_TEAM_ID" \
-      --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-      --wait
+    auth_args=(
+      --apple-id "$APPLE_ID"
+      --team-id "$APPLE_TEAM_ID"
+      --password "$APPLE_APP_SPECIFIC_PASSWORD"
+    )
+  fi
+
+  /usr/bin/xcrun notarytool submit "$dmg_path" \
+    "${auth_args[@]}" \
+    --wait \
+    --output-format json \
+    | tee "$notary_result"
+
+  status="$(/usr/bin/plutil -extract status raw -o - "$notary_result" 2>/dev/null || true)"
+  submission_id="$(/usr/bin/plutil -extract id raw -o - "$notary_result" 2>/dev/null || true)"
+
+  if [[ "$status" != "Accepted" ]]; then
+    echo "Notarization failed with status: ${status:-unknown}." >&2
+    if [[ -n "$submission_id" ]]; then
+      /usr/bin/xcrun notarytool log "$submission_id" "${auth_args[@]}" || true
+    fi
+    exit 1
   fi
 
   /usr/bin/xcrun stapler staple "$dmg_path"
