@@ -113,12 +113,14 @@ private struct CursorBoardView: View {
                 ForEach(shell.board.columns) { column in
                     VStack(alignment: .leading, spacing: 12) {
                         Text(column.title)
-                            .font(.headline)
+                            .font(.rowTitle)
+                            .foregroundStyle(CursorTheme.textPrimary)
 
                         if projectionColumn(for: column.id).cards.isEmpty {
                             VStack(spacing: 8) {
                                 Text(shell.board.emptyState.title)
-                                    .font(.callout.weight(.medium))
+                                    .font(.rowTitle)
+                                    .foregroundStyle(CursorTheme.textPrimary)
                                 Text(shell.board.emptyState.message)
                                     .font(.caption)
                                     .foregroundStyle(CursorTheme.textSecondary)
@@ -371,7 +373,8 @@ private struct CursorTaskCardView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(card.title)
-                .font(.callout.weight(.medium))
+                .font(.rowTitle)
+                .foregroundStyle(CursorTheme.textPrimary)
 
             if let sendStatusText {
                 HStack(spacing: 6) {
