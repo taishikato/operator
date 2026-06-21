@@ -53,7 +53,8 @@ public struct CursorOperatorRootView: View {
                     .navigationTitle("Archived")
             }
         }
-        .containerBackground(.thickMaterial, for: .window)
+        .containerBackground(CursorTheme.bgContent, for: .window)
+        .preferredColorScheme(.dark)
         .background {
             Button("Toggle Sidebar", action: toggleSidebar)
                 .keyboardShortcut("b", modifiers: .command)

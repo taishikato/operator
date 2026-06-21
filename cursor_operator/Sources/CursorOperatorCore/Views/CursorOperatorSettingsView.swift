@@ -80,7 +80,8 @@ public struct CursorOperatorSettingsView: View {
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .containerBackground(.thickMaterial, for: .window)
+        .containerBackground(CursorTheme.bgContent, for: .window)
+        .preferredColorScheme(.dark)
         .onAppear(perform: refreshNodeProjection)
     }
 
