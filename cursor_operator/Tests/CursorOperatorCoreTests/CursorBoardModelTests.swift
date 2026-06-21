@@ -75,6 +75,35 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelRechecksMissingNodeOnNextLoad() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    _ = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let nodeResolver = RecoveringBoardModelNodeResolver()
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        nodeResolver: nodeResolver
+    )
+
+    try model.load()
+    #expect(model.setupStatus.nodeState == .missing)
+
+    nodeResolver.isReady = true
+    try model.load()
+
+    #expect(model.setupStatus.nodeState == .ready(version: "v22.13.0"))
+    #expect(model.setupStatus.canSend)
+}
+
+@MainActor
 @Test func boardModelMovesRunningTasksToDoneAndArchivesActiveTasks() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
@@ -501,6 +530,20 @@ private struct CompatibleBoardModelNodeResolver: CursorNodeResolving {
 private struct MissingBoardModelNodeResolver: CursorNodeResolving {
     func resolve() throws -> CursorNodeResolution {
         throw CursorNodeResolutionError.missingCompatibleNode
+    }
+}
+
+private final class RecoveringBoardModelNodeResolver: CursorNodeResolving, @unchecked Sendable {
+    var isReady = false
+
+    func resolve() throws -> CursorNodeResolution {
+        guard isReady else {
+            throw CursorNodeResolutionError.missingCompatibleNode
+        }
+        return CursorNodeResolution(
+            executableURL: URL(filePath: "/opt/homebrew/bin/node"),
+            version: "v22.13.0"
+        )
     }
 }
 

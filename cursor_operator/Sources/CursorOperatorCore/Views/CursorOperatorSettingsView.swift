@@ -27,7 +27,7 @@ public struct CursorOperatorSettingsView: View {
                 LabeledContent("Validation", value: validationStatusText)
                 if let credentialErrorMessage = credentialModel.credentialErrorMessage {
                     Label(credentialErrorMessage, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(CursorTheme.danger)
                 }
 
                 SecureField("Paste API key", text: $apiKeyDraft)
@@ -57,14 +57,14 @@ public struct CursorOperatorSettingsView: View {
                 LabeledContent("Node.js", value: nodeProjection.status)
                 LabeledContent("Node Path") {
                     Text(nodeProjection.path)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CursorTheme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(nodeProjection.path)
                 }
                 LabeledContent("App Data") {
                     Text(appDataURL.path)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(CursorTheme.textSecondary)
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(appDataURL.path)
@@ -74,13 +74,15 @@ public struct CursorOperatorSettingsView: View {
             Section("Development") {
                 ForEach(appSpec.developmentCommands, id: \.self) { command in
                     Text(command)
-                        .font(.system(.body, design: .monospaced))
+                        .font(.codeInline)
+                        .foregroundStyle(CursorTheme.blue)
                 }
             }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)
-        .containerBackground(.thickMaterial, for: .window)
+        .containerBackground(CursorTheme.bgContent, for: .window)
+        .preferredColorScheme(.dark)
         .onAppear(perform: refreshNodeProjection)
     }
 

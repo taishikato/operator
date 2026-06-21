@@ -36,7 +36,7 @@ public protocol CursorNodeResolving: Sendable {
 
 public protocol CursorNodeFileSystem: Sendable {
     func isExecutableFile(at url: URL) -> Bool
-    func descendantFiles(under directory: URL) -> [URL]
+    func directoryContents(at directory: URL) -> [URL]
 }
 
 public protocol CursorNodeVersionProviding: Sendable {
@@ -121,8 +121,11 @@ public struct CursorNodeExecutableResolver: CursorNodeResolving {
             .appending(path: "versions", directoryHint: .isDirectory)
             .appending(path: "node", directoryHint: .isDirectory)
 
-        return fileSystem.descendantFiles(under: nvmRoot)
-            .filter { $0.lastPathComponent == "node" && $0.deletingLastPathComponent().lastPathComponent == "bin" }
+        // Only the immediate version directories are needed (e.g. v22.14.0);
+        // map each to its bin/node instead of recursively walking the whole
+        // tree, which can be ~tens of thousands of files per Node install.
+        return fileSystem.directoryContents(at: nvmRoot)
+            .map { $0.appending(path: "bin").appending(path: "node") }
             .sorted { lhs, rhs in
                 let lhsVersion = CursorSemanticVersion(nvmNodeURL: lhs) ?? .zero
                 let rhsVersion = CursorSemanticVersion(nvmNodeURL: rhs) ?? .zero
@@ -146,16 +149,12 @@ public struct DefaultCursorNodeFileSystem: CursorNodeFileSystem {
         FileManager.default.isExecutableFile(atPath: url.path)
     }
 
-    public func descendantFiles(under directory: URL) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
+    public func directoryContents(at directory: URL) -> [URL] {
+        (try? FileManager.default.contentsOfDirectory(
             at: directory,
-            includingPropertiesForKeys: [.isRegularFileKey],
+            includingPropertiesForKeys: nil,
             options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-
-        return enumerator.compactMap { $0 as? URL }
+        )) ?? []
     }
 }
 
