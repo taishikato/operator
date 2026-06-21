@@ -30,10 +30,13 @@ public struct CursorOperatorRootView: View {
                     .tag(CursorOperatorSidebarSelection.archived)
             }
             .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .background(CursorTheme.bgChrome)
             .safeAreaInset(edge: .bottom) {
                 SettingsLink {
                     Label("Settings", systemImage: "gearshape")
-                        .foregroundStyle(.secondary)
+                        .font(.body13)
+                        .foregroundStyle(CursorTheme.textSecondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
