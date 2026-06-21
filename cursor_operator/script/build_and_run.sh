@@ -5,6 +5,9 @@ MODE="${1:-run}"
 APP_NAME="CursorOperator"
 BUNDLE_ID="com.focus.cursor-operator"
 MIN_SYSTEM_VERSION="26.0"
+APP_VERSION="${CURSOR_OPERATOR_VERSION:-0.1.0}"
+BUILD_NUMBER="${CURSOR_OPERATOR_BUILD_NUMBER:-1}"
+SWIFT_CONFIGURATION="${CURSOR_OPERATOR_SWIFT_CONFIGURATION:-debug}"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIST_DIR="$ROOT_DIR/dist"
@@ -21,8 +24,8 @@ cd "$ROOT_DIR"
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
-swift build
-BUILD_BINARY="$(swift build --show-bin-path)/$APP_NAME"
+swift build -c "$SWIFT_CONFIGURATION"
+BUILD_BINARY="$(swift build -c "$SWIFT_CONFIGURATION" --show-bin-path)/$APP_NAME"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_RESOURCES"
@@ -47,6 +50,10 @@ cat >"$INFO_PLIST" <<PLIST
   <string>Cursor Operator</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
+  <key>CFBundleShortVersionString</key>
+  <string>$APP_VERSION</string>
+  <key>CFBundleVersion</key>
+  <string>$BUILD_NUMBER</string>
   <key>LSMinimumSystemVersion</key>
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
