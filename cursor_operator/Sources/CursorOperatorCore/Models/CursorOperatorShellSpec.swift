@@ -49,6 +49,13 @@ public enum CursorOperatorSidebarSelection: CaseIterable, Equatable, Hashable, S
             return nil
         }
     }
+
+    public func selectionAfterAppMenuCommand(_ command: CursorBoardCommandID) -> CursorOperatorSidebarSelection {
+        switch command {
+        case .newTask, .addRepository:
+            .board
+        }
+    }
 }
 
 public struct CursorBoardSpec: Equatable, Sendable {

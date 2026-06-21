@@ -36,6 +36,12 @@ import Testing
     )))
 }
 
+@Test func appMenuBoardCommandsReturnToBoardFromArchivedSelection() {
+    #expect(CursorOperatorSidebarSelection.archived.selectionAfterAppMenuCommand(.newTask) == .board)
+    #expect(CursorOperatorSidebarSelection.archived.selectionAfterAppMenuCommand(.addRepository) == .board)
+    #expect(CursorOperatorSidebarSelection.board.selectionAfterAppMenuCommand(.newTask) == .board)
+}
+
 @Test func cursorOperatorUsesIsolatedIdentityAndDataRoot() {
     let app = CursorOperatorAppSpec.mvp
 

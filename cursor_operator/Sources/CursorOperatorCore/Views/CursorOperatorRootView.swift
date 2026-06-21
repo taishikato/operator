@@ -8,6 +8,8 @@ public struct CursorOperatorRootView: View {
     @StateObject private var model: CursorBoardModel
     @State private var selection: CursorOperatorSidebarSelection
     @State private var showSidebar = true
+    @State private var defaultBranchDraft = ""
+    @State private var showCreateTaskSheet = false
 
     public init(
         store: CursorOperatorStore,
@@ -34,7 +36,12 @@ public struct CursorOperatorRootView: View {
                 Group {
                     switch selection {
                     case .board:
-                        CursorBoardView(shell: shell, model: model, appDataURL: appDataURL)
+                        CursorBoardView(
+                            shell: shell,
+                            model: model,
+                            appDataURL: appDataURL,
+                            presentEditTask: presentEditTaskSheet
+                        )
                             .navigationTitle("Board")
                     case .archived:
                         CursorArchivedView(model: model)
@@ -52,6 +59,29 @@ public struct CursorOperatorRootView: View {
             Button("Toggle Sidebar", action: toggleSidebar)
                 .keyboardShortcut("b", modifiers: .command)
                 .hidden()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorNewTaskCommand)) { _ in
+            performAppMenuCommand(.newTask)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorAddRepositoryCommand)) { _ in
+            performAppMenuCommand(.addRepository)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorCredentialsChanged)) { _ in
+            model.loadReportingErrors()
+        }
+        .onChange(of: model.pendingRepositoryDraft) { _, draft in
+            defaultBranchDraft = draft?.defaultBranch ?? ""
+        }
+        .sheet(item: pendingRepositoryDraftBinding) { draft in
+            CursorRepositoryReviewSheet(
+                draft: draft,
+                defaultBranch: $defaultBranchDraft
+            ) {
+                model.savePendingRepositoryReportingErrors(defaultBranch: defaultBranchDraft)
+            }
+        }
+        .sheet(isPresented: $showCreateTaskSheet) {
+            CursorTaskCreationSheet(model: model, isPresented: $showCreateTaskSheet)
         }
     }
 
@@ -146,24 +176,56 @@ public struct CursorOperatorRootView: View {
     }
 
     private func startNewTask() {
-        selection = .board
-        // Defer so the board view is mounted and listening before the command fires.
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .cursorOperatorNewTaskCommand, object: nil)
-        }
+        performAppMenuCommand(.newTask)
     }
 
     private func startAddRepository() {
-        selection = .board
-        DispatchQueue.main.async {
-            NotificationCenter.default.post(name: .cursorOperatorAddRepositoryCommand, object: nil)
-        }
+        performAppMenuCommand(.addRepository)
     }
 
     private func toggleSidebar() {
         withAnimation(.easeInOut(duration: 0.15)) {
             showSidebar.toggle()
         }
+    }
+
+    private var pendingRepositoryDraftBinding: Binding<CursorRepositoryRegistrationDraft?> {
+        Binding {
+            model.pendingRepositoryDraft
+        } set: { _ in }
+    }
+
+    private func performAppMenuCommand(_ command: CursorBoardCommandID) {
+        selection = selection.selectionAfterAppMenuCommand(command)
+        switch command {
+        case .newTask:
+            presentCreateTaskSheet()
+        case .addRepository:
+            selectRepositoryFolder()
+        }
+    }
+
+    private func selectRepositoryFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = false
+
+        guard panel.runModal() == .OK, let repositoryURL = panel.url else {
+            return
+        }
+
+        model.prepareRepositoryRegistrationReportingErrors(at: repositoryURL)
+    }
+
+    private func presentCreateTaskSheet() {
+        showCreateTaskSheet = model.prepareCreateTaskDraftForPresentation()
+    }
+
+    private func presentEditTaskSheet(taskID: UUID) {
+        selection = .board
+        showCreateTaskSheet = model.prepareEditTaskDraftForPresentation(taskID: taskID)
     }
 }
 
@@ -293,14 +355,19 @@ private struct CursorWorkspaceRow: View {
 private struct CursorBoardView: View {
     let shell: CursorOperatorShellSpec
     @ObservedObject var model: CursorBoardModel
-    @State private var defaultBranchDraft = ""
-    @State private var showCreateTaskSheet = false
     let appDataURL: URL
+    let presentEditTask: (UUID) -> Void
 
-    init(shell: CursorOperatorShellSpec, model: CursorBoardModel, appDataURL: URL) {
+    init(
+        shell: CursorOperatorShellSpec,
+        model: CursorBoardModel,
+        appDataURL: URL,
+        presentEditTask: @escaping (UUID) -> Void
+    ) {
         self.shell = shell
         self.appDataURL = appDataURL
         self.model = model
+        self.presentEditTask = presentEditTask
     }
 
     var body: some View {
@@ -345,7 +412,7 @@ private struct CursorBoardView: View {
                                 CursorTaskCardView(card: card) {
                                     model.sendReportingErrors(taskID: card.id)
                                 } edit: {
-                                    presentEditTaskSheet(taskID: card.id)
+                                    presentEditTask(card.id)
                                 } openInCursor: {
                                     model.openInCursorReportingErrors(taskID: card.id)
                                 } markDone: {
@@ -379,39 +446,10 @@ private struct CursorBoardView: View {
             model.loadReportingErrors()
             model.resumeRunMonitoringReportingErrors()
         }
-        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorNewTaskCommand)) { _ in
-            presentCreateTaskSheet()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorAddRepositoryCommand)) { _ in
-            selectRepositoryFolder()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorCredentialsChanged)) { _ in
-            model.loadReportingErrors()
-        }
-        .onChange(of: model.pendingRepositoryDraft) { _, draft in
-            defaultBranchDraft = draft?.defaultBranch ?? ""
-        }
-        .sheet(item: pendingRepositoryDraftBinding) { draft in
-            CursorRepositoryReviewSheet(
-                draft: draft,
-                defaultBranch: $defaultBranchDraft
-            ) {
-                model.savePendingRepositoryReportingErrors(defaultBranch: defaultBranchDraft)
-            }
-        }
-        .sheet(isPresented: $showCreateTaskSheet) {
-            CursorTaskCreationSheet(model: model, isPresented: $showCreateTaskSheet)
-        }
     }
 
     private func projectionColumn(for id: CursorBoardColumnID) -> CursorBoardColumnProjection {
         model.projection.columns.first { $0.id == id } ?? CursorBoardColumnProjection(id: id, title: "", cards: [])
-    }
-
-    private var pendingRepositoryDraftBinding: Binding<CursorRepositoryRegistrationDraft?> {
-        Binding {
-            model.pendingRepositoryDraft
-        } set: { _ in }
     }
 
     private var setupStatusView: some View {
@@ -466,27 +504,6 @@ private struct CursorBoardView: View {
             .foregroundStyle(isValid ? CursorTheme.green : CursorTheme.orange)
     }
 
-    private func selectRepositoryFolder() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = false
-
-        guard panel.runModal() == .OK, let repositoryURL = panel.url else {
-            return
-        }
-
-        model.prepareRepositoryRegistrationReportingErrors(at: repositoryURL)
-    }
-
-    private func presentCreateTaskSheet() {
-        showCreateTaskSheet = model.prepareCreateTaskDraftForPresentation()
-    }
-
-    private func presentEditTaskSheet(taskID: UUID) {
-        showCreateTaskSheet = model.prepareEditTaskDraftForPresentation(taskID: taskID)
-    }
 }
 
 extension CursorRepositoryRegistrationDraft: Identifiable {
