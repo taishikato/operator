@@ -11,3 +11,13 @@ swift test
 ```
 
 Cursor Operator stores local app data under the `Cursor Operator` Application Support directory and uses the `com.focus.cursor-operator` bundle identity.
+
+## Distribution
+
+Build a release DMG:
+
+```bash
+./script/package_distribution.sh dmg
+```
+
+For Developer ID signing and notarization, see [docs/distribution.md](docs/distribution.md).
