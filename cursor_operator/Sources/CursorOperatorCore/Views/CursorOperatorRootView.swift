@@ -22,15 +22,24 @@ public struct CursorOperatorRootView: View {
 
     public var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            List(selection: selectionBinding) {
-                Label("Board", systemImage: "rectangle.grid.3x2")
-                    .tag(CursorOperatorSidebarSelection.board)
+            VStack(alignment: .leading, spacing: 2) {
+                CursorSidebarRow(
+                    title: "Board",
+                    systemImage: "rectangle.grid.3x2",
+                    isSelected: selection == .board
+                ) { selection = .board }
 
-                Label("Archived", systemImage: "archivebox")
-                    .tag(CursorOperatorSidebarSelection.archived)
+                CursorSidebarRow(
+                    title: "Archived",
+                    systemImage: "archivebox",
+                    isSelected: selection == .archived
+                ) { selection = .archived }
+
+                Spacer(minLength: 0)
             }
-            .listStyle(.sidebar)
-            .scrollContentBackground(.hidden)
+            .padding(.horizontal, 8)
+            .padding(.top, 8)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             .background(CursorTheme.bgChrome)
             .safeAreaInset(edge: .bottom) {
                 SettingsLink {
@@ -65,20 +74,45 @@ public struct CursorOperatorRootView: View {
         }
     }
 
-    private var selectionBinding: Binding<CursorOperatorSidebarSelection?> {
-        Binding {
-            selection
-        } set: { newValue in
-            if let newValue {
-                selection = newValue
-            }
-        }
-    }
-
     private func toggleSidebar() {
         withAnimation {
             columnVisibility = columnVisibility == .detailOnly ? .all : .detailOnly
         }
+    }
+}
+
+private struct CursorSidebarRow: View {
+    let title: String
+    let systemImage: String
+    let isSelected: Bool
+    let action: () -> Void
+
+    @State private var isHovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.body13)
+                .fontWeight(isSelected ? .medium : .regular)
+                .foregroundStyle(isSelected ? CursorTheme.textPrimary : CursorTheme.textSecondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: CursorTheme.radiusMD)
+                        .fill(rowBackground)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: CursorTheme.radiusMD))
+        }
+        .buttonStyle(.plain)
+        .onHover { isHovering = $0 }
+    }
+
+    private var rowBackground: Color {
+        if isSelected {
+            return CursorTheme.selectActive
+        }
+        return isHovering ? CursorTheme.selectHover : .clear
     }
 }
 
