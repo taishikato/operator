@@ -96,5 +96,6 @@ public struct CursorBoardEmptyState: Equatable, Sendable {
 public extension Notification.Name {
     static let cursorOperatorNewTaskCommand = Notification.Name("com.focus.cursor-operator.new-task")
     static let cursorOperatorAddRepositoryCommand = Notification.Name("com.focus.cursor-operator.add-repository")
+    static let cursorOperatorToggleSidebarCommand = Notification.Name("com.focus.cursor-operator.toggle-sidebar")
     static let cursorOperatorCredentialsChanged = Notification.Name("com.focus.cursor-operator.credentials-changed")
 }

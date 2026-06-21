@@ -32,22 +32,32 @@ public struct CursorOperatorRootView: View {
                     .frame(width: 1)
             }
 
-            NavigationStack {
-                Group {
-                    switch selection {
-                    case .board:
-                        CursorBoardView(
-                            shell: shell,
-                            model: model,
-                            appDataURL: appDataURL,
-                            presentEditTask: presentEditTaskSheet
-                        )
-                            .navigationTitle("Board")
-                    case .archived:
-                        CursorArchivedView(model: model)
-                            .navigationTitle("Archived")
+            VStack(spacing: 0) {
+                // With the sidebar collapsed, its toggle is gone too, so the detail
+                // area carries the re-show control (mouse-only users would otherwise
+                // be stuck). The bar also keeps content clear of the traffic lights.
+                if !showSidebar {
+                    detailTopBar
+                }
+
+                NavigationStack {
+                    Group {
+                        switch selection {
+                        case .board:
+                            CursorBoardView(
+                                shell: shell,
+                                model: model,
+                                appDataURL: appDataURL,
+                                presentEditTask: presentEditTaskSheet
+                            )
+                                .navigationTitle("Board")
+                        case .archived:
+                            CursorArchivedView(model: model)
+                                .navigationTitle("Archived")
+                        }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -55,10 +65,8 @@ public struct CursorOperatorRootView: View {
         .background(CursorTheme.bgContent)
         .containerBackground(CursorTheme.bgContent, for: .window)
         .preferredColorScheme(.dark)
-        .background {
-            Button("Toggle Sidebar", action: toggleSidebar)
-                .keyboardShortcut("b", modifiers: .command)
-                .hidden()
+        .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorToggleSidebarCommand)) { _ in
+            toggleSidebar()
         }
         .onReceive(NotificationCenter.default.publisher(for: .cursorOperatorNewTaskCommand)) { _ in
             performAppMenuCommand(.newTask)
@@ -85,6 +93,25 @@ public struct CursorOperatorRootView: View {
         }
     }
 
+    // Shown in the detail area only while the sidebar is collapsed. Left padding
+    // clears the window traffic lights so the toggle sits just right of them,
+    // mirroring Cursor.
+    private var detailTopBar: some View {
+        HStack {
+            Button(action: toggleSidebar) {
+                Image(systemName: "sidebar.left")
+                    .foregroundStyle(CursorTheme.textSecondary)
+            }
+            .buttonStyle(.plain)
+            .help("Show Sidebar")
+            Spacer()
+        }
+        .frame(height: 28)
+        .padding(.top, 8)
+        .padding(.trailing, 10)
+        .padding(.leading, 72)
+    }
+
     private var sidebar: some View {
         VStack(spacing: 0) {
             // Top bar leaves room for the window traffic lights and carries the
@@ -96,6 +123,7 @@ public struct CursorOperatorRootView: View {
                         .foregroundStyle(CursorTheme.textSecondary)
                 }
                 .buttonStyle(.plain)
+                .help("Hide Sidebar")
             }
             .frame(height: 28)
             .padding(.horizontal, 10)

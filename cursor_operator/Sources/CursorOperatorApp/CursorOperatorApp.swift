@@ -36,7 +36,15 @@ struct CursorOperatorApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands {
-            SidebarCommands()
+            // The app draws its own sidebar (NavigationSplitView was removed), so
+            // the stock SidebarCommands() toggle is inert. Replace it with a command
+            // wired to the view's showSidebar state via notification.
+            CommandGroup(replacing: .sidebar) {
+                Button("Toggle Sidebar") {
+                    NotificationCenter.default.post(name: .cursorOperatorToggleSidebarCommand, object: nil)
+                }
+                .keyboardShortcut("b", modifiers: .command)
+            }
             CommandGroup(replacing: .newItem) {
                 Button("New Cursor Task") {
                     NotificationCenter.default.post(name: .cursorOperatorNewTaskCommand, object: nil)
