@@ -396,27 +396,27 @@ private struct CursorTaskCardView: View {
                     .foregroundStyle(CursorTheme.orange)
             }
 
-            HStack {
+            HStack(spacing: 8) {
                 if card.status == .ready {
                     Button("Edit", action: edit)
-                        .controlSize(.small)
+                        .buttonStyle(CursorGhostButtonStyle())
 
                     Button(sendStatusText == nil ? "Send" : "Sending", action: send)
-                        .controlSize(.small)
+                        .buttonStyle(CursorPrimaryButtonStyle())
                         .disabled(sendDisabled)
                         .help(sendDisabled ? sendDisabledReason : "")
                 }
                 if card.canOpenInCursor {
                     Button("Open in Cursor", action: openInCursor)
-                        .controlSize(.small)
+                        .buttonStyle(CursorGhostButtonStyle())
                 }
                 if card.status == .running {
                     Button("Done", action: markDone)
-                        .controlSize(.small)
+                        .buttonStyle(CursorGhostButtonStyle())
                 }
                 if card.status != .archived {
                     Button("Archive", action: archive)
-                        .controlSize(.small)
+                        .buttonStyle(CursorGhostButtonStyle())
                 }
             }
         }
