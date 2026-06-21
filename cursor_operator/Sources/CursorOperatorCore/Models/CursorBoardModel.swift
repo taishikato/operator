@@ -348,8 +348,8 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     private func nodeSetupState() -> CursorNodeSetupState {
-        // Resolving Node spawns a subprocess (`node --version`); cache it so
-        // navigation reloads don't block the main thread on every appear.
+        // Resolving Node spawns a subprocess (`node --version`); cache only
+        // successful detection so missing Node can recover after installation.
         if let cachedNodeState {
             return cachedNodeState
         }
@@ -357,10 +357,10 @@ public final class CursorBoardModel: ObservableObject {
         do {
             let resolution = try nodeResolver.resolve()
             state = .ready(version: resolution.version)
+            cachedNodeState = state
         } catch {
             state = .missing
         }
-        cachedNodeState = state
         return state
     }
 
