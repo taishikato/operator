@@ -4,8 +4,8 @@ import SwiftUI
 public struct CursorOperatorRootView: View {
     private let shell: CursorOperatorShellSpec
     private let appDataURL: URL
-    private let store: CursorOperatorStore
 
+    @StateObject private var model: CursorBoardModel
     @State private var selection: CursorOperatorSidebarSelection
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
@@ -14,9 +14,9 @@ public struct CursorOperatorRootView: View {
         shell: CursorOperatorShellSpec = .mvp,
         appDataURL: URL
     ) {
-        self.store = store
         self.shell = shell
         self.appDataURL = appDataURL
+        _model = StateObject(wrappedValue: CursorBoardModel(store: store))
         _selection = State(initialValue: CursorOperatorSidebarSelection(destination: shell.launchDestination) ?? .board)
     }
 
@@ -58,10 +58,10 @@ public struct CursorOperatorRootView: View {
         } detail: {
             switch selection {
             case .board:
-                CursorBoardView(shell: shell, store: store, appDataURL: appDataURL)
+                CursorBoardView(shell: shell, model: model, appDataURL: appDataURL)
                     .navigationTitle("Board")
             case .archived:
-                CursorArchivedView(store: store)
+                CursorArchivedView(model: model)
                     .navigationTitle("Archived")
             }
         }
@@ -118,15 +118,15 @@ private struct CursorSidebarRow: View {
 
 private struct CursorBoardView: View {
     let shell: CursorOperatorShellSpec
-    @StateObject private var model: CursorBoardModel
+    @ObservedObject var model: CursorBoardModel
     @State private var defaultBranchDraft = ""
     @State private var showCreateTaskSheet = false
     let appDataURL: URL
 
-    init(shell: CursorOperatorShellSpec, store: CursorOperatorStore, appDataURL: URL) {
+    init(shell: CursorOperatorShellSpec, model: CursorBoardModel, appDataURL: URL) {
         self.shell = shell
         self.appDataURL = appDataURL
-        _model = StateObject(wrappedValue: CursorBoardModel(store: store))
+        self.model = model
     }
 
     var body: some View {
@@ -637,11 +637,7 @@ private struct CursorTaskCreationSheet: View {
 }
 
 private struct CursorArchivedView: View {
-    @StateObject private var model: CursorBoardModel
-
-    init(store: CursorOperatorStore) {
-        _model = StateObject(wrappedValue: CursorBoardModel(store: store))
-    }
+    @ObservedObject var model: CursorBoardModel
 
     var body: some View {
         Group {
