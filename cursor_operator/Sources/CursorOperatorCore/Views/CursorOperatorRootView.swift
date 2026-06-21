@@ -386,6 +386,8 @@ private struct CursorBoardView: View {
     let appDataURL: URL
     let presentEditTask: (UUID) -> Void
 
+    @State private var reloadTrigger = 0
+
     init(
         shell: CursorOperatorShellSpec,
         model: CursorBoardModel,
@@ -408,9 +410,13 @@ private struct CursorBoardView: View {
 
             setupStatusView
 
-            Text("Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.")
-                .font(.callout)
-                .foregroundStyle(CursorTheme.textSecondary)
+            HStack(alignment: .center, spacing: 12) {
+                reloadButton
+                Text("Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.")
+                    .font(.callout)
+                    .foregroundStyle(CursorTheme.textSecondary)
+                Spacer(minLength: 12)
+            }
 
             HStack(alignment: .top, spacing: 16) {
                 ForEach(shell.board.columns) { column in
@@ -471,9 +477,27 @@ private struct CursorBoardView: View {
         // New Task / Add Repository now live in the sidebar (and the cmd+N /
         // cmd+O menu commands), so the detail toolbar is intentionally omitted.
         .onAppear {
-            model.loadReportingErrors()
-            model.resumeRunMonitoringReportingErrors()
+            model.refreshReportingErrors()
         }
+    }
+
+    // Sits above the board columns; re-fetches tasks. The icon plays one native
+    // symbol rotation per tap as immediate affordance since the local reload
+    // itself is instant. `.symbolEffect(.rotate)` stays crisp during the spin,
+    // unlike a manual `rotationEffect`.
+    private var reloadButton: some View {
+        Button(action: reload) {
+            Image(systemName: "arrow.clockwise")
+                .symbolEffect(.rotate, options: .nonRepeating, value: reloadTrigger)
+        }
+        .buttonStyle(CursorIconButtonStyle())
+        .help("Reload tasks")
+        .accessibilityLabel("Reload tasks")
+    }
+
+    private func reload() {
+        reloadTrigger += 1
+        model.refreshReportingErrors()
     }
 
     private func projectionColumn(for id: CursorBoardColumnID) -> CursorBoardColumnProjection {

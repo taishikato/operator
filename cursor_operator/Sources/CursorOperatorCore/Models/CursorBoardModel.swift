@@ -216,6 +216,14 @@ public final class CursorBoardModel: ObservableObject {
         }
     }
 
+    /// Re-fetch the board: reload the local projection and re-attach run
+    /// monitoring so running tasks pick up any remote status changes. This is
+    /// the same work performed when the board first appears.
+    public func refreshReportingErrors() {
+        loadReportingErrors()
+        resumeRunMonitoringReportingErrors()
+    }
+
     public func createLocalTaskReportingErrors() {
         do {
             try createLocalTask(

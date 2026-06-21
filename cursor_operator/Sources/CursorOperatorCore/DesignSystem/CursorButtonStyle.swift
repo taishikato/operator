@@ -35,6 +35,39 @@ public struct CursorGhostButtonStyle: ButtonStyle {
     }
 }
 
+/// Square icon-only ghost button: same wash / hairline border as
+/// `CursorGhostButtonStyle`, but a fixed square footprint so a single glyph is
+/// not stretched into a rectangle by the text button's wide horizontal padding.
+public struct CursorIconButtonStyle: ButtonStyle {
+    public init() {}
+
+    public func makeBody(configuration: Configuration) -> some View {
+        StyleBody(configuration: configuration)
+    }
+
+    private struct StyleBody: View {
+        let configuration: ButtonStyleConfiguration
+        @Environment(\.isEnabled) private var isEnabled
+
+        var body: some View {
+            configuration.label
+                .font(.body13)
+                .foregroundStyle(CursorTheme.textPrimary)
+                .frame(width: 28, height: 28)
+                .background(
+                    RoundedRectangle(cornerRadius: CursorTheme.radiusMD)
+                        .fill(configuration.isPressed ? CursorTheme.selectActive : CursorTheme.surfaceWash)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: CursorTheme.radiusMD)
+                        .stroke(CursorTheme.borderSubtle, lineWidth: 1)
+                )
+                .contentShape(RoundedRectangle(cornerRadius: CursorTheme.radiusMD))
+                .opacity(isEnabled ? 1 : 0.4)
+        }
+    }
+}
+
 /// Primary button: filled accent blue with near-black text.
 public struct CursorPrimaryButtonStyle: ButtonStyle {
     public init() {}
