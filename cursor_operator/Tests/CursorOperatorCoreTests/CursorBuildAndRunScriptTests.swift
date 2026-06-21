@@ -86,6 +86,20 @@ import Testing
     #expect(script.contains(#"ln -sf "$BIN_PATH" "$INSTALL_DIR/cursor-operator""#))
 }
 
+@Test func installCLIScriptCopiesCursorSDKHelperNextToBuiltCLI() throws {
+    let script = try packageScript(named: "install_cli.sh")
+
+    #expect(script.contains("Resources/CursorSDKHelper"))
+    #expect(script.contains(#"cp -R "$HELPER_SRC" "$HELPER_DEST""#))
+}
+
+@Test func installCLIScriptCopiesCursorSDKHelperNextToInstalledSymlink() throws {
+    let script = try packageScript(named: "install_cli.sh")
+
+    #expect(script.contains(#"HELPER_INSTALL_DEST="$INSTALL_DIR/CursorSDKHelper""#))
+    #expect(script.contains(#"cp -R "$HELPER_SRC" "$HELPER_INSTALL_DEST""#))
+}
+
 @Test func installSkillsScriptLinksCursorSpecificSkill() throws {
     let script = try packageScript(named: "install_skills.sh")
 

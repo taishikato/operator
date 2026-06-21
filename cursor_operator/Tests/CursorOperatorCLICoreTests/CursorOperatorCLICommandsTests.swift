@@ -205,6 +205,27 @@ import CursorOperatorCore
     #expect(runtime.waitedReferences.map(\.runID) == ["run-123"])
 }
 
+@Test func sendWaitFailsWhenCursorRunIsStillRunning() async throws {
+    let store = try temporaryStore()
+    let repository = try makeRepository(in: store, name: "operator")
+    let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "P")
+    let runtime = FakeRuntime(startResult: .success(CursorCloudAgentReference(
+        agentID: "agent-123",
+        runID: "run-123",
+        openURL: URL(string: "https://cursor.com/agents/agent-123")!
+    )), waitResult: CursorCloudAgentRunCompletion(status: "running", result: nil))
+    let commands = CursorOperatorCLICommands(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(apiKey: "crsr_test")),
+        runtime: runtime
+    )
+
+    await #expect(throws: CursorOperatorCLIError.sendFailed(message: "Cursor run is still running.")) {
+        _ = try await commands.sendTask(id: task.id.uuidString, wait: true)
+    }
+    #expect(try store.task(id: task.id)?.status == .running)
+}
+
 @Test func sendFailureIsReturnedForCursorRuntimeFailuresAndTaskStaysReady() async throws {
     let store = try temporaryStore()
     let repository = try makeRepository(in: store, name: "operator")

@@ -231,9 +231,7 @@ public struct CursorOperatorCLICommands: Sendable {
              .monitoringFailed(_, _, let message):
             throw CursorOperatorCLIError.sendFailed(message: message)
         case .stillRunning:
-            if try store.task(id: taskID)?.status == .failed {
-                throw CursorOperatorCLIError.sendFailed(message: "Cursor run failed.")
-            }
+            throw CursorOperatorCLIError.sendFailed(message: "Cursor run is still running.")
         }
     }
 
