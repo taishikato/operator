@@ -410,12 +410,9 @@ private struct CursorBoardView: View {
 
             setupStatusView
 
-            HStack(alignment: .center, spacing: 12) {
+            HStack {
                 reloadButton
-                Text("Cursor Cloud Agent starts from the remote default branch and excludes local-only changes.")
-                    .font(.callout)
-                    .foregroundStyle(CursorTheme.textSecondary)
-                Spacer(minLength: 12)
+                Spacer()
             }
 
             HStack(alignment: .top, spacing: 16) {
