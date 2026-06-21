@@ -58,7 +58,6 @@ public struct CursorOperatorSettingsView: View {
 
             Section("Cursor Operator") {
                 LabeledContent("App", value: appSpec.displayName)
-                LabeledContent("Bundle ID", value: appSpec.bundleIdentifier)
                 LabeledContent("Minimum macOS", value: appSpec.minimumMacOS)
                 LabeledContent("Node.js", value: nodeProjection.status)
                 LabeledContent("Node Path") {
