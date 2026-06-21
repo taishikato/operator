@@ -19,10 +19,15 @@ let package = Package(
         .executable(
             name: "CursorOperatorSmokeSupport",
             targets: ["CursorOperatorSmokeSupport"]
+        ),
+        .executable(
+            name: "cursor-operator-cli",
+            targets: ["CursorOperatorCLI"]
         )
     ],
     dependencies: [
-        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.10.0")
+        .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.10.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
     ],
     targets: [
         .target(
@@ -39,9 +44,28 @@ let package = Package(
             name: "CursorOperatorSmokeSupport",
             dependencies: ["CursorOperatorCore"]
         ),
+        .target(
+            name: "CursorOperatorCLICore",
+            dependencies: ["CursorOperatorCore"]
+        ),
+        .executableTarget(
+            name: "CursorOperatorCLI",
+            dependencies: [
+                "CursorOperatorCLICore",
+                .product(name: "ArgumentParser", package: "swift-argument-parser")
+            ]
+        ),
         .testTarget(
             name: "CursorOperatorCoreTests",
             dependencies: ["CursorOperatorCore"]
+        ),
+        .testTarget(
+            name: "CursorOperatorCLICoreTests",
+            dependencies: ["CursorOperatorCLICore"]
+        ),
+        .testTarget(
+            name: "CursorOperatorCLIIntegrationTests",
+            dependencies: ["CursorOperatorCLI"]
         )
     ]
 )

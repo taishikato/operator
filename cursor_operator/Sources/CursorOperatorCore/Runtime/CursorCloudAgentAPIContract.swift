@@ -69,6 +69,12 @@ public struct CursorCloudAgentReference: Equatable, Sendable {
     public let agentID: String
     public let runID: String
     public let openURL: URL
+
+    public init(agentID: String, runID: String, openURL: URL) {
+        self.agentID = agentID
+        self.runID = runID
+        self.openURL = openURL
+    }
 }
 
 public enum CursorCloudAgentAPIContract {
