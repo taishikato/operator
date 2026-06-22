@@ -27,7 +27,7 @@ struct CursorOperatorApp: App {
 
     var body: some Scene {
         WindowGroup("Cursor Operator") {
-            CursorOperatorRootView(store: store, appDataURL: appDataURL)
+            CursorOperatorRootView(store: store)
                 .frame(minWidth: 1_040, minHeight: 680)
                 .onAppear {
                     revealMainWindow()

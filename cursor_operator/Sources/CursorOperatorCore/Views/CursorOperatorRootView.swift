@@ -3,7 +3,6 @@ import SwiftUI
 
 public struct CursorOperatorRootView: View {
     private let shell: CursorOperatorShellSpec
-    private let appDataURL: URL
 
     @StateObject private var model: CursorBoardModel
     @State private var selection: CursorOperatorSidebarSelection
@@ -13,11 +12,9 @@ public struct CursorOperatorRootView: View {
 
     public init(
         store: CursorOperatorStore,
-        shell: CursorOperatorShellSpec = .mvp,
-        appDataURL: URL
+        shell: CursorOperatorShellSpec = .mvp
     ) {
         self.shell = shell
-        self.appDataURL = appDataURL
         _model = StateObject(wrappedValue: CursorBoardModel(store: store))
         _selection = State(initialValue: CursorOperatorSidebarSelection(destination: shell.launchDestination) ?? .board)
     }
@@ -47,7 +44,6 @@ public struct CursorOperatorRootView: View {
                             CursorBoardView(
                                 shell: shell,
                                 model: model,
-                                appDataURL: appDataURL,
                                 presentEditTask: presentEditTaskSheet
                             )
                                 .navigationTitle("Board")
@@ -383,7 +379,6 @@ private struct CursorWorkspaceRow: View {
 private struct CursorBoardView: View {
     let shell: CursorOperatorShellSpec
     @ObservedObject var model: CursorBoardModel
-    let appDataURL: URL
     let presentEditTask: (UUID) -> Void
 
     @State private var reloadTrigger = 0
@@ -391,11 +386,9 @@ private struct CursorBoardView: View {
     init(
         shell: CursorOperatorShellSpec,
         model: CursorBoardModel,
-        appDataURL: URL,
         presentEditTask: @escaping (UUID) -> Void
     ) {
         self.shell = shell
-        self.appDataURL = appDataURL
         self.model = model
         self.presentEditTask = presentEditTask
     }
@@ -461,13 +454,6 @@ private struct CursorBoardView: View {
                 }
             }
             .frame(maxHeight: .infinity, alignment: .top)
-
-            Text("App data: \(appDataURL.path)")
-                .font(.caption)
-                .foregroundStyle(CursorTheme.textPlaceholder)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .help(appDataURL.path)
         }
         .padding(24)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
