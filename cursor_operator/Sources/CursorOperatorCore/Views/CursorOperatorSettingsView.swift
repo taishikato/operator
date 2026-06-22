@@ -58,7 +58,6 @@ public struct CursorOperatorSettingsView: View {
 
             Section("Cursor Operator") {
                 LabeledContent("App", value: appSpec.displayName)
-                LabeledContent("Minimum macOS", value: appSpec.minimumMacOS)
                 LabeledContent("Node.js", value: nodeProjection.status)
                 LabeledContent("Node Path") {
                     Text(nodeProjection.path)
