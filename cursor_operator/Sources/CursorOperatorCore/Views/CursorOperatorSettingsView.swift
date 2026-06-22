@@ -109,14 +109,6 @@ public struct CursorOperatorSettingsView: View {
                         .foregroundStyle(CursorTheme.danger)
                 }
             }
-
-            Section("Development") {
-                ForEach(appSpec.developmentCommands, id: \.self) { command in
-                    Text(command)
-                        .font(.codeInline)
-                        .foregroundStyle(CursorTheme.blue)
-                }
-            }
         }
         .formStyle(.grouped)
         .scrollContentBackground(.hidden)

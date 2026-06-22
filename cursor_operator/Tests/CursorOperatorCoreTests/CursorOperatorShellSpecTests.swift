@@ -61,14 +61,6 @@ import Testing
     #expect(CursorOperatorMVPScope.cursorContinuations == [.webURL, .copyRunID, .dashboard])
 }
 
-@Test func cursorOperatorDocumentsBasicBuildAndTestCommands() {
-    let app = CursorOperatorAppSpec.mvp
-
-    #expect(app.developmentCommands.contains("swift test"))
-    #expect(app.developmentCommands.contains("swift build"))
-    #expect(app.developmentCommands.contains("./script/build_and_run.sh"))
-}
-
 @Test func setupStatusUsesConservativeSFSymbolNames() {
     let ready = CursorSetupStatusProjection(
         repositoryState: .registered(count: 1),
