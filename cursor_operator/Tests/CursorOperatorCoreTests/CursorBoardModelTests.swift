@@ -385,6 +385,10 @@ import Testing
             store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
             environment: [:]
         ),
+        // Inject a deterministic node resolver so the reload on the failure path
+        // does not spawn a `node --version` subprocess, which made the timed
+        // wait below flaky under parallel test load.
+        nodeResolver: CompatibleBoardModelNodeResolver(),
         runtime: runtime
     )
     try model.load()

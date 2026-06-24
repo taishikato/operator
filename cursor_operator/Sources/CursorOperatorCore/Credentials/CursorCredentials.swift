@@ -109,9 +109,14 @@ public struct CursorCredentialProvider: Sendable {
     }
 
     public func apiKey() throws -> String? {
+        #if DEBUG
+        // Test-only hook so integration tests can force the missing-credentials
+        // path even on a developer machine that has a real key in the Keychain
+        // or environment. Gated to DEBUG so it never ships in release builds.
         if Self.credentialsIgnored(in: environment) {
             return nil
         }
+        #endif
         if let apiKey = environment["CURSOR_API_KEY"], !apiKey.isEmpty {
             return apiKey
         }
@@ -121,6 +126,7 @@ public struct CursorCredentialProvider: Sendable {
         return nil
     }
 
+    #if DEBUG
     private static func credentialsIgnored(in environment: [String: String]) -> Bool {
         guard let value = environment["CURSOR_OPERATOR_IGNORE_CREDENTIALS"] else {
             return false
@@ -132,6 +138,7 @@ public struct CursorCredentialProvider: Sendable {
             return false
         }
     }
+    #endif
 }
 
 public enum CursorCredentialPresenceStatus: Equatable, Sendable {
