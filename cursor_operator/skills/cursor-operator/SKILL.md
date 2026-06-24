@@ -28,6 +28,7 @@ Add `--json` to every command you parse; human output is not stable.
 | List repositories | `cursor-operator repo list --json` |
 | Register a repository | `cursor-operator repo add <path> --json` |
 | Create a task | `cursor-operator task add --repo <name\|id> --title <t> --prompt <p> [--auto-create-pr] --json` |
+| Create and send a task | `cursor-operator task add --repo <name\|id> --title <t> --prompt <p> [--auto-create-pr] --auto-send --json` |
 | Multi-line prompt | `cursor-operator task add ... --prompt-file <path> --json` |
 | List tasks | `cursor-operator task list [--repo <name\|id>] [--status ready\|running\|failed\|done\|archived] --json` |
 | Show one task | `cursor-operator task show <task-id> --json` |
@@ -84,6 +85,8 @@ code.
   `createdAt`, `updatedAt`
 - task: `id`, `repositoryID`, `title`, `prompt`, `autoCreatePR`, `status`,
   `createdAt`, `updatedAt`
+- task add auto-send result: `task`, `runAttempt`.
+  `runAttempt` is a run attempt object when `--auto-send` succeeds.
 - run attempt: `id`, `taskID`, `repositoryID`, `status`, `repositoryURL`,
   `startingRef`, `model`, `autoCreatePR`, `prompt`, `cursorAgentID`,
   `cursorRunID`, `cursorURL`, `errorMessage`, `createdAt`, `completedAt`

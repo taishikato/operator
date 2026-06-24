@@ -99,7 +99,7 @@ struct TaskCommand: ParsableCommand {
     )
 }
 
-struct TaskAdd: ParsableCommand {
+struct TaskAdd: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "add",
         abstract: "Create a new Ready Cursor task."
@@ -120,6 +120,9 @@ struct TaskAdd: ParsableCommand {
     @Flag(help: "Ask Cursor to create a pull request automatically.")
     var autoCreatePR = false
 
+    @Flag(help: "Send the task to Cursor Cloud Agent immediately after creating it.")
+    var autoSend = false
+
     @OptionGroup var output: OutputOptions
 
     func validate() throws {
@@ -128,21 +131,41 @@ struct TaskAdd: ParsableCommand {
         }
     }
 
-    func run() throws {
-        try output.render(running: {
+    func run() async throws {
+        do {
             let promptText: String
             if let prompt {
                 promptText = prompt
             } else {
                 promptText = try String(contentsOfFile: promptFile ?? "", encoding: .utf8)
             }
-            return try makeCommands().addTask(
-                repository: repo,
-                title: title,
-                prompt: promptText,
-                autoCreatePR: autoCreatePR
-            )
-        }, human: renderTaskLine)
+
+            let commands = try makeCommands()
+            if autoSend {
+                let result = try await commands.addTask(
+                    repository: repo,
+                    title: title,
+                    prompt: promptText,
+                    autoCreatePR: autoCreatePR,
+                    autoSend: true
+                )
+                output.emit(result) { result in
+                    result.runAttempt.map(renderRunLine) ?? renderTaskLine(result.task)
+                }
+            } else {
+                output.emit(
+                    try commands.addTask(
+                        repository: repo,
+                        title: title,
+                        prompt: promptText,
+                        autoCreatePR: autoCreatePR
+                    ),
+                    human: renderTaskLine
+                )
+            }
+        } catch {
+            throw output.failure(for: error)
+        }
     }
 }
 

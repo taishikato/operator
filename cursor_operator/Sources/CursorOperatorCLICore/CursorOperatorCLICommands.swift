@@ -45,6 +45,11 @@ public struct CursorCLITask: Codable, Equatable, Sendable {
     }
 }
 
+public struct CursorCLITaskAddResult: Codable, Equatable, Sendable {
+    public let task: CursorCLITask
+    public let runAttempt: CursorCLIRunAttempt?
+}
+
 public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
     public let id: String
     public let taskID: String
@@ -167,6 +172,29 @@ public struct CursorOperatorCLICommands: Sendable {
             autoCreatePR: autoCreatePR
         ).createTask(in: store)
         return CursorCLITask(task)
+    }
+
+    public func addTask(
+        repository: String,
+        title: String,
+        prompt: String,
+        autoCreatePR: Bool,
+        autoSend: Bool
+    ) async throws -> CursorCLITaskAddResult {
+        let task = try addTask(
+            repository: repository,
+            title: title,
+            prompt: prompt,
+            autoCreatePR: autoCreatePR
+        )
+        guard autoSend else {
+            return CursorCLITaskAddResult(task: task, runAttempt: nil)
+        }
+        let attempt = try await sendTask(id: task.id, wait: false)
+        // Re-read the task so the result reflects the post-send status (e.g. .running)
+        // rather than the pre-send .ready snapshot.
+        let sentTask = CursorCLITask(try resolveTask(task.id))
+        return CursorCLITaskAddResult(task: sentTask, runAttempt: attempt)
     }
 
     public func listTasks(repository: String?, status: CursorTaskStatus?) throws -> [CursorCLITask] {
@@ -343,7 +371,8 @@ public func cursorCLIFailure(for error: Error) -> CursorCLIFailure {
         return CursorCLIFailure(exitCode: 3, code: "lifecycleViolation", message: lifecycleMessage)
     case CursorTaskSendError.missingCredentials:
         return CursorCLIFailure(exitCode: 4, code: "cursorUnavailable", message: message)
-    case CursorOperatorCLIError.sendFailed,
+    case CursorTaskSendError.sendFailed,
+         CursorOperatorCLIError.sendFailed,
          CursorTaskSendError.startedRunCouldNotBeRecorded,
          is CursorRuntimeFailure,
          is CursorNodeResolutionError:

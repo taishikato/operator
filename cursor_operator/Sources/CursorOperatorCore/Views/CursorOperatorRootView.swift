@@ -741,6 +741,13 @@ private struct CursorTaskCreationSheet: View {
 
                 Toggle("Auto-create PR", isOn: autoCreatePRBinding)
                     .toggleStyle(.checkbox)
+
+                if model.editingTaskID == nil {
+                    Toggle("Auto-send", isOn: autoSendBinding)
+                        .toggleStyle(.checkbox)
+                        .disabled(!model.setupStatus.canSend)
+                        .help(autoSendHelpText)
+                }
             }
 
             TextEditor(text: promptBinding)
@@ -810,6 +817,12 @@ private struct CursorTaskCreationSheet: View {
         model.editingTaskID == nil ? "plus" : "checkmark"
     }
 
+    private var autoSendHelpText: String {
+        model.setupStatus.canSend
+            ? "Send to Cursor immediately after creating the task."
+            : model.setupStatus.sendDisabledReason
+    }
+
     private var titleBinding: Binding<String> {
         Binding {
             model.creationDraft.title
@@ -839,6 +852,14 @@ private struct CursorTaskCreationSheet: View {
             model.creationDraft.autoCreatePR
         } set: {
             model.creationDraft.autoCreatePR = $0
+        }
+    }
+
+    private var autoSendBinding: Binding<Bool> {
+        Binding {
+            model.creationDraft.autoSend
+        } set: {
+            model.creationDraft.autoSend = $0
         }
     }
 }

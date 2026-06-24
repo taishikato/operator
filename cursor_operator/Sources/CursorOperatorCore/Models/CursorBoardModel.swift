@@ -76,9 +76,12 @@ public final class CursorBoardModel: ObservableObject {
 
     public func prepareCreateTaskDraftForPresentation() -> Bool {
         editingTaskID = nil
-        if creationDraft.repositoryID == nil {
-            creationDraft.repositoryID = repositories.first?.id
-        }
+        creationDraft.repositoryID = creationDraft.repositoryID ?? repositories.first?.id
+        // Reset only autoSend: it triggers an immediate send, so a stale opt-in
+        // must never carry into a new task. Typed content (title/prompt/
+        // autoCreatePR) is preserved so an accidental cancel does not discard an
+        // in-progress draft.
+        creationDraft.autoSend = false
         guard creationDraft.repositoryID != nil else {
             errorMessage = "Register a repository before creating a task."
             return false
@@ -149,8 +152,16 @@ public final class CursorBoardModel: ObservableObject {
             credentialReadiness: CursorSendReadiness(provider: credentialProvider),
             runtime: runtime
         )
-        _ = try await service.send(taskID: taskID)
+        let attempt = try await service.send(taskID: taskID)
+        // Reload before surfacing a failure so the board projection reflects the
+        // recorded failed attempt (the per-card failed-send indicator), not just
+        // the transient global error message.
         try load()
+        guard attempt.status == .succeeded else {
+            throw CursorTaskSendError.sendFailed(
+                message: attempt.errorMessage ?? "Cursor did not start the run."
+            )
+        }
     }
 
     public func resumeRunMonitoring() async throws {
@@ -237,7 +248,11 @@ public final class CursorBoardModel: ObservableObject {
 
     public func createTaskFromDraftReportingErrors() -> Bool {
         do {
-            _ = try createTaskFromDraft()
+            let shouldAutoSend = creationDraft.autoSend && setupStatus.canSend
+            let task = try createTaskFromDraft()
+            if shouldAutoSend {
+                sendReportingErrors(taskID: task.id)
+            }
             return true
         } catch {
             errorMessage = Self.userFacingMessage(for: error)

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import CursorOperatorCore
 
 // Integration tests against the real cursor-operator-cli binary. These cover
 // ArgumentParser parsing, --json error envelopes, and documented exit codes as
@@ -40,6 +41,34 @@ import Testing
     #expect(try errorEnvelope(in: result.stdout).code == "usage")
 }
 
+@Test func taskAddAutoSendParsesAndReportsMissingCredentialsAfterCreatingTask() throws {
+    let scratchDirectory = FileManager.default.temporaryDirectory
+        .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+    let databaseURL = scratchDirectory.appending(path: "cursor-operator.sqlite")
+    let store = try CursorOperatorStore(databaseURL: databaseURL)
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+
+    let result = try runCLI([
+        "task", "add",
+        "--repo", repository.id.uuidString,
+        "--title", "Auto send",
+        "--prompt", "Prompt",
+        "--auto-send",
+        "--json"
+    ], databaseURL: databaseURL)
+
+    #expect(result.exitCode == 4)
+    #expect(try errorEnvelope(in: result.stdout).code == "cursorUnavailable")
+    #expect(try store.tasks().first?.title == "Auto send")
+    #expect(try store.tasks().first?.status == .ready)
+}
+
 @Test func usageErrorWithoutJSONKeepsThePlainTextContract() throws {
     let result = try runCLI(["task", "list", "--bogus"])
 
@@ -71,16 +100,23 @@ private func errorEnvelope(in stdout: String) throws -> ErrorEnvelope {
     )
 }
 
-private func runCLI(_ arguments: [String]) throws -> CLIResult {
-    let scratchDirectory = FileManager.default.temporaryDirectory
-        .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
-    try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+private func runCLI(
+    _ arguments: [String],
+    databaseURL: URL? = nil,
+    extraEnvironment: [String: String] = [:]
+) throws -> CLIResult {
+    let databaseURL = try databaseURL ?? temporaryDatabaseURL()
 
     let process = Process()
     process.executableURL = cliBinaryURL()
     process.arguments = arguments
     var environment = ProcessInfo.processInfo.environment
-    environment["CURSOR_OPERATOR_DB"] = scratchDirectory.appending(path: "cursor-operator.sqlite").path
+    environment["CURSOR_OPERATOR_DB"] = databaseURL.path
+    environment["CURSOR_OPERATOR_IGNORE_CREDENTIALS"] = "1"
+    environment.removeValue(forKey: "CURSOR_API_KEY")
+    for (key, value) in extraEnvironment {
+        environment[key] = value
+    }
     process.environment = environment
 
     let stdoutPipe = Pipe()
@@ -100,6 +136,13 @@ private func runCLI(_ arguments: [String]) throws -> CLIResult {
         stderr: String(decoding: stderrData, as: UTF8.self)
             .trimmingCharacters(in: .whitespacesAndNewlines)
     )
+}
+
+private func temporaryDatabaseURL() throws -> URL {
+    let scratchDirectory = FileManager.default.temporaryDirectory
+        .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+    return scratchDirectory.appending(path: "cursor-operator.sqlite")
 }
 
 private final class TestBundleLocator {}

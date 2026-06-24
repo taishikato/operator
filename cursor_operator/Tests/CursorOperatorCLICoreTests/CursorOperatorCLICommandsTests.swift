@@ -63,6 +63,37 @@ import CursorOperatorCore
     #expect(try store.tasks().count == 1)
 }
 
+@Test func taskAddCanAutoSendCreatedTask() async throws {
+    let store = try temporaryStore()
+    _ = try makeRepository(in: store, name: "operator")
+    let runtime = FakeRuntime(startResult: .success(CursorCloudAgentReference(
+        agentID: "agent-auto-send",
+        runID: "run-auto-send",
+        openURL: URL(string: "https://cursor.com/agents/agent-auto-send")!
+    )))
+    let commands = CursorOperatorCLICommands(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(apiKey: "crsr_test")),
+        runtime: runtime
+    )
+
+    let result = try await commands.addTask(
+        repository: "operator",
+        title: "Auto send",
+        prompt: "Do the thing",
+        autoCreatePR: true,
+        autoSend: true
+    )
+
+    #expect(result.task.title == "Auto send")
+    #expect(result.task.status == "running")
+    #expect(result.runAttempt?.status == "succeeded")
+    #expect(result.runAttempt?.cursorRunID == "run-auto-send")
+    #expect(try store.tasks().first?.status == .running)
+    #expect(runtime.requests.count == 1)
+    #expect(runtime.requests.first?.autoCreatePR == true)
+}
+
 @Test func taskAddTrimsTitleAndPreservesPromptBeforeCreatingTask() throws {
     let store = try temporaryStore()
     _ = try makeRepository(in: store, name: "operator")
@@ -317,6 +348,7 @@ private struct FakeInspector: CursorRepositoryInspecting {
 private final class FakeRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
     var startResult: Result<CursorCloudAgentReference, CursorRuntimeFailure>
     var waitResult: CursorCloudAgentRunCompletion
+    private(set) var requests: [CursorCloudAgentRequestPreview] = []
     private(set) var waitedReferences: [CursorCloudAgentReference] = []
 
     init(
@@ -328,7 +360,8 @@ private final class FakeRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
     }
 
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
-        try startResult.get()
+        requests.append(request)
+        return try startResult.get()
     }
 
     func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
