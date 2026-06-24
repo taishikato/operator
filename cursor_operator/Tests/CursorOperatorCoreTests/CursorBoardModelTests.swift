@@ -396,6 +396,11 @@ import Testing
 
     #expect(model.errorMessage == "Cursor send failed: Cursor rejected the run request.")
     #expect(try store.task(id: task.id)?.status == .ready)
+
+    // The projection must refresh on failure so the card shows the persistent
+    // failed-send indicator, not just the transient global error message.
+    let readyCard = try #require(model.projection.columns.first { $0.id == .ready }?.cards.first)
+    #expect(readyCard.failedSendMessage == "Cursor rejected the run request.")
 }
 
 @MainActor

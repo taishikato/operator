@@ -149,12 +149,15 @@ public final class CursorBoardModel: ObservableObject {
             runtime: runtime
         )
         let attempt = try await service.send(taskID: taskID)
+        // Reload before surfacing a failure so the board projection reflects the
+        // recorded failed attempt (the per-card failed-send indicator), not just
+        // the transient global error message.
+        try load()
         guard attempt.status == .succeeded else {
             throw CursorTaskSendError.sendFailed(
                 message: attempt.errorMessage ?? "Cursor did not start the run."
             )
         }
-        try load()
     }
 
     public func resumeRunMonitoring() async throws {
