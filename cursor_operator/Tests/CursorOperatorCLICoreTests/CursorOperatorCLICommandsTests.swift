@@ -86,6 +86,7 @@ import CursorOperatorCore
     )
 
     #expect(result.task.title == "Auto send")
+    #expect(result.task.status == "running")
     #expect(result.runAttempt?.status == "succeeded")
     #expect(result.runAttempt?.cursorRunID == "run-auto-send")
     #expect(try store.tasks().first?.status == .running)

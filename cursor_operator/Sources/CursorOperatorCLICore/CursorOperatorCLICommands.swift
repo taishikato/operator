@@ -191,7 +191,10 @@ public struct CursorOperatorCLICommands: Sendable {
             return CursorCLITaskAddResult(task: task, runAttempt: nil)
         }
         let attempt = try await sendTask(id: task.id, wait: false)
-        return CursorCLITaskAddResult(task: task, runAttempt: attempt)
+        // Re-read the task so the result reflects the post-send status (e.g. .running)
+        // rather than the pre-send .ready snapshot.
+        let sentTask = CursorCLITask(try resolveTask(task.id))
+        return CursorCLITaskAddResult(task: sentTask, runAttempt: attempt)
     }
 
     public func listTasks(repository: String?, status: CursorTaskStatus?) throws -> [CursorCLITask] {
