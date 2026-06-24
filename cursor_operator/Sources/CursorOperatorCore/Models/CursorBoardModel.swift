@@ -76,10 +76,9 @@ public final class CursorBoardModel: ObservableObject {
 
     public func prepareCreateTaskDraftForPresentation() -> Bool {
         editingTaskID = nil
-        if creationDraft.repositoryID == nil {
-            creationDraft.repositoryID = repositories.first?.id
-        }
-        guard creationDraft.repositoryID != nil else {
+        let repositoryID = creationDraft.repositoryID ?? repositories.first?.id
+        creationDraft = CursorTaskCreationDraft(repositoryID: repositoryID)
+        guard repositoryID != nil else {
             errorMessage = "Register a repository before creating a task."
             return false
         }
@@ -149,7 +148,12 @@ public final class CursorBoardModel: ObservableObject {
             credentialReadiness: CursorSendReadiness(provider: credentialProvider),
             runtime: runtime
         )
-        _ = try await service.send(taskID: taskID)
+        let attempt = try await service.send(taskID: taskID)
+        guard attempt.status == .succeeded else {
+            throw CursorTaskSendError.sendFailed(
+                message: attempt.errorMessage ?? "Cursor did not start the run."
+            )
+        }
         try load()
     }
 
@@ -237,7 +241,7 @@ public final class CursorBoardModel: ObservableObject {
 
     public func createTaskFromDraftReportingErrors() -> Bool {
         do {
-            let shouldAutoSend = creationDraft.autoSend
+            let shouldAutoSend = creationDraft.autoSend && setupStatus.canSend
             let task = try createTaskFromDraft()
             if shouldAutoSend {
                 sendReportingErrors(taskID: task.id)

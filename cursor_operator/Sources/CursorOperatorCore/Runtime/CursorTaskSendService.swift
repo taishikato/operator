@@ -73,12 +73,15 @@ public extension CursorCloudAgentRuntime {
 
 public enum CursorTaskSendError: Error, Equatable, LocalizedError, Sendable {
     case missingCredentials
+    case sendFailed(message: String)
     case startedRunCouldNotBeRecorded(CursorCloudAgentReference)
 
     public var errorDescription: String? {
         switch self {
         case .missingCredentials:
             "Cursor API key is required before sending."
+        case let .sendFailed(message):
+            "Cursor send failed: \(message)"
         case let .startedRunCouldNotBeRecorded(reference):
             "Cursor run started but could not be saved. Agent: \(reference.agentID). Run: \(reference.runID). Open: \(reference.openURL.absoluteString)"
         }

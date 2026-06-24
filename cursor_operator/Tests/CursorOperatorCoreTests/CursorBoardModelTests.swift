@@ -285,8 +285,10 @@ import Testing
             store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
             environment: [:]
         ),
+        nodeResolver: CompatibleBoardModelNodeResolver(),
         runtime: runtime
     )
+    try model.load()
     model.creationDraft = CursorTaskCreationDraft(
         repositoryID: repository.id,
         title: "Auto send",
@@ -303,6 +305,97 @@ import Testing
     #expect(runtime.requests.count == 1)
     #expect(runtime.requests.first?.autoCreatePR == true)
     #expect(model.creationDraft.autoSend == false)
+}
+
+@MainActor
+@Test func boardModelDoesNotAutoSendWhenCanSendIsFalse() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let runtime = BoardModelFakeRuntime(reference: CursorCloudAgentReference(
+        agentID: "agent-auto-send",
+        runID: "run-auto-send",
+        openURL: URL(string: "https://cursor.com/agents/agent-auto-send")!
+    ))
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        nodeResolver: MissingBoardModelNodeResolver(),
+        runtime: runtime
+    )
+    try model.load()
+    model.creationDraft = CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "Auto send blocked",
+        prompt: "Prompt",
+        autoSend: true
+    )
+
+    #expect(model.setupStatus.canSend == false)
+    #expect(model.createTaskFromDraftReportingErrors())
+    try await Task.sleep(nanoseconds: 50_000_000)
+
+    #expect(try store.tasks().first?.status == .ready)
+    #expect(runtime.requests.isEmpty)
+}
+
+@MainActor
+@Test func boardModelResetsAutoSendWhenPresentingCreateDraft() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        nodeResolver: CompatibleBoardModelNodeResolver()
+    )
+    try model.load()
+    model.creationDraft.autoSend = true
+
+    #expect(model.prepareCreateTaskDraftForPresentation())
+    #expect(model.creationDraft.autoSend == false)
+    #expect(model.creationDraft.repositoryID == repository.id)
+}
+
+@MainActor
+@Test func boardModelSendReportingErrorsSurfacesRuntimeFailure() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "Prompt")
+    let runtime = BoardModelFailingRuntime(message: "Cursor rejected the run request.")
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        runtime: runtime
+    )
+    try model.load()
+
+    model.sendReportingErrors(taskID: task.id)
+    try await waitUntil {
+        model.errorMessage != nil
+    }
+
+    #expect(model.errorMessage == "Cursor send failed: Cursor rejected the run request.")
+    #expect(try store.task(id: task.id)?.status == .ready)
 }
 
 @MainActor
@@ -485,6 +578,14 @@ private final class BoardModelFakeRuntime: CursorCloudAgentRuntime, @unchecked S
     func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
         requests.append(request)
         return reference
+    }
+}
+
+private struct BoardModelFailingRuntime: CursorCloudAgentRuntime {
+    let message: String
+
+    func startCloudAgent(request: CursorCloudAgentRequestPreview, apiKey: String) async throws -> CursorCloudAgentReference {
+        throw CursorRuntimeFailure(message: message)
     }
 }
 

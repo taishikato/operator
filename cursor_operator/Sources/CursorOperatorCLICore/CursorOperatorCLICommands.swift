@@ -368,7 +368,8 @@ public func cursorCLIFailure(for error: Error) -> CursorCLIFailure {
         return CursorCLIFailure(exitCode: 3, code: "lifecycleViolation", message: lifecycleMessage)
     case CursorTaskSendError.missingCredentials:
         return CursorCLIFailure(exitCode: 4, code: "cursorUnavailable", message: message)
-    case CursorOperatorCLIError.sendFailed,
+    case CursorTaskSendError.sendFailed,
+         CursorOperatorCLIError.sendFailed,
          CursorTaskSendError.startedRunCouldNotBeRecorded,
          is CursorRuntimeFailure,
          is CursorNodeResolutionError:

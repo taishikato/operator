@@ -100,7 +100,11 @@ private func errorEnvelope(in stdout: String) throws -> ErrorEnvelope {
     )
 }
 
-private func runCLI(_ arguments: [String], databaseURL: URL? = nil) throws -> CLIResult {
+private func runCLI(
+    _ arguments: [String],
+    databaseURL: URL? = nil,
+    extraEnvironment: [String: String] = [:]
+) throws -> CLIResult {
     let databaseURL = try databaseURL ?? temporaryDatabaseURL()
 
     let process = Process()
@@ -108,6 +112,11 @@ private func runCLI(_ arguments: [String], databaseURL: URL? = nil) throws -> CL
     process.arguments = arguments
     var environment = ProcessInfo.processInfo.environment
     environment["CURSOR_OPERATOR_DB"] = databaseURL.path
+    environment["CURSOR_OPERATOR_IGNORE_CREDENTIALS"] = "1"
+    environment.removeValue(forKey: "CURSOR_API_KEY")
+    for (key, value) in extraEnvironment {
+        environment[key] = value
+    }
     process.environment = environment
 
     let stdoutPipe = Pipe()

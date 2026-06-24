@@ -32,6 +32,20 @@ import Testing
     #expect(try provider.apiKey() == "crsr_env_key")
 }
 
+@Test func credentialProviderIgnoresAllSourcesWhenTestHookIsEnabled() throws {
+    let storage = InMemoryCursorCredentialStore(apiKey: "crsr_stored_key")
+    let provider = CursorCredentialProvider(
+        store: storage,
+        environment: [
+            "CURSOR_API_KEY": "crsr_env_key",
+            "CURSOR_OPERATOR_IGNORE_CREDENTIALS": "1"
+        ]
+    )
+
+    #expect(try provider.apiKey() == nil)
+    #expect(try CursorSendReadiness(provider: provider).credentialState() == .missing)
+}
+
 @MainActor
 @Test func settingsModelReportsMaskedStatusAndValidationResults() async throws {
     let storage = InMemoryCursorCredentialStore()
