@@ -237,7 +237,11 @@ public final class CursorBoardModel: ObservableObject {
 
     public func createTaskFromDraftReportingErrors() -> Bool {
         do {
-            _ = try createTaskFromDraft()
+            let shouldAutoSend = creationDraft.autoSend
+            let task = try createTaskFromDraft()
+            if shouldAutoSend {
+                sendReportingErrors(taskID: task.id)
+            }
             return true
         } catch {
             errorMessage = Self.userFacingMessage(for: error)

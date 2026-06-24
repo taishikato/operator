@@ -133,9 +133,9 @@ import Testing
     process.waitUntilExit()
 
     let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
-    _ = stderr.fileHandleForReading.readDataToEndOfFile()
-    #expect(process.terminationStatus == 0)
-    #expect(output == "failed with crsr_[redacted]")
+    let stderrOutput = String(data: stderr.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+    #expect(process.terminationStatus == 0, Comment(rawValue: stderrOutput))
+    #expect(output == "failed with crsr_[redacted]", Comment(rawValue: stderrOutput))
 }
 
 private final class FakeSDKHelperRunner: CursorSDKHelperRunning, @unchecked Sendable {

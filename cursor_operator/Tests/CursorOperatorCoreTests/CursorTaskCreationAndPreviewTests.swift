@@ -25,6 +25,11 @@ import Testing
     #expect(task.status == .ready)
 }
 
+@Test func taskCreationDraftDefaultsAutoSendOffAndStoresOptInState() {
+    #expect(CursorTaskCreationDraft().autoSend == false)
+    #expect(CursorTaskCreationDraft(autoSend: true).autoSend)
+}
+
 @Test func readyTaskCanBeEditedBeforeSending() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL())
     let repository = try store.createRepository(

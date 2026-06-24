@@ -11,17 +11,20 @@ public struct CursorTaskCreationDraft: Equatable, Sendable {
     public var title: String
     public var prompt: String
     public var autoCreatePR: Bool
+    public var autoSend: Bool
 
     public init(
         repositoryID: UUID? = nil,
         title: String = "",
         prompt: String = "",
-        autoCreatePR: Bool = false
+        autoCreatePR: Bool = false,
+        autoSend: Bool = false
     ) {
         self.repositoryID = repositoryID
         self.title = title
         self.prompt = prompt
         self.autoCreatePR = autoCreatePR
+        self.autoSend = autoSend
     }
 
     public func createTask(in store: CursorOperatorStore) throws -> CursorTask {

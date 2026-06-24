@@ -266,6 +266,46 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelAutoSendsNewTaskFromDraftWhenRequested() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let runtime = BoardModelFakeRuntime(reference: CursorCloudAgentReference(
+        agentID: "agent-auto-send",
+        runID: "run-auto-send",
+        openURL: URL(string: "https://cursor.com/agents/agent-auto-send")!
+    ))
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(
+            store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),
+            environment: [:]
+        ),
+        runtime: runtime
+    )
+    model.creationDraft = CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "Auto send",
+        prompt: "Prompt",
+        autoCreatePR: true,
+        autoSend: true
+    )
+
+    #expect(model.createTaskFromDraftReportingErrors())
+    try await waitUntil {
+        try store.tasks().first?.status == .running
+    }
+
+    #expect(runtime.requests.count == 1)
+    #expect(runtime.requests.first?.autoCreatePR == true)
+    #expect(model.creationDraft.autoSend == false)
+}
+
+@MainActor
 @Test func boardModelPreparesReadyTaskDraftForEditingAndUpdatesIt() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(

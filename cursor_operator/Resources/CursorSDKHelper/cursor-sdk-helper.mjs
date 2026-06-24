@@ -1,4 +1,3 @@
-import { Agent } from "@cursor/sdk";
 import { pathToFileURL } from "node:url";
 
 if (isMainModule()) {
@@ -30,6 +29,7 @@ function isMainModule() {
 }
 
 async function startRun(request) {
+  const Agent = await cursorAgentClass();
   requireString(request.apiKey, "apiKey");
   requireString(request.agentName, "agentName");
   requireString(request.prompt, "prompt");
@@ -61,6 +61,7 @@ async function startRun(request) {
 }
 
 async function waitForRun(request) {
+  const Agent = await cursorAgentClass();
   requireString(request.apiKey, "apiKey");
   requireString(request.agentID, "agentID");
   requireString(request.runID, "runID");
@@ -104,6 +105,11 @@ function writeJSON(value) {
       }
     });
   });
+}
+
+async function cursorAgentClass() {
+  const module = await import("@cursor/sdk");
+  return module.Agent;
 }
 
 function requireString(value, name) {

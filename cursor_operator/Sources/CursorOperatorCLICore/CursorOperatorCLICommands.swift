@@ -45,6 +45,11 @@ public struct CursorCLITask: Codable, Equatable, Sendable {
     }
 }
 
+public struct CursorCLITaskAddResult: Codable, Equatable, Sendable {
+    public let task: CursorCLITask
+    public let runAttempt: CursorCLIRunAttempt?
+}
+
 public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
     public let id: String
     public let taskID: String
@@ -167,6 +172,26 @@ public struct CursorOperatorCLICommands: Sendable {
             autoCreatePR: autoCreatePR
         ).createTask(in: store)
         return CursorCLITask(task)
+    }
+
+    public func addTask(
+        repository: String,
+        title: String,
+        prompt: String,
+        autoCreatePR: Bool,
+        autoSend: Bool
+    ) async throws -> CursorCLITaskAddResult {
+        let task = try addTask(
+            repository: repository,
+            title: title,
+            prompt: prompt,
+            autoCreatePR: autoCreatePR
+        )
+        guard autoSend else {
+            return CursorCLITaskAddResult(task: task, runAttempt: nil)
+        }
+        let attempt = try await sendTask(id: task.id, wait: false)
+        return CursorCLITaskAddResult(task: task, runAttempt: attempt)
     }
 
     public func listTasks(repository: String?, status: CursorTaskStatus?) throws -> [CursorCLITask] {
