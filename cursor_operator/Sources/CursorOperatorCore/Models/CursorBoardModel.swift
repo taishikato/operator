@@ -76,9 +76,13 @@ public final class CursorBoardModel: ObservableObject {
 
     public func prepareCreateTaskDraftForPresentation() -> Bool {
         editingTaskID = nil
-        let repositoryID = creationDraft.repositoryID ?? repositories.first?.id
-        creationDraft = CursorTaskCreationDraft(repositoryID: repositoryID)
-        guard repositoryID != nil else {
+        creationDraft.repositoryID = creationDraft.repositoryID ?? repositories.first?.id
+        // Reset only autoSend: it triggers an immediate send, so a stale opt-in
+        // must never carry into a new task. Typed content (title/prompt/
+        // autoCreatePR) is preserved so an accidental cancel does not discard an
+        // in-progress draft.
+        creationDraft.autoSend = false
+        guard creationDraft.repositoryID != nil else {
             errorMessage = "Register a repository before creating a task."
             return false
         }

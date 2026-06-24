@@ -361,10 +361,22 @@ import Testing
         nodeResolver: CompatibleBoardModelNodeResolver()
     )
     try model.load()
-    model.creationDraft.autoSend = true
+    model.creationDraft = CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "In progress",
+        prompt: "Draft body",
+        autoCreatePR: true,
+        autoSend: true
+    )
 
     #expect(model.prepareCreateTaskDraftForPresentation())
+    // autoSend triggers an immediate send, so a stale opt-in must never carry
+    // over; the typed content fields are preserved so an accidental cancel does
+    // not discard an in-progress draft.
     #expect(model.creationDraft.autoSend == false)
+    #expect(model.creationDraft.title == "In progress")
+    #expect(model.creationDraft.prompt == "Draft body")
+    #expect(model.creationDraft.autoCreatePR == true)
     #expect(model.creationDraft.repositoryID == repository.id)
 }
 
