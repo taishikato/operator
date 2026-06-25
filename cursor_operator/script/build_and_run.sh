@@ -14,6 +14,7 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_BUNDLE="$DIST_DIR/$APP_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_HELPERS="$APP_CONTENTS/Library/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
@@ -25,21 +26,95 @@ APP_ICON_SRC="$ROOT_DIR/Resources/AppIcon.icns"
 APP_ICON_FILE="AppIcon.icns"
 SKILL_SOURCE="$ROOT_DIR/skills/cursor-operator"
 APP_SKILLS_DIR="$APP_RESOURCES/skills"
+SPARKLE_FRAMEWORK_NAME="Sparkle.framework"
 
 cd "$ROOT_DIR"
+
+truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+xml_escape() {
+  printf '%s' "$1" \
+    | /usr/bin/sed \
+      -e 's/&/\&amp;/g' \
+      -e 's/</\&lt;/g' \
+      -e 's/>/\&gt;/g' \
+      -e 's/"/\&quot;/g' \
+      -e "s/'/\&apos;/g"
+}
+
+plist_bool() {
+  if truthy "$1"; then
+    printf '<true/>'
+  else
+    printf '<false/>'
+  fi
+}
+
+sparkle_info_plist_keys() {
+  local feed_url="${CURSOR_OPERATOR_APPCAST_URL:-}"
+  local public_key="${CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY:-}"
+
+  if [[ -z "$feed_url" && -z "$public_key" ]]; then
+    return
+  fi
+
+  if [[ -z "$feed_url" || -z "$public_key" ]]; then
+    echo "CURSOR_OPERATOR_APPCAST_URL and CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY must be set together." >&2
+    exit 2
+  fi
+
+  cat <<PLIST
+  <key>SUFeedURL</key>
+  <string>$(xml_escape "$feed_url")</string>
+  <key>SUPublicEDKey</key>
+  <string>$(xml_escape "$public_key")</string>
+  <key>SUEnableAutomaticChecks</key>
+  $(plist_bool "${CURSOR_OPERATOR_ENABLE_AUTOMATIC_UPDATE_CHECKS:-1}")
+  <key>SUAutomaticallyUpdate</key>
+  $(plist_bool "${CURSOR_OPERATOR_AUTOMATICALLY_UPDATE:-0}")
+  <key>SUVerifyUpdateBeforeExtraction</key>
+  $(plist_bool "${CURSOR_OPERATOR_VERIFY_UPDATE_BEFORE_EXTRACTION:-1}")
+  <key>SURequireSignedFeed</key>
+  $(plist_bool "${CURSOR_OPERATOR_REQUIRE_SIGNED_FEED:-0}")
+PLIST
+}
+
+copy_sparkle_framework() {
+  local framework_src
+  framework_src="$(/usr/bin/find "$ROOT_DIR/.build" -name "$SPARKLE_FRAMEWORK_NAME" -type d -print -quit)"
+
+  if [[ -z "$framework_src" ]]; then
+    echo "missing $SPARKLE_FRAMEWORK_NAME in SwiftPM build artifacts." >&2
+    exit 1
+  fi
+
+  /usr/bin/ditto "$framework_src" "$APP_FRAMEWORKS/$SPARKLE_FRAMEWORK_NAME"
+}
 
 pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 swift build -c "$SWIFT_CONFIGURATION"
-BUILD_BINARY="$(swift build -c "$SWIFT_CONFIGURATION" --show-bin-path)/$APP_NAME"
-BUILD_CLI="$(swift build -c "$SWIFT_CONFIGURATION" --show-bin-path)/cursor-operator-cli"
+BUILD_BIN_DIR="$(swift build -c "$SWIFT_CONFIGURATION" --show-bin-path)"
+BUILD_BINARY="$BUILD_BIN_DIR/$APP_NAME"
+BUILD_CLI="$BUILD_BIN_DIR/cursor-operator-cli"
+SPARKLE_INFO_PLIST_KEYS="$(sparkle_info_plist_keys)"
 
 rm -rf "$APP_BUNDLE"
-mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
+mkdir -p "$APP_MACOS" "$APP_FRAMEWORKS" "$APP_HELPERS" "$APP_RESOURCES"
 cp "$BUILD_BINARY" "$APP_BINARY"
 chmod +x "$APP_BINARY"
 cp "$BUILD_CLI" "$APP_CLI"
 chmod +x "$APP_CLI"
+copy_sparkle_framework
 
 if [ -d "$SDK_HELPER_SRC" ]; then
   (cd "$SDK_HELPER_SRC" && npm install --omit=dev)
@@ -81,6 +156,7 @@ cat >"$INFO_PLIST" <<PLIST
   <string>$MIN_SYSTEM_VERSION</string>
   <key>NSPrincipalClass</key>
   <string>NSApplication</string>
+$SPARKLE_INFO_PLIST_KEYS
 </dict>
 </plist>
 PLIST

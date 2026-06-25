@@ -21,6 +21,9 @@ Environment:
   CURSOR_OPERATOR_BUILD_NUMBER         CFBundleVersion build number
   CURSOR_OPERATOR_RELEASE_DIR          Output directory (default: dist/release)
   CURSOR_OPERATOR_CODESIGN_IDENTITY    Developer ID Application identity
+  CURSOR_OPERATOR_APPCAST_URL          Sparkle appcast URL written to Info.plist
+  CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY Sparkle EdDSA public key written to Info.plist
+  CURSOR_OPERATOR_GENERATE_APPCAST=1   Run Sparkle generate_appcast in the release directory
   CURSOR_OPERATOR_NOTARIZE=1           Submit and staple the DMG
   CURSOR_OPERATOR_NOTARY_PROFILE       notarytool keychain profile
   APPLE_ID                             Apple ID for notarytool fallback auth
@@ -55,6 +58,7 @@ sign_app_if_requested() {
   fi
 
   sign_nested_mach_o_files "$identity"
+  sign_nested_code_bundles "$identity"
 
   /usr/bin/codesign \
     --force \
@@ -63,6 +67,20 @@ sign_app_if_requested() {
     --sign "$identity" \
     "$APP_BUNDLE"
   /usr/bin/codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+}
+
+sign_nested_code_bundles() {
+  local identity="$1"
+
+  while IFS= read -r -d '' bundle; do
+    /usr/bin/codesign \
+      --force \
+      --options runtime \
+      --timestamp \
+      --preserve-metadata=entitlements \
+      --sign "$identity" \
+      "$bundle"
+  done < <(/usr/bin/find "$APP_CONTENTS" -depth -type d \( -name "*.xpc" -o -name "*.framework" \) -print0)
 }
 
 sign_nested_mach_o_files() {
@@ -148,6 +166,30 @@ notarize_dmg_if_requested() {
   /usr/bin/xcrun stapler validate "$dmg_path"
 }
 
+generate_appcast_if_requested() {
+  local generate_appcast
+
+  if [[ "${CURSOR_OPERATOR_GENERATE_APPCAST:-0}" != "1" ]]; then
+    echo "Skipping Sparkle appcast generation; set CURSOR_OPERATOR_GENERATE_APPCAST=1 after generating Sparkle keys."
+    return
+  fi
+
+  generate_appcast="$(find_sparkle_tool generate_appcast)"
+  "$generate_appcast" "$RELEASE_DIR"
+}
+
+find_sparkle_tool() {
+  local tool_name="$1"
+  local tool_path
+
+  tool_path="$(/usr/bin/find "$ROOT_DIR/.build" -path "*/Sparkle/bin/$tool_name" -type f -perm -111 -print -quit)"
+  if [[ -z "$tool_path" ]]; then
+    echo "missing Sparkle tool '$tool_name' in SwiftPM artifacts." >&2
+    exit 1
+  fi
+  printf '%s\n' "$tool_path"
+}
+
 case "${1:-dmg}" in
   dmg)
     ;;
@@ -175,6 +217,7 @@ CURSOR_OPERATOR_SWIFT_CONFIGURATION=release \
 sign_app_if_requested
 create_dmg "$DMG_PATH"
 notarize_dmg_if_requested "$DMG_PATH"
+generate_appcast_if_requested
 
 /usr/bin/shasum -a 256 "$DMG_PATH" | tee "$DMG_PATH.sha256"
 echo "Created $DMG_PATH"

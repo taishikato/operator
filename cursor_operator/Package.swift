@@ -27,7 +27,8 @@ let package = Package(
     ],
     dependencies: [
         .package(url: "https://github.com/groue/GRDB.swift.git", from: "7.10.0"),
-        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0")
+        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.3.0"),
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.0")
     ],
     targets: [
         .target(
@@ -38,7 +39,16 @@ let package = Package(
         ),
         .executableTarget(
             name: "CursorOperatorApp",
-            dependencies: ["CursorOperatorCore"]
+            dependencies: [
+                "CursorOperatorCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
+            linkerSettings: [
+                .unsafeFlags(
+                    ["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"],
+                    .when(platforms: [.macOS])
+                )
+            ]
         ),
         .executableTarget(
             name: "CursorOperatorSmokeSupport",
