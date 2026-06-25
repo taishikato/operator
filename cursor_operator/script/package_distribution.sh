@@ -80,7 +80,7 @@ sign_nested_code_bundles() {
       --preserve-metadata=entitlements \
       --sign "$identity" \
       "$bundle"
-  done < <(/usr/bin/find "$APP_CONTENTS" -depth -type d \( -name "*.xpc" -o -name "*.framework" \) -print0)
+  done < <(/usr/bin/find "$APP_CONTENTS" -depth -type d \( -name "*.xpc" -o -name "*.framework" -o -name "*.app" \) -print0)
 }
 
 sign_nested_mach_o_files() {
