@@ -29,13 +29,14 @@ function isMainModule() {
 }
 
 async function startRun(request) {
-  const Agent = await cursorAgentClass();
-  requireString(request.apiKey, "apiKey");
-  requireString(request.agentName, "agentName");
-  requireString(request.prompt, "prompt");
-  requireString(request.repositoryURL, "repositoryURL");
-  requireString(request.startingRef, "startingRef");
-  requireString(request.model, "model");
+  const Agent = await loadAgentClient(request);
+  requireStringFields(request, [
+    "agentName",
+    "prompt",
+    "repositoryURL",
+    "startingRef",
+    "model",
+  ]);
 
   const agent = await Agent.create({
     apiKey: request.apiKey,
@@ -61,10 +62,8 @@ async function startRun(request) {
 }
 
 async function waitForRun(request) {
-  const Agent = await cursorAgentClass();
-  requireString(request.apiKey, "apiKey");
-  requireString(request.agentID, "agentID");
-  requireString(request.runID, "runID");
+  const Agent = await loadAgentClient(request);
+  requireStringFields(request, ["agentID", "runID"]);
 
   const run = await Agent.getRun(request.runID, {
     runtime: "cloud",
@@ -110,6 +109,18 @@ function writeJSON(value) {
 async function cursorAgentClass() {
   const module = await import("@cursor/sdk");
   return module.Agent;
+}
+
+async function loadAgentClient(request) {
+  const Agent = await cursorAgentClass();
+  requireString(request.apiKey, "apiKey");
+  return Agent;
+}
+
+function requireStringFields(object, fieldNames) {
+  for (const name of fieldNames) {
+    requireString(object[name], name);
+  }
 }
 
 function requireString(value, name) {
