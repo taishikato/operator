@@ -174,6 +174,11 @@ generate_appcast_if_requested() {
     return
   fi
 
+  if [[ -z "${CURSOR_OPERATOR_APPCAST_URL:-}" || -z "${CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY:-}" ]]; then
+    echo "CURSOR_OPERATOR_APPCAST_URL and CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY must be set when CURSOR_OPERATOR_GENERATE_APPCAST=1." >&2
+    exit 2
+  fi
+
   generate_appcast="$(find_sparkle_tool generate_appcast)"
   "$generate_appcast" "$RELEASE_DIR"
 }

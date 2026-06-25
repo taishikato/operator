@@ -85,6 +85,7 @@ import Testing
     let script = try packageScript(named: "package_distribution.sh")
 
     #expect(script.contains("CURSOR_OPERATOR_GENERATE_APPCAST=1"))
+    #expect(script.contains("CURSOR_OPERATOR_APPCAST_URL and CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY must be set when CURSOR_OPERATOR_GENERATE_APPCAST=1."))
     #expect(script.contains("generate_appcast"))
     #expect(script.contains(#""$generate_appcast" "$RELEASE_DIR""#))
 }
