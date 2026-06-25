@@ -89,10 +89,9 @@ PLIST
 }
 
 copy_sparkle_framework() {
-  local framework_src
-  framework_src="$(/usr/bin/find "$ROOT_DIR/.build" -name "$SPARKLE_FRAMEWORK_NAME" -type d -print -quit)"
+  local framework_src="$BUILD_BIN_DIR/$SPARKLE_FRAMEWORK_NAME"
 
-  if [[ -z "$framework_src" ]]; then
+  if [[ ! -d "$framework_src" ]]; then
     echo "missing $SPARKLE_FRAMEWORK_NAME in SwiftPM build artifacts." >&2
     exit 1
   fi
