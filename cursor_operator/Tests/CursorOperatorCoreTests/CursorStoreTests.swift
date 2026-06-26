@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import CursorOperatorCore
 
@@ -52,6 +53,30 @@ import Testing
     #expect(try reloadedStore.runAttempts(taskID: task.id).map(\.status) == [.failed, .succeeded])
     #expect(try reloadedStore.runAttempts(taskID: task.id).last?.id == run.id)
     #expect(try reloadedStore.runAttempts(taskID: task.id).last?.cursorRunID == "run-123")
+}
+
+@Test func migrationBackfillsLegacyTasksWithHarnessConfigurationDefaults() throws {
+    let databaseURL = try temporaryDatabaseURL()
+    let taskID = UUID()
+
+    // Build a database at the schema that predates the harness configuration columns and
+    // seed a legacy task row, before any connection runs the new migration.
+    try seedLegacyTaskPredatingHarnessConfiguration(at: databaseURL, taskID: taskID)
+
+    // Opening the store applies the remaining migrations, including addTaskHarnessConfiguration,
+    // against the pre-existing row.
+    let store = try CursorOperatorStore(databaseURL: databaseURL)
+    let task = try #require(try store.task(id: taskID))
+
+    // Pre-existing rows must be backfilled with the documented defaults.
+    #expect(task.reasoningEffort == .medium)
+    #expect(task.useFastModel == false)
+    #expect(task.harness == .cursor)
+
+    // Columns that existed before the migration must survive untouched.
+    #expect(task.title == "Legacy task")
+    #expect(task.autoCreatePR == true)
+    #expect(task.status == .ready)
 }
 
 @Test func storeAllowsReadyEditsAndRejectsImmutableTaskEdits() throws {
@@ -253,6 +278,49 @@ import Testing
     #expect(attempts.map(\.status) == [.failed, .pending])
     #expect(attempts.first?.errorMessage == "Previous Cursor send was interrupted before Cursor returned a run reference.")
     #expect(attempts.last?.id == retryClaim.id)
+}
+
+// Migrates a fresh database up to the last migration that predates the harness configuration
+// columns, then inserts a task row using only the columns that existed at that point. The raw
+// connection is released when this function returns so the store can reopen the file cleanly.
+private func seedLegacyTaskPredatingHarnessConfiguration(at databaseURL: URL, taskID: UUID) throws {
+    let queue = try DatabaseQueue(path: databaseURL.path)
+    try CursorOperatorStore.migrator.migrate(queue, upTo: "addActiveSendAttemptGuard")
+
+    let repositoryID = UUID()
+    try queue.write { db in
+        try db.execute(
+            sql: """
+                INSERT INTO repositories (id, name, localPath, githubURL, defaultBranch, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+            arguments: [
+                repositoryID.uuidString,
+                "operator",
+                "/tmp/operator",
+                "https://github.com/example/operator",
+                "main",
+                0.0,
+                0.0
+            ]
+        )
+        try db.execute(
+            sql: """
+                INSERT INTO tasks (id, repositoryID, title, prompt, autoCreatePR, status, createdAt, updatedAt)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+            arguments: [
+                taskID.uuidString,
+                repositoryID.uuidString,
+                "Legacy task",
+                "Legacy prompt",
+                true,
+                "ready",
+                0.0,
+                0.0
+            ]
+        )
+    }
 }
 
 private func temporaryDatabaseURL() throws -> URL {

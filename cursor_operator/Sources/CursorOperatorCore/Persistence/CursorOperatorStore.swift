@@ -659,7 +659,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
     }
 }
 
-private extension CursorOperatorStore {
+extension CursorOperatorStore {
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
@@ -737,7 +737,7 @@ private extension CursorOperatorStore {
         return migrator
     }
 
-    static func repository(from row: Row) throws -> CursorRepository {
+    private static func repository(from row: Row) throws -> CursorRepository {
         guard let githubURL = URL(string: row["githubURL"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("githubURL")
         }
@@ -753,7 +753,7 @@ private extension CursorOperatorStore {
         )
     }
 
-    static func task(from row: Row) throws -> CursorTask {
+    private static func task(from row: Row) throws -> CursorTask {
         guard let status = CursorTaskStatus(rawValue: row["status"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("status")
         }
@@ -779,7 +779,7 @@ private extension CursorOperatorStore {
         )
     }
 
-    static func runAttempt(from row: Row) throws -> CursorRunAttempt {
+    private static func runAttempt(from row: Row) throws -> CursorRunAttempt {
         guard let status = CursorRunAttemptStatus(rawValue: row["status"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("status")
         }
@@ -807,7 +807,7 @@ private extension CursorOperatorStore {
         )
     }
 
-    static func uuid(_ value: String) throws -> UUID {
+    private static func uuid(_ value: String) throws -> UUID {
         guard let uuid = UUID(uuidString: value) else {
             throw CursorOperatorStoreError.invalidStoredValue("UUID")
         }
