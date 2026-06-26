@@ -742,31 +742,12 @@ private struct CursorTaskCreationSheet: View {
                 Toggle("Auto-create PR", isOn: autoCreatePRBinding)
                     .toggleStyle(.checkbox)
 
-                Toggle("Fast model", isOn: useFastModelBinding)
-                    .toggleStyle(.checkbox)
-
                 if model.editingTaskID == nil {
                     Toggle("Auto-send", isOn: autoSendBinding)
                         .toggleStyle(.checkbox)
                         .disabled(!model.setupStatus.canSend)
                         .help(autoSendHelpText)
                 }
-            }
-
-            HStack {
-                Picker("Harness", selection: harnessBinding) {
-                    ForEach(CursorHarness.allCases, id: \.self) { harness in
-                        Text(harness.displayName).tag(harness)
-                    }
-                }
-                .pickerStyle(.menu)
-
-                Picker("Reasoning", selection: reasoningEffortBinding) {
-                    ForEach(CursorReasoningEffort.allCases, id: \.self) { effort in
-                        Text(effort.displayName).tag(effort)
-                    }
-                }
-                .pickerStyle(.menu)
             }
 
             TextEditor(text: promptBinding)
@@ -782,9 +763,6 @@ private struct CursorTaskCreationSheet: View {
                     Text("Repository: \(preview.repositoryURL.absoluteString)")
                     Text("Starting ref: \(preview.startingRef)")
                     Text("Model: \(preview.model)")
-                    Text("Harness: \(preview.harness.displayName)")
-                    Text("Reasoning: \(preview.reasoningEffort.displayName)")
-                    Text("Fast model: \(preview.useFastModel ? "On" : "Off")")
                     Text("Auto-create PR: \(preview.autoCreatePR ? "On" : "Off")")
                     Text(preview.prompt)
                         .font(.callout)
@@ -826,10 +804,7 @@ private struct CursorTaskCreationSheet: View {
             repositoryID: repository.id,
             title: model.creationDraft.title,
             prompt: model.creationDraft.prompt,
-            autoCreatePR: model.creationDraft.autoCreatePR,
-            reasoningEffort: model.creationDraft.reasoningEffort,
-            useFastModel: model.creationDraft.useFastModel,
-            harness: model.creationDraft.harness
+            autoCreatePR: model.creationDraft.autoCreatePR
         )
         return try? CursorSendPreview(task: task, repository: repository)
     }
@@ -880,61 +855,11 @@ private struct CursorTaskCreationSheet: View {
         }
     }
 
-    private var reasoningEffortBinding: Binding<CursorReasoningEffort> {
-        Binding {
-            model.creationDraft.reasoningEffort
-        } set: {
-            model.creationDraft.reasoningEffort = $0
-        }
-    }
-
-    private var useFastModelBinding: Binding<Bool> {
-        Binding {
-            model.creationDraft.useFastModel
-        } set: {
-            model.creationDraft.useFastModel = $0
-        }
-    }
-
-    private var harnessBinding: Binding<CursorHarness> {
-        Binding {
-            model.creationDraft.harness
-        } set: {
-            model.creationDraft.harness = $0
-        }
-    }
-
     private var autoSendBinding: Binding<Bool> {
         Binding {
             model.creationDraft.autoSend
         } set: {
             model.creationDraft.autoSend = $0
-        }
-    }
-}
-
-private extension CursorHarness {
-    var displayName: String {
-        switch self {
-        case .cursor:
-            "Cursor"
-        case .codex:
-            "Codex"
-        case .claudeCode:
-            "Claude Code"
-        }
-    }
-}
-
-private extension CursorReasoningEffort {
-    var displayName: String {
-        switch self {
-        case .low:
-            "Low"
-        case .medium:
-            "Medium"
-        case .high:
-            "High"
         }
     }
 }
