@@ -99,7 +99,10 @@ public final class CursorBoardModel: ObservableObject {
                 repositoryID: task.repositoryID,
                 title: task.title,
                 prompt: task.prompt,
-                autoCreatePR: task.autoCreatePR
+                autoCreatePR: task.autoCreatePR,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
+                harness: task.harness
             )
             editingTaskID = task.id
             errorMessage = nil
@@ -122,7 +125,10 @@ public final class CursorBoardModel: ObservableObject {
             id: taskID,
             title: creationDraft.title.trimmingCharacters(in: .whitespacesAndNewlines),
             prompt: creationDraft.prompt,
-            autoCreatePR: creationDraft.autoCreatePR
+            autoCreatePR: creationDraft.autoCreatePR,
+            reasoningEffort: creationDraft.reasoningEffort,
+            useFastModel: creationDraft.useFastModel,
+            harness: creationDraft.harness
         )
         creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
         editingTaskID = nil

@@ -29,6 +29,9 @@ public struct CursorCLITask: Codable, Equatable, Sendable {
     public let title: String
     public let prompt: String
     public let autoCreatePR: Bool
+    public let reasoningEffort: String
+    public let useFastModel: Bool
+    public let harness: String
     public let status: String
     public let createdAt: Date
     public let updatedAt: Date
@@ -39,6 +42,9 @@ public struct CursorCLITask: Codable, Equatable, Sendable {
         title = task.title
         prompt = task.prompt
         autoCreatePR = task.autoCreatePR
+        reasoningEffort = task.reasoningEffort.rawValue
+        useFastModel = task.useFastModel
+        harness = task.harness.rawValue
         status = task.status.rawValue
         createdAt = task.createdAt
         updatedAt = task.updatedAt
