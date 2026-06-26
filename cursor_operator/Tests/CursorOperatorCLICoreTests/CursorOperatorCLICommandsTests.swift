@@ -60,6 +60,9 @@ import CursorOperatorCore
     #expect(task.repositoryID == repository.id.uuidString)
     #expect(task.status == "ready")
     #expect(task.autoCreatePR == true)
+    #expect(task.reasoningEffort == "medium")
+    #expect(task.useFastModel == false)
+    #expect(task.harness == "cursor")
     #expect(try store.tasks().count == 1)
 }
 

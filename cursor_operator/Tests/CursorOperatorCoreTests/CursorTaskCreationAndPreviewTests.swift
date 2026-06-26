@@ -22,12 +22,44 @@ import Testing
     #expect(task.title == "Implement preview")
     #expect(task.prompt == prompt)
     #expect(task.autoCreatePR == false)
+    #expect(task.reasoningEffort == .medium)
+    #expect(task.useFastModel == false)
+    #expect(task.harness == .cursor)
     #expect(task.status == .ready)
 }
 
 @Test func taskCreationDraftDefaultsAutoSendOffAndStoresOptInState() {
     #expect(CursorTaskCreationDraft().autoSend == false)
+    #expect(CursorTaskCreationDraft().reasoningEffort == .medium)
+    #expect(CursorTaskCreationDraft().useFastModel == false)
+    #expect(CursorTaskCreationDraft().harness == .cursor)
     #expect(CursorTaskCreationDraft(autoSend: true).autoSend)
+}
+
+@Test func taskCreationDraftStoresHarnessReasoningAndFastModelIntent() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let draft = CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "Use other harnesses later",
+        prompt: "Keep the execution intent durable.",
+        autoCreatePR: true,
+        reasoningEffort: .high,
+        useFastModel: true,
+        harness: .codex
+    )
+
+    let task = try draft.createTask(in: store)
+
+    #expect(task.autoCreatePR)
+    #expect(task.reasoningEffort == .high)
+    #expect(task.useFastModel)
+    #expect(task.harness == .codex)
 }
 
 @Test func readyTaskCanBeEditedBeforeSending() throws {
@@ -44,12 +76,18 @@ import Testing
         id: task.id,
         title: "Edited",
         prompt: "Edited prompt\nwith spacing  ",
-        autoCreatePR: true
+        autoCreatePR: true,
+        reasoningEffort: .low,
+        useFastModel: true,
+        harness: .claudeCode
     )
 
     #expect(edited.title == "Edited")
     #expect(edited.prompt == "Edited prompt\nwith spacing  ")
     #expect(edited.autoCreatePR)
+    #expect(edited.reasoningEffort == .low)
+    #expect(edited.useFastModel)
+    #expect(edited.harness == .claudeCode)
 }
 
 @Test func sendPreviewShowsExactCursorRunContextWithoutPromptAugmentation() throws {
@@ -67,7 +105,10 @@ import Testing
         repositoryID: repository.id,
         title: "Preview",
         prompt: prompt,
-        autoCreatePR: true
+        autoCreatePR: true,
+        reasoningEffort: .high,
+        useFastModel: true,
+        harness: .codex
     )
 
     let preview = try CursorSendPreview(task: task, repository: repository)
@@ -77,6 +118,9 @@ import Testing
     #expect(preview.startingRef == "trunk")
     #expect(preview.model == CursorModel.fixed)
     #expect(preview.autoCreatePR)
+    #expect(preview.reasoningEffort == .high)
+    #expect(preview.useFastModel)
+    #expect(preview.harness == .codex)
     #expect(preview.prompt == prompt)
 }
 

@@ -14,7 +14,10 @@ import Testing
     let task = try store.createTask(
         repositoryID: repository.id,
         title: "Persist cursor lifecycle",
-        prompt: "Add SQLite persistence"
+        prompt: "Add SQLite persistence",
+        reasoningEffort: .high,
+        useFastModel: true,
+        harness: .codex
     )
     _ = try store.recordFailedSendAttempt(
         taskID: task.id,
@@ -43,6 +46,9 @@ import Testing
     #expect(try reloadedStore.repositories().map(\.id) == [repository.id])
     #expect(try reloadedStore.tasks().map(\.id) == [task.id])
     #expect(try reloadedStore.task(id: task.id)?.status == .running)
+    #expect(try reloadedStore.task(id: task.id)?.reasoningEffort == .high)
+    #expect(try reloadedStore.task(id: task.id)?.useFastModel == true)
+    #expect(try reloadedStore.task(id: task.id)?.harness == .codex)
     #expect(try reloadedStore.runAttempts(taskID: task.id).map(\.status) == [.failed, .succeeded])
     #expect(try reloadedStore.runAttempts(taskID: task.id).last?.id == run.id)
     #expect(try reloadedStore.runAttempts(taskID: task.id).last?.cursorRunID == "run-123")

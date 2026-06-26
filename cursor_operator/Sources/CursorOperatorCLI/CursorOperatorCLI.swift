@@ -337,7 +337,15 @@ func makeStore() throws -> CursorOperatorStore {
 }
 
 private func renderTaskLine(_ task: CursorCLITask) -> String {
-    "[\(task.status)] \(task.title)  \(task.id)  repo=\(task.repositoryID)  autoCreatePR=\(task.autoCreatePR)"
+    [
+        "[\(task.status)] \(task.title)",
+        task.id,
+        "repo=\(task.repositoryID)",
+        "harness=\(task.harness)",
+        "reasoning=\(task.reasoningEffort)",
+        "fastModel=\(task.useFastModel)",
+        "autoCreatePR=\(task.autoCreatePR)"
+    ].joined(separator: "  ")
 }
 
 private func renderRunLine(_ run: CursorCLIRunAttempt) -> String {
