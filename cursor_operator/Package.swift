@@ -57,7 +57,10 @@ let package = Package(
         ),
         .testTarget(
             name: "CursorOperatorCoreTests",
-            dependencies: ["CursorOperatorCore"]
+            dependencies: [
+                "CursorOperatorCore",
+                .product(name: "GRDB", package: "GRDB.swift")
+            ]
         ),
         .testTarget(
             name: "CursorOperatorCLICoreTests",

@@ -4,6 +4,18 @@ public enum CursorModel {
     public static let fixed = "composer-2.5"
 }
 
+public enum CursorHarness: String, Codable, CaseIterable, Sendable {
+    case cursor
+    case codex
+    case claudeCode = "claude-code"
+}
+
+public enum CursorReasoningEffort: String, Codable, CaseIterable, Sendable {
+    case low
+    case medium
+    case high
+}
+
 public enum CursorTaskStatus: String, Codable, CaseIterable, Sendable {
     case ready
     case running
@@ -18,6 +30,9 @@ public struct CursorTask: Codable, Equatable, Identifiable, Sendable {
     public var title: String
     public var prompt: String
     public var autoCreatePR: Bool
+    public var reasoningEffort: CursorReasoningEffort
+    public var useFastModel: Bool
+    public var harness: CursorHarness
     public var status: CursorTaskStatus
     public var createdAt: Date
     public var updatedAt: Date
@@ -28,6 +43,9 @@ public struct CursorTask: Codable, Equatable, Identifiable, Sendable {
         title: String,
         prompt: String,
         autoCreatePR: Bool = false,
+        reasoningEffort: CursorReasoningEffort = .medium,
+        useFastModel: Bool = false,
+        harness: CursorHarness = .cursor,
         now: Date = Date()
     ) -> CursorTask {
         CursorTask(
@@ -36,6 +54,9 @@ public struct CursorTask: Codable, Equatable, Identifiable, Sendable {
             title: title,
             prompt: prompt,
             autoCreatePR: autoCreatePR,
+            reasoningEffort: reasoningEffort,
+            useFastModel: useFastModel,
+            harness: harness,
             status: .ready,
             createdAt: now,
             updatedAt: now

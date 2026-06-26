@@ -11,6 +11,9 @@ public struct CursorTaskCreationDraft: Equatable, Sendable {
     public var title: String
     public var prompt: String
     public var autoCreatePR: Bool
+    public var reasoningEffort: CursorReasoningEffort
+    public var useFastModel: Bool
+    public var harness: CursorHarness
     public var autoSend: Bool
 
     public init(
@@ -18,12 +21,18 @@ public struct CursorTaskCreationDraft: Equatable, Sendable {
         title: String = "",
         prompt: String = "",
         autoCreatePR: Bool = false,
+        reasoningEffort: CursorReasoningEffort = .medium,
+        useFastModel: Bool = false,
+        harness: CursorHarness = .cursor,
         autoSend: Bool = false
     ) {
         self.repositoryID = repositoryID
         self.title = title
         self.prompt = prompt
         self.autoCreatePR = autoCreatePR
+        self.reasoningEffort = reasoningEffort
+        self.useFastModel = useFastModel
+        self.harness = harness
         self.autoSend = autoSend
     }
 
@@ -45,7 +54,10 @@ public struct CursorTaskCreationDraft: Equatable, Sendable {
             repositoryID: repositoryID,
             title: trimmedTitle,
             prompt: prompt,
-            autoCreatePR: autoCreatePR
+            autoCreatePR: autoCreatePR,
+            reasoningEffort: reasoningEffort,
+            useFastModel: useFastModel,
+            harness: harness
         )
     }
 }
@@ -56,6 +68,9 @@ public struct CursorSendPreview: Equatable, Sendable {
     public let startingRef: String
     public let model: String
     public let autoCreatePR: Bool
+    public let reasoningEffort: CursorReasoningEffort
+    public let useFastModel: Bool
+    public let harness: CursorHarness
     public let prompt: String
 
     public init(task: CursorTask, repository: CursorRepository) throws {
@@ -69,6 +84,9 @@ public struct CursorSendPreview: Equatable, Sendable {
         startingRef = repository.defaultBranch
         model = CursorModel.fixed
         autoCreatePR = task.autoCreatePR
+        reasoningEffort = task.reasoningEffort
+        useFastModel = task.useFastModel
+        harness = task.harness
         prompt = task.prompt
     }
 }

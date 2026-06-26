@@ -136,6 +136,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
         title: String,
         prompt: String,
         autoCreatePR: Bool = false,
+        reasoningEffort: CursorReasoningEffort = .medium,
+        useFastModel: Bool = false,
+        harness: CursorHarness = .cursor,
         now: Date = Date()
     ) throws -> CursorTask {
         try dbQueue.write { db in
@@ -149,6 +152,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 title: title,
                 prompt: prompt,
                 autoCreatePR: autoCreatePR,
+                reasoningEffort: reasoningEffort,
+                useFastModel: useFastModel,
+                harness: harness,
                 now: now
             )
             try insert(task: task, db: db)
@@ -175,6 +181,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
         title: String,
         prompt: String,
         autoCreatePR: Bool? = nil,
+        reasoningEffort: CursorReasoningEffort? = nil,
+        useFastModel: Bool? = nil,
+        harness: CursorHarness? = nil,
         now: Date = Date()
     ) throws -> CursorTask {
         try dbQueue.write { db in
@@ -184,6 +193,15 @@ public final class CursorOperatorStore: @unchecked Sendable {
             task.prompt = prompt
             if let autoCreatePR {
                 task.autoCreatePR = autoCreatePR
+            }
+            if let reasoningEffort {
+                task.reasoningEffort = reasoningEffort
+            }
+            if let useFastModel {
+                task.useFastModel = useFastModel
+            }
+            if let harness {
+                task.harness = harness
             }
             task.updatedAt = now
             try update(task: task, db: db)
@@ -548,8 +566,11 @@ public final class CursorOperatorStore: @unchecked Sendable {
     private func insert(task: CursorTask, db: Database) throws {
         try db.execute(
             sql: """
-                INSERT INTO tasks (id, repositoryID, title, prompt, autoCreatePR, status, createdAt, updatedAt)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO tasks (
+                    id, repositoryID, title, prompt, autoCreatePR, reasoningEffort,
+                    useFastModel, harness, status, createdAt, updatedAt
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 task.id.uuidString,
@@ -557,6 +578,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 task.title,
                 task.prompt,
                 task.autoCreatePR,
+                task.reasoningEffort.rawValue,
+                task.useFastModel,
+                task.harness.rawValue,
                 task.status.rawValue,
                 task.createdAt.storageValue,
                 task.updatedAt.storageValue
@@ -568,13 +592,17 @@ public final class CursorOperatorStore: @unchecked Sendable {
         try db.execute(
             sql: """
                 UPDATE tasks
-                SET title = ?, prompt = ?, autoCreatePR = ?, status = ?, updatedAt = ?
+                SET title = ?, prompt = ?, autoCreatePR = ?, reasoningEffort = ?,
+                    useFastModel = ?, harness = ?, status = ?, updatedAt = ?
                 WHERE id = ?
                 """,
             arguments: [
                 task.title,
                 task.prompt,
                 task.autoCreatePR,
+                task.reasoningEffort.rawValue,
+                task.useFastModel,
+                task.harness.rawValue,
                 task.status.rawValue,
                 task.updatedAt.storageValue,
                 task.id.uuidString
@@ -631,7 +659,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
     }
 }
 
-private extension CursorOperatorStore {
+extension CursorOperatorStore {
     static var migrator: DatabaseMigrator {
         var migrator = DatabaseMigrator()
 
@@ -694,10 +722,22 @@ private extension CursorOperatorStore {
             try db.execute(sql: "CREATE UNIQUE INDEX runAttempts_one_active_send_per_task ON runAttempts(taskID) WHERE status IN ('pending', 'succeeded')")
         }
 
+        migrator.registerMigration("addTaskHarnessConfiguration") { db in
+            try db.alter(table: "tasks") { table in
+                table.add(column: "reasoningEffort", .text)
+                    .notNull()
+                    .defaults(to: CursorReasoningEffort.medium.rawValue)
+                table.add(column: "useFastModel", .boolean).notNull().defaults(to: false)
+                table.add(column: "harness", .text)
+                    .notNull()
+                    .defaults(to: CursorHarness.cursor.rawValue)
+            }
+        }
+
         return migrator
     }
 
-    static func repository(from row: Row) throws -> CursorRepository {
+    private static func repository(from row: Row) throws -> CursorRepository {
         guard let githubURL = URL(string: row["githubURL"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("githubURL")
         }
@@ -713,9 +753,15 @@ private extension CursorOperatorStore {
         )
     }
 
-    static func task(from row: Row) throws -> CursorTask {
+    private static func task(from row: Row) throws -> CursorTask {
         guard let status = CursorTaskStatus(rawValue: row["status"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("status")
+        }
+        guard let reasoningEffort = CursorReasoningEffort(rawValue: row["reasoningEffort"]) else {
+            throw CursorOperatorStoreError.invalidStoredValue("reasoningEffort")
+        }
+        guard let harness = CursorHarness(rawValue: row["harness"]) else {
+            throw CursorOperatorStoreError.invalidStoredValue("harness")
         }
 
         return CursorTask(
@@ -724,13 +770,16 @@ private extension CursorOperatorStore {
             title: row["title"],
             prompt: row["prompt"],
             autoCreatePR: row["autoCreatePR"],
+            reasoningEffort: reasoningEffort,
+            useFastModel: row["useFastModel"],
+            harness: harness,
             status: status,
             createdAt: Date(storageValue: row["createdAt"]),
             updatedAt: Date(storageValue: row["updatedAt"])
         )
     }
 
-    static func runAttempt(from row: Row) throws -> CursorRunAttempt {
+    private static func runAttempt(from row: Row) throws -> CursorRunAttempt {
         guard let status = CursorRunAttemptStatus(rawValue: row["status"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("status")
         }
@@ -758,7 +807,7 @@ private extension CursorOperatorStore {
         )
     }
 
-    static func uuid(_ value: String) throws -> UUID {
+    private static func uuid(_ value: String) throws -> UUID {
         guard let uuid = UUID(uuidString: value) else {
             throw CursorOperatorStoreError.invalidStoredValue("UUID")
         }
