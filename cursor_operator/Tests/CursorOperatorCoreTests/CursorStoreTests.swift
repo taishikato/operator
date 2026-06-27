@@ -270,6 +270,39 @@ import Testing
     #expect(recoveredTask.status == .ready)
 }
 
+@Test func storeSnapshotsTaskHarnessSettingsOnRunAttempt() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Snapshot settings",
+        prompt: "Prompt",
+        reasoningEffort: .high,
+        useFastModel: true,
+        harness: .codex
+    )
+
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "first failure"
+    )
+
+    let run = try #require(try store.runAttempts(taskID: task.id).last)
+    #expect(run.harness == .codex)
+    #expect(run.reasoningEffort == .high)
+    #expect(run.useFastModel == true)
+}
+
 @Test func failedClaimedSendMovesTaskToFailed() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(

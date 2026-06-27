@@ -27,6 +27,9 @@ public struct CursorRunAttempt: Equatable, Identifiable, Sendable {
     public let model: String
     public let autoCreatePR: Bool
     public let prompt: String
+    public let harness: CursorHarness
+    public let reasoningEffort: CursorReasoningEffort
+    public let useFastModel: Bool
     public let cursorAgentID: String?
     public let cursorRunID: String?
     public let cursorURL: URL?
@@ -257,6 +260,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: model,
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
+                harness: task.harness,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
                 cursorAgentID: nil,
                 cursorRunID: nil,
                 cursorURL: nil,
@@ -303,6 +309,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: model,
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
+                harness: task.harness,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
                 cursorAgentID: nil,
                 cursorRunID: nil,
                 cursorURL: nil,
@@ -341,6 +350,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: pendingAttempt.model,
                 autoCreatePR: pendingAttempt.autoCreatePR,
                 prompt: pendingAttempt.prompt,
+                harness: pendingAttempt.harness,
+                reasoningEffort: pendingAttempt.reasoningEffort,
+                useFastModel: pendingAttempt.useFastModel,
                 cursorAgentID: cursorAgentID,
                 cursorRunID: cursorRunID,
                 cursorURL: cursorURL,
@@ -375,6 +387,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: existingAttempt.model,
                 autoCreatePR: existingAttempt.autoCreatePR,
                 prompt: existingAttempt.prompt,
+                harness: existingAttempt.harness,
+                reasoningEffort: existingAttempt.reasoningEffort,
+                useFastModel: existingAttempt.useFastModel,
                 cursorAgentID: existingAttempt.cursorAgentID,
                 cursorRunID: existingAttempt.cursorRunID,
                 cursorURL: existingAttempt.cursorURL,
@@ -414,6 +429,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: pendingAttempt.model,
                 autoCreatePR: pendingAttempt.autoCreatePR,
                 prompt: pendingAttempt.prompt,
+                harness: pendingAttempt.harness,
+                reasoningEffort: pendingAttempt.reasoningEffort,
+                useFastModel: pendingAttempt.useFastModel,
                 cursorAgentID: cursorAgentID,
                 cursorRunID: cursorRunID,
                 cursorURL: cursorURL,
@@ -458,6 +476,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: model,
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
+                harness: task.harness,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
                 cursorAgentID: cursorAgentID,
                 cursorRunID: cursorRunID,
                 cursorURL: cursorURL,
@@ -625,9 +646,10 @@ public final class CursorOperatorStore: @unchecked Sendable {
             sql: """
                 INSERT INTO runAttempts (
                     id, taskID, repositoryID, status, repositoryURL, startingRef, model,
-                    autoCreatePR, prompt, cursorAgentID, cursorRunID, cursorURL, errorMessage, createdAt, completedAt
+                    autoCreatePR, prompt, harness, reasoningEffort, useFastModel,
+                    cursorAgentID, cursorRunID, cursorURL, errorMessage, createdAt, completedAt
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 runAttempt.id.uuidString,
@@ -639,6 +661,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 runAttempt.model,
                 runAttempt.autoCreatePR,
                 runAttempt.prompt,
+                runAttempt.harness.rawValue,
+                runAttempt.reasoningEffort.rawValue,
+                runAttempt.useFastModel,
                 runAttempt.cursorAgentID,
                 runAttempt.cursorRunID,
                 runAttempt.cursorURL?.absoluteString,
@@ -744,6 +769,18 @@ extension CursorOperatorStore {
             }
         }
 
+        migrator.registerMigration("addRunAttemptHarnessConfigurationSnapshot") { db in
+            try db.alter(table: "runAttempts") { table in
+                table.add(column: "harness", .text)
+                    .notNull()
+                    .defaults(to: CursorHarness.cursor.rawValue)
+                table.add(column: "reasoningEffort", .text)
+                    .notNull()
+                    .defaults(to: CursorReasoningEffort.medium.rawValue)
+                table.add(column: "useFastModel", .boolean).notNull().defaults(to: false)
+            }
+        }
+
         return migrator
     }
 
@@ -793,6 +830,12 @@ extension CursorOperatorStore {
         guard let status = CursorRunAttemptStatus(rawValue: row["status"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("status")
         }
+        guard let harness = CursorHarness(rawValue: row["harness"]) else {
+            throw CursorOperatorStoreError.invalidStoredValue("harness")
+        }
+        guard let reasoningEffort = CursorReasoningEffort(rawValue: row["reasoningEffort"]) else {
+            throw CursorOperatorStoreError.invalidStoredValue("reasoningEffort")
+        }
         guard let repositoryURL = URL(string: row["repositoryURL"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("repositoryURL")
         }
@@ -808,6 +851,9 @@ extension CursorOperatorStore {
             model: row["model"],
             autoCreatePR: row["autoCreatePR"],
             prompt: row["prompt"],
+            harness: harness,
+            reasoningEffort: reasoningEffort,
+            useFastModel: row["useFastModel"],
             cursorAgentID: row["cursorAgentID"],
             cursorRunID: row["cursorRunID"],
             cursorURL: cursorURLString.flatMap(URL.init(string:)),
