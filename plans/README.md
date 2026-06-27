@@ -18,6 +18,13 @@ them to a plan later.
 | 002  | Ship a versioned, downloadable DMG release channel | P2 | S | — | TODO |
 | 003  | Design spike: follow-up sends and rerun | P2 | S | — (001's spike report is useful input) | TODO |
 | 004  | Design spike: "operator skills" — agent-facing CLI + thin skills | P2 | M | — (soft: 001, 003 outputs) | DONE — PRD at `.scratch/operator-skills/PRD.md`; at the maintainer's request the same pass also shipped the implementation (WAL store, `operator-cli` target, `skills/operator/SKILL.md`) |
+| 005  | Rebrand Cursor Operator foundation to Operator | P1 | M | — | DONE |
+| 006  | Introduce unified Task and Run model with Failed retry | P1 | L | 005 | TODO |
+| 007  | Port Cursor harness behavior onto Operator Task and Run | P1 | M | 006 | TODO |
+| 008  | Add Codex readiness and task configuration to Operator | P1 | M | 005, 006 | TODO |
+| 009  | Implement Codex app-server harness in Operator | P1 | L | 006, 008 | TODO |
+| 010  | Ship canonical operator CLI and agent support | P2 | M | 007, 009 | TODO |
+| 011  | Update Operator release docs and regression checklist | P2 | S | 005, 007, 009, 010 | TODO |
 
 Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJECTED (with one-line rationale)
 
@@ -33,6 +40,16 @@ Status values: TODO | IN PROGRESS | DONE | BLOCKED (with one-line reason) | REJE
   runs stranded in `running` (constrains the CLI `send --no-wait` semantics)
   and 003 may add follow-up-turn verbs to the CLI surface. 004 can run
   without either, but its executor should read their outputs if DONE.
+- 005-011 were generated on 2026-06-27 against `c4ec8d4` from
+  `.scratch/operator-rebrand-with-codex/PRD.md`. They implement the Operator
+  rebrand and Codex harness integration inside `cursor_operator`.
+- 006 is the highest-risk foundation plan for the integration. 007, 008, 009,
+  and 010 should not start until its Task/Run model decisions have landed.
+- 008 can run after 006 and in parallel with 007 because Codex readiness does
+  not send tasks. 009 depends on 008 because it needs Codex configuration and
+  on 006 because it records Codex Runs.
+- 011 is last because it documents behavior only after the app, harnesses, and
+  CLI have converged.
 
 ## Direction findings deferred (not planned this run)
 
