@@ -23,6 +23,8 @@
 The PRD makes `cursor_operator` the implementation target, but the product name becomes Operator.
 This plan creates the smallest vertical rebrand: app identity, app data path, package product names, scripts, docs, and tests agree that the app is Operator.
 It deliberately does not migrate old Cursor Operator data because the PRD says old Cursor Operator and Codex Operator databases are ignored.
+`codex_operator` and the previous `cursor_operator` identity are treated as zero-user prototypes.
+This rebrand does not support coexistence, migration, or cleanup for their local databases, credentials, CLI links, or agent skills.
 
 ## Current state
 
