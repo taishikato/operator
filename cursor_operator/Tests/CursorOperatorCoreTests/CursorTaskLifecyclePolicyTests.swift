@@ -26,10 +26,10 @@ import Testing
     #expect(archivedTask.status == .archived)
 }
 
-@Test func failedSendLeavesTaskReady() throws {
+@Test func failedSendMovesTaskToFailed() throws {
     let failedTask = try CursorTaskLifecyclePolicy.recordFailedSend(for: readyTask())
 
-    #expect(failedTask.status == .ready)
+    #expect(failedTask.status == .failed)
 }
 
 @Test func lifecycleAllowsRunningToFailedToArchived() throws {

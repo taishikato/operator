@@ -393,6 +393,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
             guard pendingAttempt.status == .pending else {
                 throw CursorTaskLifecycleError.transitionNotAllowed
             }
+            let task = try requiredTask(id: pendingAttempt.taskID, db: db)
+            let updatedTask = try CursorTaskLifecyclePolicy.recordFailedSend(for: task, now: now)
+            try update(task: updatedTask, db: db)
 
             let attempt = CursorRunAttempt(
                 id: pendingAttempt.id,

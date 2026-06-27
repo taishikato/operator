@@ -240,6 +240,29 @@ import Testing
     }
 }
 
+@Test func failedClaimedSendMovesTaskToFailed() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Fail claimed send", prompt: "Prompt")
+    let claim = try store.claimSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt
+    )
+
+    _ = try store.recordFailedClaimedSendAttempt(id: claim.id, errorMessage: "Provider failed")
+
+    #expect(try store.task(id: task.id)?.status == .failed)
+}
+
 @Test func storeExpiresStalePendingSendClaimsBeforeRetry() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(
