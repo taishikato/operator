@@ -29,6 +29,7 @@ import Testing
         prompt: task.prompt,
         errorMessage: "Validation failed"
     )
+    _ = try store.recoverTaskForRetry(id: task.id)
     let run = try store.recordSuccessfulSendAttempt(
         taskID: task.id,
         repositoryURL: repository.githubURL,
@@ -203,6 +204,7 @@ import Testing
         prompt: task.prompt,
         errorMessage: "first failure"
     )
+    _ = try store.recoverTaskForRetry(id: task.id)
     _ = try store.recordFailedSendAttempt(
         taskID: task.id,
         repositoryURL: repository.githubURL,
@@ -212,6 +214,7 @@ import Testing
         prompt: task.prompt,
         errorMessage: "second failure"
     )
+    _ = try store.recoverTaskForRetry(id: task.id)
     _ = try store.recordSuccessfulSendAttempt(
         taskID: task.id,
         repositoryURL: repository.githubURL,
@@ -238,6 +241,33 @@ import Testing
             cursorURL: URL(string: "https://cursor.com/agents/agent-456")!
         )
     }
+}
+
+@Test func storeRecoversFailedTaskForRetryUsingSameTaskID() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Recover", prompt: "Prompt")
+
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "first failure"
+    )
+    #expect(try store.task(id: task.id)?.status == .failed)
+
+    let recoveredTask = try store.recoverTaskForRetry(id: task.id)
+
+    #expect(recoveredTask.id == task.id)
+    #expect(recoveredTask.status == .ready)
 }
 
 @Test func failedClaimedSendMovesTaskToFailed() throws {

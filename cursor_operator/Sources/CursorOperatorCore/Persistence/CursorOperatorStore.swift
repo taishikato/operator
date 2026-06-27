@@ -227,6 +227,12 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func recoverTaskForRetry(id: UUID, now: Date = Date()) throws -> CursorTask {
+        try updateTask(id: id) { task in
+            try CursorTaskLifecyclePolicy.recoverForRetry(task, now: now)
+        }
+    }
+
     public func recordFailedSendAttempt(
         id: UUID = UUID(),
         taskID: UUID,
@@ -240,6 +246,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
     ) throws -> CursorRunAttempt {
         try dbQueue.write { db in
             let task = try CursorTaskLifecyclePolicy.recordFailedSend(for: requiredTask(id: taskID, db: db))
+            try update(task: task, db: db)
             let attempt = CursorRunAttempt(
                 id: id,
                 taskID: task.id,
