@@ -13,7 +13,7 @@ let package = Package(
             targets: ["CursorOperatorCore"]
         ),
         .executable(
-            name: "CursorOperator",
+            name: "Operator",
             targets: ["CursorOperatorApp"]
         ),
         .executable(
@@ -21,7 +21,7 @@ let package = Package(
             targets: ["CursorOperatorSmokeSupport"]
         ),
         .executable(
-            name: "cursor-operator-cli",
+            name: "operator-cli",
             targets: ["CursorOperatorCLI"]
         )
     ],

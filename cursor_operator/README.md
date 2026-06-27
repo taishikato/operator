@@ -1,6 +1,7 @@
-# Cursor Operator
+# Operator
 
-Cursor Operator is a native macOS SwiftUI Kanban UI app for Cursor Cloud Agents.
+Operator is a native macOS SwiftUI Kanban UI app and companion CLI for coding-agent tasks.
+This package currently keeps the Cursor Cloud Agent runtime inside `cursor_operator`.
 
 [Download the latest release](https://github.com/taishikato/operator/releases)
 
@@ -15,4 +16,5 @@ swift test
 ./script/build_and_run.sh
 ```
 
-Cursor Operator stores local app data under the `Cursor Operator` Application Support directory and uses the `com.focus.cursor-operator` bundle identity.
+Operator stores local app data under the `Operator` Application Support directory and uses the `com.focus.operator` bundle identity.
+Old Cursor Operator and Codex Operator local databases are not migrated.

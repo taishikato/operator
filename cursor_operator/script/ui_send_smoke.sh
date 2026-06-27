@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_NAME="CursorOperator"
+APP_NAME="Operator"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BUNDLE="$ROOT_DIR/dist/$APP_NAME.app"
-SMOKE_ROOT="${TMPDIR:-/tmp}/cursor-operator-ui-send-smoke-$$"
+SMOKE_ROOT="${TMPDIR:-/tmp}/operator-ui-send-smoke-$$"
 APP_SUPPORT_DIR="$SMOKE_ROOT/app-support"
-DATABASE_URL="$APP_SUPPORT_DIR/cursor-operator.sqlite"
+DATABASE_URL="$APP_SUPPORT_DIR/operator.sqlite"
 PROMPT="${CURSOR_OPERATOR_SMOKE_PROMPT:-Please reply with exactly: cursor operator ui send smoke ok. Do not modify files or create a pull request.}"
 REPOSITORY_URL=""
 STARTING_REF=""
@@ -97,15 +97,15 @@ on clickSend(elementRef)
   return false
 end clickSend
 
-tell application "Cursor Operator" to activate
+tell application "Operator" to activate
 tell application "System Events"
-  tell process "Cursor Operator"
+  tell process "Operator"
     repeat 80 times
       if exists window 1 then exit repeat
       delay 0.25
     end repeat
 
-    if not (exists window 1) then error "Cursor Operator window did not appear."
+    if not (exists window 1) then error "Operator window did not appear."
 
     repeat 120 times
       if my clickSend(window 1) then return

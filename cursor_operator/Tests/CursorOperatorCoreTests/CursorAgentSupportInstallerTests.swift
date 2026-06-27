@@ -11,7 +11,7 @@ import Testing
 
     let status = try installer.status()
 
-    #expect(status.cli.destination.path == fixture.homeDirectory.appending(path: ".local/bin/cursor-operator").path)
+    #expect(status.cli.destination.path == fixture.homeDirectory.appending(path: ".local/bin/operator").path)
     #expect(status.cli.state == .missing)
     #expect(status.skills.map(\.destination.path) == fixture.skillDestinations.map(\.path))
     #expect(status.skills.allSatisfy { $0.state == .missing })
@@ -26,7 +26,7 @@ import Testing
 
     let installedURL = try installer.installCLI()
 
-    #expect(installedURL.path == fixture.homeDirectory.appending(path: ".local/bin/cursor-operator").path)
+    #expect(installedURL.path == fixture.homeDirectory.appending(path: ".local/bin/operator").path)
     #expect(try FileManager.default.destinationOfSymbolicLink(atPath: installedURL.path) == fixture.cliSource.path)
     #expect(FileManager.default.fileExists(atPath: fixture.installedHelper.appending(path: "cursor-sdk-helper.mjs").path))
     #expect(try installer.status().cli.state == .installed(targetPath: fixture.cliSource.path))
@@ -50,7 +50,7 @@ import Testing
 
 @Test func cursorAgentSupportInstallerRefusesToOverwriteUnmanagedCLIFile() throws {
     let fixture = try CursorAgentSupportInstallerFixture()
-    let destination = fixture.homeDirectory.appending(path: ".local/bin/cursor-operator")
+    let destination = fixture.homeDirectory.appending(path: ".local/bin/operator")
     try FileManager.default.createDirectory(at: destination.deletingLastPathComponent(), withIntermediateDirectories: true)
     try "existing".write(to: destination, atomically: true, encoding: .utf8)
     let installer = CursorAgentSupportInstaller(
@@ -66,15 +66,15 @@ import Testing
 @Test func cursorAgentSupportStatusAggregatesSkillStateTowardRepairableDestinations() {
     let home = URL(filePath: "/tmp/home", directoryHint: .isDirectory)
     let installed = CursorAgentSupportComponentStatus(
-        destination: home.appending(path: ".codex/skills/cursor-operator"),
-        state: .installed(targetPath: "/CursorOperator.app/Contents/Resources/skills/cursor-operator")
+        destination: home.appending(path: ".codex/skills/operator"),
+        state: .installed(targetPath: "/Operator.app/Contents/Resources/skills/operator")
     )
     let missing = CursorAgentSupportComponentStatus(
-        destination: home.appending(path: ".cursor/skills/cursor-operator"),
+        destination: home.appending(path: ".cursor/skills/operator"),
         state: .missing
     )
     let unmanaged = CursorAgentSupportComponentStatus(
-        destination: home.appending(path: ".claude/skills/cursor-operator"),
+        destination: home.appending(path: ".claude/skills/operator"),
         state: .unmanaged
     )
 
@@ -91,14 +91,14 @@ import Testing
     let fixture = try CursorAgentSupportInstallerFixture()
     let installer = CursorAgentSupportInstaller(
         source: CursorAgentSupportSource(
-            cliURL: fixture.temporaryDirectory.appending(path: "missing/cursor-operator-cli"),
+            cliURL: fixture.temporaryDirectory.appending(path: "missing/operator-cli"),
             skillURL: fixture.temporaryDirectory.appending(path: "missing/skill", directoryHint: .isDirectory),
             helperURL: fixture.temporaryDirectory.appending(path: "missing/CursorSDKHelper", directoryHint: .isDirectory)
         ),
         homeDirectory: fixture.homeDirectory
     )
 
-    #expect(throws: CursorAgentSupportInstallerError.sourceMissing(fixture.temporaryDirectory.appending(path: "missing/cursor-operator-cli").path)) {
+    #expect(throws: CursorAgentSupportInstallerError.sourceMissing(fixture.temporaryDirectory.appending(path: "missing/operator-cli").path)) {
         try installer.installCLI()
     }
     #expect(throws: CursorAgentSupportInstallerError.sourceMissing(fixture.temporaryDirectory.appending(path: "missing/skill").path)) {
@@ -120,9 +120,9 @@ private struct CursorAgentSupportInstallerFixture {
 
     var skillDestinations: [URL] {
         [
-            homeDirectory.appending(path: ".codex/skills/cursor-operator"),
-            homeDirectory.appending(path: ".cursor/skills/cursor-operator"),
-            homeDirectory.appending(path: ".claude/skills/cursor-operator")
+            homeDirectory.appending(path: ".codex/skills/operator"),
+            homeDirectory.appending(path: ".cursor/skills/operator"),
+            homeDirectory.appending(path: ".claude/skills/operator")
         ]
     }
 
@@ -130,15 +130,15 @@ private struct CursorAgentSupportInstallerFixture {
         temporaryDirectory = FileManager.default.temporaryDirectory
             .appending(path: "CursorAgentSupportInstallerTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         homeDirectory = temporaryDirectory.appending(path: "home", directoryHint: .isDirectory)
-        cliSource = temporaryDirectory.appending(path: "bundle/Contents/Library/Helpers/cursor-operator-cli")
-        skillSource = temporaryDirectory.appending(path: "bundle/Contents/Resources/skills/cursor-operator", directoryHint: .isDirectory)
+        cliSource = temporaryDirectory.appending(path: "bundle/Contents/Library/Helpers/operator-cli")
+        skillSource = temporaryDirectory.appending(path: "bundle/Contents/Resources/skills/operator", directoryHint: .isDirectory)
         helperSource = temporaryDirectory.appending(path: "bundle/Contents/Resources/CursorSDKHelper", directoryHint: .isDirectory)
 
         try FileManager.default.createDirectory(at: cliSource.deletingLastPathComponent(), withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: skillSource, withIntermediateDirectories: true)
         try FileManager.default.createDirectory(at: helperSource, withIntermediateDirectories: true)
         try "#!/bin/sh\n".write(to: cliSource, atomically: true, encoding: .utf8)
-        try "name: cursor-operator\n".write(to: skillSource.appending(path: "SKILL.md"), atomically: true, encoding: .utf8)
+        try "name: operator\n".write(to: skillSource.appending(path: "SKILL.md"), atomically: true, encoding: .utf8)
         try "console.log('helper')\n".write(to: helperSource.appending(path: "cursor-sdk-helper.mjs"), atomically: true, encoding: .utf8)
 
         source = CursorAgentSupportSource(

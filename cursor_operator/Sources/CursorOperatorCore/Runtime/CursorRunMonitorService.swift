@@ -113,7 +113,7 @@ public struct CursorRunMonitorService: Sendable {
            let errorDescription = localizedError.errorDescription {
             return errorDescription
         }
-        return "Cursor Operator could not confirm the run status."
+        return "Operator could not confirm the run status."
     }
 }
 

@@ -19,14 +19,14 @@ struct CursorOperatorApp: App {
             store = try CursorOperatorAppBootstrap.initializeStore(
                 databaseURL: appDataURL.appending(path: CursorOperatorAppSpec.mvp.databaseFileName)
             )
-            print("Cursor Operator app data: \(appDataURL.path)")
+            print("Operator app data: \(appDataURL.path)")
         } catch {
-            fatalError("Unable to initialize Cursor Operator app data: \(error)")
+            fatalError("Unable to initialize Operator app data: \(error)")
         }
     }
 
     var body: some Scene {
-        WindowGroup("Cursor Operator") {
+        WindowGroup(CursorOperatorAppSpec.mvp.displayName) {
             CursorOperatorRootView(store: store)
                 .frame(minWidth: 1_040, minHeight: 680)
                 .onAppear {

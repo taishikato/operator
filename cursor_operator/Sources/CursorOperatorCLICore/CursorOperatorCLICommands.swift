@@ -123,11 +123,11 @@ public enum CursorOperatorCLIError: Error, Equatable, Sendable, LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .repositoryNotFound(let reference):
-            "No Cursor repository named or identified by '\(reference)'. Run `cursor-operator repo list`."
+            "No Cursor repository named or identified by '\(reference)'. Run `operator repo list`."
         case .ambiguousRepositoryName(let name):
             "Multiple Cursor repositories are named '\(name)'. Use the repository id instead."
         case .taskNotFound(let id):
-            "No Cursor task with id '\(id)'. Run `cursor-operator task list`."
+            "No Cursor task with id '\(id)'. Run `operator task list`."
         case .sendFailed(let message):
             "Cursor send failed: \(message)"
         }
