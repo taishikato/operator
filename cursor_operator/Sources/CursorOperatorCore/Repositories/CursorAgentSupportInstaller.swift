@@ -80,14 +80,14 @@ public struct CursorAgentSupportInstaller: CursorAgentSupportInstalling {
     }
 
     public var cliDestination: URL {
-        homeDirectory.appending(path: ".local/bin/cursor-operator")
+        homeDirectory.appending(path: ".local/bin/operator")
     }
 
     public var skillDestinations: [URL] {
         [
-            homeDirectory.appending(path: ".codex/skills/cursor-operator"),
-            homeDirectory.appending(path: ".cursor/skills/cursor-operator"),
-            homeDirectory.appending(path: ".claude/skills/cursor-operator")
+            homeDirectory.appending(path: ".codex/skills/operator"),
+            homeDirectory.appending(path: ".cursor/skills/operator"),
+            homeDirectory.appending(path: ".claude/skills/operator")
         ]
     }
 
@@ -146,13 +146,13 @@ public struct CursorAgentSupportInstaller: CursorAgentSupportInstalling {
 
     private func isCursorOperatorManagedSymlink(targetPath: String, destination: URL) -> Bool {
         if destination == cliDestination {
-            return targetPath.contains("/CursorOperator.app/Contents/Library/Helpers/cursor-operator-cli")
-                || (targetPath.contains("/cursor_operator/.build/") && targetPath.hasSuffix("/cursor-operator-cli"))
+            return targetPath.contains("/Operator.app/Contents/Library/Helpers/operator-cli")
+                || (targetPath.contains("/cursor_operator/.build/") && targetPath.hasSuffix("/operator-cli"))
         }
 
         if skillDestinations.contains(destination) {
-            return targetPath.contains("/CursorOperator.app/Contents/Resources/skills/cursor-operator")
-                || targetPath.contains("/cursor_operator/skills/cursor-operator")
+            return targetPath.contains("/Operator.app/Contents/Resources/skills/operator")
+                || targetPath.contains("/cursor_operator/skills/operator")
         }
 
         return false
@@ -261,22 +261,22 @@ public enum CursorAgentSupportInstallerError: LocalizedError, Equatable, Sendabl
     public var errorDescription: String? {
         switch self {
         case let .sourceMissing(path):
-            return "Cursor Operator support file is missing: \(path)"
+            return "Operator support file is missing: \(path)"
         case let .destinationExists(path):
-            return "A file already exists at \(path). Move it before installing Cursor Operator support."
+            return "A file already exists at \(path). Move it before installing Operator support."
         }
     }
 }
 
 private extension Bundle {
     var cursorOperatorBundledCLIURL: URL {
-        url(forAuxiliaryExecutable: "cursor-operator-cli")
-            ?? bundleURL.appending(path: "Contents/Library/Helpers/cursor-operator-cli")
+        url(forAuxiliaryExecutable: "operator-cli")
+            ?? bundleURL.appending(path: "Contents/Library/Helpers/operator-cli")
     }
 
     var cursorOperatorBundledSkillURL: URL {
-        url(forResource: "cursor-operator", withExtension: nil, subdirectory: "skills")
-            ?? bundleURL.appending(path: "Contents/Resources/skills/cursor-operator", directoryHint: .isDirectory)
+        url(forResource: "operator", withExtension: nil, subdirectory: "skills")
+            ?? bundleURL.appending(path: "Contents/Resources/skills/operator", directoryHint: .isDirectory)
     }
 
     var cursorOperatorBundledHelperURL: URL {

@@ -56,7 +56,7 @@ public struct CursorOperatorSettingsView: View {
                 }
             }
 
-            Section("Cursor Operator") {
+            Section("Operator") {
                 LabeledContent("App", value: appSpec.displayName)
                 LabeledContent("Node.js", value: nodeProjection.status)
                 LabeledContent("Node Path") {
@@ -79,7 +79,7 @@ public struct CursorOperatorSettingsView: View {
                 if let agentSupportStatus {
                     CursorAgentSupportRow(
                         title: "CLI",
-                        badge: "cursor-operator",
+                        badge: "operator",
                         destinationText: displayPath(agentSupportStatus.cli.destination),
                         status: agentSupportStatus.cli.state,
                         installTitle: "Install CLI"
@@ -89,7 +89,7 @@ public struct CursorOperatorSettingsView: View {
 
                     CursorAgentSupportRow(
                         title: "Agent Skill",
-                        badge: "/cursor-operator",
+                        badge: "/operator",
                         destinationText: skillDestinationText(agentSupportStatus.skills),
                         status: agentSupportStatus.skillsState,
                         installTitle: "Install Skills"
@@ -175,7 +175,7 @@ public struct CursorOperatorSettingsView: View {
            let errorDescription = localizedError.errorDescription {
             return errorDescription
         }
-        return "Cursor Operator could not update agent support."
+        return "Operator could not update agent support."
     }
 }
 

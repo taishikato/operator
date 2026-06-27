@@ -31,8 +31,8 @@ enum CursorOperatorCLIMain {
 
 struct CursorOperatorCommand: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
-        commandName: "cursor-operator",
-        abstract: "Drive the Cursor Operator task board from the command line.",
+        commandName: "operator",
+        abstract: "Drive the Operator task board from the command line.",
         discussion: """
             All domain rules are enforced by CursorOperatorCore. Exit codes: \
             2 not found, 3 lifecycle violation, 4 Cursor unavailable, \

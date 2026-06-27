@@ -42,14 +42,13 @@ import Testing
     #expect(CursorOperatorSidebarSelection.board.selectionAfterAppMenuCommand(.newTask) == .board)
 }
 
-@Test func cursorOperatorUsesIsolatedIdentityAndDataRoot() {
+@Test func operatorUsesIsolatedIdentityAndDataRoot() {
     let app = CursorOperatorAppSpec.mvp
 
-    #expect(app.displayName == "Cursor Operator")
-    #expect(app.bundleIdentifier == "com.focus.cursor-operator")
-    #expect(app.applicationSupportDirectoryName == "Cursor Operator")
-    #expect(app.databaseFileName == "cursor-operator.sqlite")
-    #expect(app.applicationSupportDirectoryName != "Operator")
+    #expect(app.displayName == "Operator")
+    #expect(app.bundleIdentifier == "com.focus.operator")
+    #expect(app.applicationSupportDirectoryName == "Operator")
+    #expect(app.databaseFileName == "operator.sqlite")
 }
 
 @Test func mvpScopeKeepsCursorAndGitOrchestrationOutOfScope() {

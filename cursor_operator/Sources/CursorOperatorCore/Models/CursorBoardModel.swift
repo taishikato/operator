@@ -245,7 +245,7 @@ public final class CursorBoardModel: ObservableObject {
         do {
             try createLocalTask(
                 title: "Local Cursor task",
-                prompt: "This local placeholder task proves the Cursor Operator SQLite lifecycle."
+                prompt: "This local placeholder task proves the Operator SQLite lifecycle."
             )
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
@@ -369,9 +369,9 @@ public final class CursorBoardModel: ObservableObject {
         return try store.createRepository(
             name: "Local Cursor Repository",
             localPath: FileManager.default.temporaryDirectory
-                .appending(path: "cursor-operator-placeholder", directoryHint: .isDirectory)
+                .appending(path: "operator-placeholder", directoryHint: .isDirectory)
                 .path,
-            githubURL: URL(string: "https://github.com/local/cursor-operator-placeholder")!,
+            githubURL: URL(string: "https://github.com/local/operator-placeholder")!,
             defaultBranch: "main"
         )
     }
@@ -398,6 +398,6 @@ public final class CursorBoardModel: ObservableObject {
            let errorDescription = localizedError.errorDescription {
             return errorDescription
         }
-        return "Cursor Operator could not update the board."
+        return "Operator could not update the board."
     }
 }

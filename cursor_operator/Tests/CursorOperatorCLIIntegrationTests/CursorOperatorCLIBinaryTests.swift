@@ -2,7 +2,7 @@ import Foundation
 import Testing
 import CursorOperatorCore
 
-// Integration tests against the real cursor-operator-cli binary. These cover
+// Integration tests against the real operator-cli binary. These cover
 // ArgumentParser parsing, --json error envelopes, and documented exit codes as
 // an agent sees them.
 
@@ -13,6 +13,14 @@ import CursorOperatorCore
     let object = try JSONSerialization.jsonObject(with: Data(result.stdout.utf8))
     #expect(object as? [Any] != nil)
     #expect(result.stderr.isEmpty)
+}
+
+@Test func helpUsesOperatorCommandName() throws {
+    let result = try runCLI(["--help"])
+
+    #expect(result.exitCode == 0)
+    #expect(result.stdout.contains("operator <subcommand>"))
+    #expect(!result.stdout.contains("cursor-operator <subcommand>"))
 }
 
 @Test func jsonDomainErrorUsesTheEnvelopeAndDocumentedExitCode() throws {
@@ -45,7 +53,7 @@ import CursorOperatorCore
     let scratchDirectory = FileManager.default.temporaryDirectory
         .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
-    let databaseURL = scratchDirectory.appending(path: "cursor-operator.sqlite")
+    let databaseURL = scratchDirectory.appending(path: "operator.sqlite")
     let store = try CursorOperatorStore(databaseURL: databaseURL)
     let repository = try store.createRepository(
         name: "operator",
@@ -142,7 +150,7 @@ private func temporaryDatabaseURL() throws -> URL {
     let scratchDirectory = FileManager.default.temporaryDirectory
         .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
-    return scratchDirectory.appending(path: "cursor-operator.sqlite")
+    return scratchDirectory.appending(path: "operator.sqlite")
 }
 
 private final class TestBundleLocator {}
@@ -151,11 +159,11 @@ private func cliBinaryURL() -> URL {
     var directory = Bundle(for: TestBundleLocator.self).bundleURL.deletingLastPathComponent()
     let fileManager = FileManager.default
     while directory.path != "/" {
-        let candidate = directory.appending(path: "cursor-operator-cli")
+        let candidate = directory.appending(path: "operator-cli")
         if fileManager.isExecutableFile(atPath: candidate.path) {
             return candidate
         }
         directory = directory.deletingLastPathComponent()
     }
-    fatalError("Could not locate the cursor-operator-cli binary in the build products directory.")
+    fatalError("Could not locate the operator-cli binary in the build products directory.")
 }

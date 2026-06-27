@@ -247,6 +247,6 @@ private struct RunMonitorFixture {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "CursorRunMonitorServiceTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appending(path: "cursor-operator.sqlite")
+        return directory.appending(path: "operator.sqlite")
     }
 }

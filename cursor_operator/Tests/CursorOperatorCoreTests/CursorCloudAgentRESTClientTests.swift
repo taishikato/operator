@@ -185,5 +185,5 @@ private func temporaryRESTClientDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorCloudAgentRESTClientTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory.appending(path: "cursor-operator.sqlite")
+    return directory.appending(path: "operator.sqlite")
 }

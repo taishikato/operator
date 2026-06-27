@@ -144,7 +144,7 @@ private func temporaryGitRegistrationDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorRepositoryRegistrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory.appending(path: "cursor-operator.sqlite")
+    return directory.appending(path: "operator.sqlite")
 }
 
 private func runGit(_ arguments: [String], in directoryURL: URL?) throws {

@@ -286,6 +286,6 @@ private struct SendServiceFixture {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "CursorTaskSendServiceTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appending(path: "cursor-operator.sqlite")
+        return directory.appending(path: "operator.sqlite")
     }
 }

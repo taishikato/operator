@@ -324,7 +324,7 @@ private func temporaryStore() throws -> CursorOperatorStore {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorOperatorCLICoreTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return try CursorOperatorStore(databaseURL: directory.appending(path: "cursor-operator.sqlite"))
+    return try CursorOperatorStore(databaseURL: directory.appending(path: "operator.sqlite"))
 }
 
 private func makeRepository(

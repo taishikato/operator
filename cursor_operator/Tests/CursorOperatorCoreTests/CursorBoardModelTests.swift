@@ -722,7 +722,7 @@ private func temporaryBoardModelDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorBoardModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory.appending(path: "cursor-operator.sqlite")
+    return directory.appending(path: "operator.sqlite")
 }
 
 @MainActor
