@@ -41,6 +41,18 @@ import Testing
     #expect(archivedTask.status == .archived)
 }
 
+@Test func lifecycleAllowsFailedRecoveryForRetryOnly() throws {
+    let recoveredTask = try CursorTaskLifecyclePolicy.recoverForRetry(task(status: .failed))
+    #expect(recoveredTask.status == .ready)
+
+    #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
+        try CursorTaskLifecyclePolicy.recoverForRetry(task(status: .done))
+    }
+    #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
+        try CursorTaskLifecyclePolicy.recoverForRetry(task(status: .archived))
+    }
+}
+
 @Test func onlyReadyTasksAreEditable() {
     #expect(throws: Never.self) {
         try CursorTaskLifecyclePolicy.ensureEditable(readyTask())

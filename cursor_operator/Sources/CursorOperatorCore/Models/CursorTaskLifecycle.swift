@@ -117,6 +117,14 @@ public enum CursorTaskLifecyclePolicy {
         return task.with(status: .failed, now: now)
     }
 
+    public static func recoverForRetry(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
+        guard task.status == .failed else {
+            throw CursorTaskLifecycleError.transitionNotAllowed
+        }
+
+        return task.with(status: .ready, now: now)
+    }
+
     public static func archive(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
         guard [.ready, .running, .failed, .done].contains(task.status) else {
             throw CursorTaskLifecycleError.transitionNotAllowed
