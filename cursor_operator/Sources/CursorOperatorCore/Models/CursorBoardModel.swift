@@ -191,7 +191,11 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     public func sendStatusText(taskID: UUID) -> String? {
-        isSending(taskID: taskID) ? "Sending to Cursor..." : nil
+        guard isSending(taskID: taskID) else {
+            return nil
+        }
+        let harnessName = (try? store.task(id: taskID)?.harness.displayName) ?? CursorHarness.cursor.displayName
+        return "Sending to \(harnessName)..."
     }
 
     public func send(taskID: UUID) async throws {

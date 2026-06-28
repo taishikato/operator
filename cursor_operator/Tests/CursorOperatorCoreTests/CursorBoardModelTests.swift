@@ -773,6 +773,37 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
+@Test func boardModelUsesSelectedHarnessInSendingStatusText() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Codex sending label",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let codexSender = BoardModelSuspendingCodexSender(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        codexTaskSender: codexSender
+    )
+    try model.load()
+
+    model.sendReportingErrors(taskID: task.id)
+    try await codexSender.waitUntilStarted()
+
+    #expect(model.sendStatusText(taskID: task.id) == "Sending to Codex...")
+
+    codexSender.complete()
+}
+
+@MainActor
 @Test func boardModelRefreshRecoversInterruptedCodexRuns() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
@@ -1058,6 +1089,57 @@ private final class BoardModelFakeCodexRunRecoverer: CodexRunRecovering, @unchec
             id: run.id,
             errorMessage: "Codex run was interrupted before the initial turn completed."
         )
+    }
+}
+
+private final class BoardModelSuspendingCodexSender: CodexTaskSending, @unchecked Sendable {
+    let store: CursorOperatorStore
+    private let lock = NSLock()
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var completionContinuation: CheckedContinuation<Void, Never>?
+    private var started = false
+
+    init(store: CursorOperatorStore) {
+        self.store = store
+    }
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        lock.withLock {
+            started = true
+            startContinuation?.resume()
+            startContinuation = nil
+        }
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                completionContinuation = continuation
+            }
+        }
+        return try store.recordStartedCodexRun(
+            taskID: taskID,
+            worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+            baseBranch: "main",
+            baseRef: "abc123",
+            codexThreadID: "thread-sending",
+            codexThreadURL: URL(string: "codex://threads/thread-sending")
+        )
+    }
+
+    func waitUntilStarted() async throws {
+        if lock.withLock({ started }) {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                startContinuation = continuation
+            }
+        }
+    }
+
+    func complete() {
+        lock.withLock {
+            completionContinuation?.resume()
+            completionContinuation = nil
+        }
     }
 }
 
