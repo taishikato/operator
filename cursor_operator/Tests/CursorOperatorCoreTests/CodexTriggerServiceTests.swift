@@ -109,6 +109,42 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .done)
 }
 
+@Test func codexTriggerRecordsProviderFailureAndMarksTaskFailed() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Failure",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let worktreeURL = URL(filePath: "/tmp/operator-worktree-failed")
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: worktreeURL, baseBranch: "main", baseRef: "abc123")
+    ])
+    let appServer = FakeCodexAppServerClient(results: [
+        .failure(CodexAppServerClientError.serverRejected(message: "body { token: secret }"))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .failed)
+    #expect(run.harness == .codex)
+    #expect(run.worktreePath == worktreeURL.path)
+    #expect(run.errorMessage == "Codex run failed. See Codex for details.")
+    #expect(try store.task(id: task.id)?.status == .failed)
+}
+
 private final class FakeCodexWorktreePreparer: CodexWorktreePreparing, @unchecked Sendable {
     private var preparedWorktrees: [PreparedWorktree]
     private(set) var repositories: [CursorRepository] = []

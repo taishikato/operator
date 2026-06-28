@@ -58,22 +58,33 @@ public struct CodexTriggerService: @unchecked Sendable {
 
         let appServerClient = try appServerClientFactory.makeAppServerClient()
         let preparedWorktree = try worktreePreparer.prepareWorktree(for: repository)
-        let startedThread = try await appServerClient.startThreadAndTurn(
-            CodexThreadStartRequest(
-                cwd: preparedWorktree.worktreeURL,
-                gitInfo: preparedWorktree.gitOriginURL.map {
-                    CodexThreadGitInfo(
-                        sha: preparedWorktree.baseRef,
-                        branch: preparedWorktree.baseBranch,
-                        originURL: $0
-                    )
-                },
-                model: CodexModel.fixed,
-                reasoningEffort: task.reasoningEffort,
-                prompt: task.prompt,
-                displayName: task.title
+        let startedThread: CodexStartedThread
+        do {
+            startedThread = try await appServerClient.startThreadAndTurn(
+                CodexThreadStartRequest(
+                    cwd: preparedWorktree.worktreeURL,
+                    gitInfo: preparedWorktree.gitOriginURL.map {
+                        CodexThreadGitInfo(
+                            sha: preparedWorktree.baseRef,
+                            branch: preparedWorktree.baseBranch,
+                            originURL: $0
+                        )
+                    },
+                    model: CodexModel.fixed,
+                    reasoningEffort: task.reasoningEffort,
+                    prompt: task.prompt,
+                    displayName: task.title
+                )
             )
-        )
+        } catch {
+            return try store.recordFailedCodexRun(
+                taskID: task.id,
+                worktreeURL: preparedWorktree.worktreeURL,
+                baseBranch: preparedWorktree.baseBranch,
+                baseRef: preparedWorktree.baseRef,
+                errorMessage: Self.shortErrorMessage(for: error)
+            )
+        }
 
         let run = try store.recordStartedCodexRun(
             taskID: task.id,
@@ -90,6 +101,32 @@ public struct CodexTriggerService: @unchecked Sendable {
             _ = try? store.completeStartedCodexRun(id: run.id)
         }
         return run
+    }
+
+    private static func shortErrorMessage(for error: Error) -> String {
+        let rawMessage: String
+        if let localizedError = error as? LocalizedError, let errorDescription = localizedError.errorDescription {
+            rawMessage = errorDescription
+        } else {
+            rawMessage = String(describing: error)
+        }
+
+        let collapsed = rawMessage
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !collapsed.isEmpty else {
+            return "Codex run failed."
+        }
+
+        let sensitiveMarkers = ["{", "body", "authorization", "bearer", "cookie", "token", "secret", "password", "api_key", "apikey"]
+        if sensitiveMarkers.contains(where: { collapsed.range(of: $0, options: .caseInsensitive) != nil }) {
+            return "Codex run failed. See Codex for details."
+        }
+        if collapsed.count > 160 {
+            return "\(collapsed.prefix(157))..."
+        }
+        return collapsed
     }
 }
 

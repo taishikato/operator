@@ -602,6 +602,48 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func recordFailedCodexRun(
+        id: UUID = UUID(),
+        taskID: UUID,
+        worktreeURL: URL,
+        baseBranch: String,
+        baseRef: String,
+        errorMessage: String,
+        now: Date = Date()
+    ) throws -> OperatorRun {
+        try dbQueue.write { db in
+            let task = try requiredTask(id: taskID, db: db)
+            let failedTask = try CursorTaskLifecyclePolicy.recordFailedSend(for: task, now: now)
+            try update(task: failedTask, db: db)
+
+            let run = OperatorRun(
+                id: id,
+                taskID: task.id,
+                repositoryID: task.repositoryID,
+                status: .failed,
+                repositoryURL: worktreeURL,
+                startingRef: baseRef,
+                model: CodexModel.fixed,
+                autoCreatePR: task.autoCreatePR,
+                prompt: task.prompt,
+                harness: .codex,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
+                cursorAgentID: nil,
+                cursorRunID: nil,
+                cursorURL: nil,
+                worktreePath: worktreeURL.path,
+                baseBranch: baseBranch,
+                baseRef: baseRef,
+                errorMessage: errorMessage,
+                createdAt: now,
+                completedAt: now
+            )
+            try insert(runAttempt: run, db: db)
+            return run
+        }
+    }
+
     public func completeStartedCodexRun(id: UUID, now: Date = Date()) throws -> OperatorRun {
         try dbQueue.write { db in
             let existingRun = try requiredRunAttempt(id: id, db: db)
