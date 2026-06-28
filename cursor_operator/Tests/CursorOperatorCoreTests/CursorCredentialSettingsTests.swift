@@ -31,6 +31,17 @@ import Testing
     #expect(status == .notFound)
 }
 
+@Test func operatorSettingsDefaultsHarnessToCursorAndPersistsCodex() throws {
+    let store = InMemoryOperatorSettingsStore()
+    let settings = OperatorSettingsManager(store: store)
+
+    #expect(settings.defaultHarness() == .cursor)
+
+    try settings.setDefaultHarness(.codex)
+
+    #expect(settings.defaultHarness() == .codex)
+}
+
 @Test func credentialProviderUsesEnvironmentFallbackWhenKeychainIsMissing() throws {
     let storage = InMemoryCursorCredentialStore()
     let provider = CursorCredentialProvider(
@@ -232,5 +243,17 @@ private struct StubCodexStatusRunner: CodexStatusRunning {
 
     func runCodexStatus(binaryURL: URL) async -> Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure> {
         result
+    }
+}
+
+private final class InMemoryOperatorSettingsStore: OperatorSettingsStoring, @unchecked Sendable {
+    private var storedDefaultHarness: String?
+
+    func defaultHarnessRawValue() -> String? {
+        storedDefaultHarness
+    }
+
+    func setDefaultHarnessRawValue(_ rawValue: String?) {
+        storedDefaultHarness = rawValue
     }
 }
