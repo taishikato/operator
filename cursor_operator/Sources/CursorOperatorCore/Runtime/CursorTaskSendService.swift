@@ -130,7 +130,8 @@ public struct CursorTaskSendService: Sendable {
             startingRef: request.startingRef,
             model: request.model,
             autoCreatePR: request.autoCreatePR,
-            prompt: request.prompt
+            prompt: request.prompt,
+            harness: .cursor
         )
 
         do {
