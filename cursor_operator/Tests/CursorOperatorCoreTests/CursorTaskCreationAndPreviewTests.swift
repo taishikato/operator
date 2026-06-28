@@ -75,6 +75,28 @@ import Testing
     #expect(task.harness == .codex)
 }
 
+@Test func codexTaskCreationStoresXHighReasoningEffort() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let draft = CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "Deep Codex pass",
+        prompt: "Use the highest supported Codex effort.",
+        reasoningEffort: .xhigh,
+        harness: .codex
+    )
+
+    let task = try draft.createTask(in: store)
+
+    #expect(task.reasoningEffort == .xhigh)
+    #expect(task.harness == .codex)
+}
+
 @Test func readyTaskCanBeEditedBeforeSending() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL())
     let repository = try store.createRepository(

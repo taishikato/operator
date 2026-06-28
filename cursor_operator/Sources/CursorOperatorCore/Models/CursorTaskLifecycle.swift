@@ -14,6 +14,7 @@ public enum CursorReasoningEffort: String, Codable, CaseIterable, Sendable {
     case low
     case medium
     case high
+    case xhigh
 }
 
 public enum CursorTaskStatus: String, Codable, CaseIterable, Sendable {
