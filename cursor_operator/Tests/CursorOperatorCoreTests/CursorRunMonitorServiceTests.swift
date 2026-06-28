@@ -71,6 +71,30 @@ import Testing
     #expect(failedCard.latestRun?.status == .failed)
 }
 
+@Test func runMonitorSanitizesTerminalFailedRunMessageBeforePersisting() async throws {
+    let fixture = try RunMonitorFixture()
+    let runtime = FakeRunMonitoringRuntime(completion: CursorCloudAgentRunCompletion(
+        status: "failed",
+        result: "HTTP 500 body {\"token\":\"crsr_secret_123\",\"detail\":\"raw response\"}"
+    ))
+    let service = CursorRunMonitorService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    let outcomes = try await service.resumeRunningTasks()
+
+    #expect(outcomes == [.failed(
+        taskID: fixture.task.id,
+        runID: "run-monitor",
+        message: "Cursor run failed. See Cursor for details."
+    )])
+    let failedRun = try #require(fixture.store.runs(taskID: fixture.task.id).last)
+    #expect(failedRun.errorMessage == "Cursor run failed. See Cursor for details.")
+    #expect(failedRun.errorMessage?.contains("crsr_secret_123") == false)
+}
+
 @Test func runMonitorFailedRunCanBeRecoveredAndRetried() async throws {
     let fixture = try RunMonitorFixture()
     let runtime = FakeRunMonitoringRuntime(completion: CursorCloudAgentRunCompletion(
