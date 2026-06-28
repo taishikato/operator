@@ -773,6 +773,47 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
+@Test func boardModelRefreshRecoversInterruptedCodexRuns() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Recover interrupted Codex",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let run = try store.recordStartedCodexRun(
+        taskID: task.id,
+        worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-recover",
+        codexThreadURL: URL(string: "codex://threads/thread-recover")
+    )
+    let recoverer = BoardModelFakeCodexRunRecoverer(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        codexRunRecoverer: recoverer
+    )
+
+    model.refreshReportingErrors()
+    try await waitUntil {
+        try store.task(id: task.id)?.status == .failed
+    }
+
+    #expect(recoverer.recoverCallCount == 1)
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .failed)
+    #expect(model.projection.columns.first { $0.id == CursorBoardColumnID.failed }?.cards.map(\.id) == [task.id])
+}
+
+@MainActor
 @Test func boardModelIgnoresDuplicateSendReportsWhileTaskIsAlreadySending() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
@@ -990,6 +1031,33 @@ private final class BoardModelFakeCodexAppOpener: CodexAppOpening, @unchecked Se
 
     func open(_ target: CodexOpenTarget) throws {
         targets.append(target)
+    }
+}
+
+private final class BoardModelFakeCodexRunRecoverer: CodexRunRecovering, @unchecked Sendable {
+    let store: CursorOperatorStore
+    private let lock = NSLock()
+    private var recoverCalls = 0
+
+    init(store: CursorOperatorStore) {
+        self.store = store
+    }
+
+    var recoverCallCount: Int {
+        lock.withLock { recoverCalls }
+    }
+
+    func recoverInterruptedRuns() async {
+        lock.withLock {
+            recoverCalls += 1
+        }
+        guard let run = try? store.runningCodexRuns().first else {
+            return
+        }
+        _ = try? store.failStartedCodexRun(
+            id: run.id,
+            errorMessage: "Codex run was interrupted before the initial turn completed."
+        )
     }
 }
 

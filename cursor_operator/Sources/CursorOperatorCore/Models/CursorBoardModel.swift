@@ -23,6 +23,7 @@ public final class CursorBoardModel: ObservableObject {
     private let externalOpener: any CursorExternalOpening
     private let codexAppOpener: any CodexAppOpening
     private let codexTaskSender: (any CodexTaskSending)?
+    private let codexRunRecoverer: (any CodexRunRecovering)?
     private var cachedNodeState: CursorNodeSetupState?
     private var codexStatus: CodexStatus
 
@@ -37,7 +38,8 @@ public final class CursorBoardModel: ObservableObject {
         runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
         externalOpener: any CursorExternalOpening = SystemCursorExternalOpener(),
         codexAppOpener: any CodexAppOpening = OSCodexAppOpener(),
-        codexTaskSender: (any CodexTaskSending)? = nil
+        codexTaskSender: (any CodexTaskSending)? = nil,
+        codexRunRecoverer: (any CodexRunRecovering)? = nil
     ) {
         self.store = store
         self.credentialProvider = credentialProvider
@@ -49,6 +51,7 @@ public final class CursorBoardModel: ObservableObject {
         self.externalOpener = externalOpener
         self.codexAppOpener = codexAppOpener
         self.codexTaskSender = codexTaskSender
+        self.codexRunRecoverer = codexRunRecoverer
         codexStatus = .notChecked
         repositoryRegistrationService = CursorRepositoryRegistrationService(
             store: store,
@@ -214,6 +217,10 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     private func productionCodexTaskSender() -> any CodexTaskSending {
+        productionCodexTriggerService()
+    }
+
+    private func productionCodexTriggerService() -> CodexTriggerService {
         CodexTriggerService(
             store: store,
             worktreePreparer: WorktreePreparer(),
@@ -305,6 +312,7 @@ public final class CursorBoardModel: ObservableObject {
     /// the same work performed when the board first appears.
     public func refreshReportingErrors() {
         loadReportingErrors()
+        recoverInterruptedCodexRunsReportingErrors()
         resumeRunMonitoringReportingErrors()
     }
 
@@ -385,6 +393,14 @@ public final class CursorBoardModel: ObservableObject {
             } catch {
                 errorMessage = Self.userFacingMessage(for: error)
             }
+        }
+    }
+
+    public func recoverInterruptedCodexRunsReportingErrors() {
+        Task {
+            let recoverer = codexRunRecoverer ?? productionCodexTriggerService()
+            await recoverer.recoverInterruptedRuns()
+            loadReportingErrors()
         }
     }
 

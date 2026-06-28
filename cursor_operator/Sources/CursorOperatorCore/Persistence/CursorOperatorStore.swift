@@ -739,6 +739,17 @@ public final class CursorOperatorStore: @unchecked Sendable {
         try runs(taskID: taskID)
     }
 
+    public func runningCodexRuns() throws -> [OperatorRun] {
+        try dbQueue.read { db in
+            try Row.fetchAll(
+                db,
+                sql: "SELECT * FROM runs WHERE harness = ? AND status = ? ORDER BY createdAt, id",
+                arguments: [CursorHarness.codex.rawValue, CursorRunAttemptStatus.running.rawValue]
+            )
+            .map(Self.runAttempt(from:))
+        }
+    }
+
     private func updateTask(
         id: UUID,
         transform: (CursorTask) throws -> CursorTask

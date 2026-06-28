@@ -8,6 +8,10 @@ public protocol CodexTaskSending: Sendable {
     func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun
 }
 
+public protocol CodexRunRecovering: Sendable {
+    func recoverInterruptedRuns() async
+}
+
 public enum CodexTriggerError: Error, Equatable, LocalizedError, Sendable {
     case repositoryNotFound
     case unsupportedHarness(CursorHarness)
@@ -135,6 +139,21 @@ public struct CodexTriggerService: @unchecked Sendable {
         return run
     }
 
+    public func recoverInterruptedRuns() async {
+        guard let runs = try? store.runningCodexRuns() else {
+            return
+        }
+        for run in runs {
+            if let threadVisibility, let threadID = run.codexThreadID {
+                _ = await threadVisibility.revealThread(id: threadID)
+            }
+            _ = try? store.failStartedCodexRun(
+                id: run.id,
+                errorMessage: "Codex run was interrupted before the initial turn completed."
+            )
+        }
+    }
+
     private static func shortErrorMessage(for error: Error) -> String {
         let rawMessage: String
         if let localizedError = error as? LocalizedError, let errorDescription = localizedError.errorDescription {
@@ -175,6 +194,8 @@ private struct FixedCodexAppServerClientFactory: CodexAppServerClientFactory {
 }
 
 extension CodexTriggerService: CodexTaskSending {}
+
+extension CodexTriggerService: CodexRunRecovering {}
 
 public final class ConfiguredCodexAppServerClientFactory: CodexAppServerClientFactory, @unchecked Sendable {
     private let settings: any CodexBinarySettingsProviding

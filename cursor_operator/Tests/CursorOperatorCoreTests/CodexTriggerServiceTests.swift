@@ -268,6 +268,40 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .done)
 }
 
+@Test func codexTriggerRecoversInterruptedRunningRunsAsFailedAndRevealsThreads() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Interrupted", prompt: "Prompt", harness: .codex)
+    let run = try store.recordStartedCodexRun(
+        taskID: task.id,
+        worktreeURL: URL(filePath: "/tmp/operator-worktree-interrupted"),
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-interrupted",
+        codexThreadURL: URL(string: "codex://threads/thread-interrupted")
+    )
+    let visibility = FakeThreadVisibilityController()
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: FakeCodexWorktreePreparer(preparedWorktrees: []),
+        appServerClient: FakeCodexAppServerClient(results: []),
+        threadVisibility: visibility
+    )
+
+    await service.recoverInterruptedRuns()
+
+    #expect(visibility.revealCalls == ["thread-interrupted"])
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .failed)
+    #expect(try store.runs(taskID: task.id).first?.errorMessage == "Codex run was interrupted before the initial turn completed.")
+    #expect(try store.task(id: task.id)?.status == .failed)
+}
+
 private final class FakeCodexWorktreePreparer: CodexWorktreePreparing, @unchecked Sendable {
     private var preparedWorktrees: [PreparedWorktree]
     private(set) var repositories: [CursorRepository] = []
