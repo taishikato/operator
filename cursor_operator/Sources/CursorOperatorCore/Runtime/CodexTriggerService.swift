@@ -122,6 +122,11 @@ public struct CodexTriggerService: @unchecked Sendable {
                 case .succeeded:
                     if (try? store.completeStartedCodexRun(id: run.id)) != nil {
                         NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
+                    } else if (try? store.failStartedCodexRun(
+                        id: run.id,
+                        errorMessage: "Codex run could not be marked complete."
+                    )) != nil {
+                        NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
                     }
                 case let .failed(message):
                     if (try? store.failStartedCodexRun(

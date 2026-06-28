@@ -233,6 +233,44 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .failed)
 }
 
+@Test func codexTriggerFailsRunWhenCompletionCannotMarkTaskDone() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Archived before completion", prompt: "Prompt", harness: .codex)
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-archived"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-archived", url: nil),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+    _ = try store.archiveTask(id: task.id)
+    await turnCompletion.complete()
+    await waitUntil {
+        ((try? store.runs(taskID: task.id).first?.status) ?? nil) == .failed
+    }
+
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .failed)
+    #expect(try store.runs(taskID: task.id).first?.errorMessage == "Codex run could not be marked complete.")
+    #expect(try store.task(id: task.id)?.status == .archived)
+}
+
 @Test func codexTriggerRecordsProviderFailureAndMarksTaskFailed() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(

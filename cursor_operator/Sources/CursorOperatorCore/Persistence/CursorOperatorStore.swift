@@ -691,8 +691,10 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 throw CursorTaskLifecycleError.transitionNotAllowed
             }
             let task = try requiredTask(id: existingRun.taskID, db: db)
-            let updatedTask = try CursorTaskLifecyclePolicy.markFailed(task, now: now)
-            try update(task: updatedTask, db: db)
+            if task.status == .running {
+                let updatedTask = try CursorTaskLifecyclePolicy.markFailed(task, now: now)
+                try update(task: updatedTask, db: db)
+            }
 
             let failedRun = OperatorRun(
                 id: existingRun.id,
