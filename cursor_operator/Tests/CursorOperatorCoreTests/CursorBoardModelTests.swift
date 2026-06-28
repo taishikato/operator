@@ -182,6 +182,34 @@ import Testing
 }
 
 @MainActor
+@Test func boardProjectionSurfacesCursorHarnessBadgeFromLatestRun() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Cursor run", prompt: "Prompt")
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        cursorAgentID: "agent-badge",
+        cursorRunID: "run-badge",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-badge")!
+    )
+
+    let projection = try CursorBoardProjection.load(from: store)
+    let card = try #require(projection.columns.first { $0.id == .running }?.cards.first)
+
+    #expect(card.harnessBadgeText == "Cursor")
+}
+
+@MainActor
 @Test func boardModelOpensCursorURLAndCopiesRunIDFallback() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(

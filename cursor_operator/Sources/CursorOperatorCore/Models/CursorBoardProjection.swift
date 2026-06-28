@@ -110,6 +110,10 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
         hasCursorReference
     }
 
+    public var harnessBadgeText: String? {
+        latestRun?.harness.badgeText
+    }
+
     public var runStatusText: String? {
         switch status {
         case .ready:
@@ -122,6 +126,19 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
             "Run complete"
         case .archived:
             nil
+        }
+    }
+}
+
+private extension CursorHarness {
+    var badgeText: String {
+        switch self {
+        case .cursor:
+            "Cursor"
+        case .codex:
+            "Codex"
+        case .claudeCode:
+            "Claude Code"
         }
     }
 }
