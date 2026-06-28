@@ -4,6 +4,10 @@ public enum CursorModel {
     public static let fixed = "composer-2.5"
 }
 
+public enum CodexModel {
+    public static let fixed = "gpt-5.5"
+}
+
 public enum CursorHarness: String, Codable, CaseIterable, Sendable {
     case cursor
     case codex

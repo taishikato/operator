@@ -143,7 +143,7 @@ import Testing
         autoCreatePR: true,
         reasoningEffort: .high,
         useFastModel: true,
-        harness: .codex
+        harness: .cursor
     )
 
     let preview = try CursorSendPreview(task: task, repository: repository)
@@ -155,8 +155,37 @@ import Testing
     #expect(preview.autoCreatePR)
     #expect(preview.reasoningEffort == .high)
     #expect(preview.useFastModel)
-    #expect(preview.harness == .codex)
+    #expect(preview.harness == .cursor)
     #expect(preview.prompt == prompt)
+}
+
+@Test func codexSendPreviewUsesCodexModelAndIgnoresCursorOnlyFields() throws {
+    let repository = CursorRepository(
+        id: UUID(),
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "trunk",
+        createdAt: Date(),
+        updatedAt: Date()
+    )
+    let task = CursorTask.new(
+        repositoryID: repository.id,
+        title: "Codex Preview",
+        prompt: "Codex should not receive Cursor-only settings.",
+        autoCreatePR: true,
+        reasoningEffort: .xhigh,
+        useFastModel: true,
+        harness: .codex
+    )
+
+    let preview = try CursorSendPreview(task: task, repository: repository)
+
+    #expect(preview.model == CodexModel.fixed)
+    #expect(preview.autoCreatePR == false)
+    #expect(preview.useFastModel == false)
+    #expect(preview.reasoningEffort == .xhigh)
+    #expect(preview.harness == .codex)
 }
 
 private func temporaryTaskCreationDatabaseURL() throws -> URL {

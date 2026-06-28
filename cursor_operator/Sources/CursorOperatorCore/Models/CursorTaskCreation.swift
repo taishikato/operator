@@ -82,10 +82,10 @@ public struct CursorSendPreview: Equatable, Sendable {
         agentName = trimmedTitle.isEmpty ? "Operator Task" : trimmedTitle
         repositoryURL = repository.githubURL
         startingRef = repository.defaultBranch
-        model = CursorModel.fixed
-        autoCreatePR = task.autoCreatePR
+        model = task.harness == .codex ? CodexModel.fixed : CursorModel.fixed
+        autoCreatePR = task.harness == .codex ? false : task.autoCreatePR
         reasoningEffort = task.reasoningEffort
-        useFastModel = task.useFastModel
+        useFastModel = task.harness == .codex ? false : task.useFastModel
         harness = task.harness
         prompt = task.prompt
     }
