@@ -740,6 +740,39 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
+@Test func boardModelDoesNotResumeCursorMonitoringAfterCodexSend() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Send Codex without Cursor key",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let codexSender = BoardModelFakeCodexSender(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        codexTaskSender: codexSender
+    )
+    try model.load()
+
+    model.sendReportingErrors(taskID: task.id)
+    try await waitUntil {
+        try store.task(id: task.id)?.status == .running && !model.isSending(taskID: task.id)
+    }
+    try await Task.sleep(nanoseconds: 50_000_000)
+
+    #expect(codexSender.sentTaskIDs == [task.id])
+    #expect(model.errorMessage == nil)
+}
+
+@MainActor
 @Test func boardModelIgnoresDuplicateSendReportsWhileTaskIsAlreadySending() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
