@@ -183,6 +183,27 @@ import CursorOperatorCore
     }
 }
 
+@Test func taskRecoverMovesFailedTaskBackToReady() throws {
+    let store = try temporaryStore()
+    let repository = try makeRepository(in: store, name: "operator")
+    let task = try store.createTask(repositoryID: repository.id, title: "Recover me", prompt: "P")
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "boom"
+    )
+    let commands = CursorOperatorCLICommands(store: store)
+
+    let recovered = try commands.recoverTask(id: task.id.uuidString)
+
+    #expect(recovered.status == "ready")
+    #expect(try store.task(id: task.id)?.status == .ready)
+}
+
 // MARK: - run list/send
 
 @Test func runListReturnsAttemptsForTaskWithStableNullFields() throws {
@@ -260,7 +281,7 @@ import CursorOperatorCore
     #expect(try store.task(id: task.id)?.status == .running)
 }
 
-@Test func sendFailureIsReturnedForCursorRuntimeFailuresAndTaskStaysReady() async throws {
+@Test func sendFailureIsReturnedForCursorRuntimeFailuresAndTaskMovesFailed() async throws {
     let store = try temporaryStore()
     let repository = try makeRepository(in: store, name: "operator")
     let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "P")
@@ -274,7 +295,7 @@ import CursorOperatorCore
         _ = try await commands.sendTask(id: task.id.uuidString, wait: false)
     }
 
-    #expect(try store.task(id: task.id)?.status == .ready)
+    #expect(try store.task(id: task.id)?.status == .failed)
 }
 
 @Test func failuresMapToTheDocumentedExitCodesAndCodes() {

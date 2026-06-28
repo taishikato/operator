@@ -224,6 +224,11 @@ public struct CursorOperatorCLICommands: Sendable {
         return CursorCLITask(try store.archiveTask(id: task.id))
     }
 
+    public func recoverTask(id: String) throws -> CursorCLITask {
+        let task = try resolveTask(id)
+        return CursorCLITask(try store.recoverTaskForRetry(id: task.id))
+    }
+
     public func listRuns(taskID: String) throws -> [CursorCLIRunAttempt] {
         let task = try resolveTask(taskID)
         return try store.runAttempts(taskID: task.id).map(CursorCLIRunAttempt.init)

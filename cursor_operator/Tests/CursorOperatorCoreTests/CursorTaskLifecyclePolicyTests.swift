@@ -26,10 +26,10 @@ import Testing
     #expect(archivedTask.status == .archived)
 }
 
-@Test func failedSendLeavesTaskReady() throws {
+@Test func failedSendMovesTaskToFailed() throws {
     let failedTask = try CursorTaskLifecyclePolicy.recordFailedSend(for: readyTask())
 
-    #expect(failedTask.status == .ready)
+    #expect(failedTask.status == .failed)
 }
 
 @Test func lifecycleAllowsRunningToFailedToArchived() throws {
@@ -39,6 +39,18 @@ import Testing
 
     let archivedTask = try CursorTaskLifecyclePolicy.archive(failedTask)
     #expect(archivedTask.status == .archived)
+}
+
+@Test func lifecycleAllowsFailedRecoveryForRetryOnly() throws {
+    let recoveredTask = try CursorTaskLifecyclePolicy.recoverForRetry(task(status: .failed))
+    #expect(recoveredTask.status == .ready)
+
+    #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
+        try CursorTaskLifecyclePolicy.recoverForRetry(task(status: .done))
+    }
+    #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
+        try CursorTaskLifecyclePolicy.recoverForRetry(task(status: .archived))
+    }
 }
 
 @Test func onlyReadyTasksAreEditable() {

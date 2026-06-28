@@ -11,13 +11,15 @@ public struct CursorRepository: Equatable, Identifiable, Sendable {
     public let updatedAt: Date
 }
 
-public enum CursorRunAttemptStatus: String, Codable, CaseIterable, Sendable {
+public enum OperatorRunStatus: String, Codable, CaseIterable, Sendable {
     case pending
     case failed
     case succeeded
 }
 
-public struct CursorRunAttempt: Equatable, Identifiable, Sendable {
+public typealias CursorRunAttemptStatus = OperatorRunStatus
+
+public struct OperatorRun: Equatable, Identifiable, Sendable {
     public let id: UUID
     public let taskID: UUID
     public let repositoryID: UUID
@@ -27,6 +29,9 @@ public struct CursorRunAttempt: Equatable, Identifiable, Sendable {
     public let model: String
     public let autoCreatePR: Bool
     public let prompt: String
+    public let harness: CursorHarness
+    public let reasoningEffort: CursorReasoningEffort
+    public let useFastModel: Bool
     public let cursorAgentID: String?
     public let cursorRunID: String?
     public let cursorURL: URL?
@@ -34,6 +39,8 @@ public struct CursorRunAttempt: Equatable, Identifiable, Sendable {
     public let createdAt: Date
     public let completedAt: Date
 }
+
+public typealias CursorRunAttempt = OperatorRun
 
 public enum CursorOperatorStoreError: Error, Equatable, LocalizedError, Sendable {
     case repositoryNotFound
@@ -227,6 +234,12 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func recoverTaskForRetry(id: UUID, now: Date = Date()) throws -> CursorTask {
+        try updateTask(id: id) { task in
+            try CursorTaskLifecyclePolicy.recoverForRetry(task, now: now)
+        }
+    }
+
     public func recordFailedSendAttempt(
         id: UUID = UUID(),
         taskID: UUID,
@@ -237,10 +250,11 @@ public final class CursorOperatorStore: @unchecked Sendable {
         prompt: String,
         errorMessage: String,
         now: Date = Date()
-    ) throws -> CursorRunAttempt {
+    ) throws -> OperatorRun {
         try dbQueue.write { db in
             let task = try CursorTaskLifecyclePolicy.recordFailedSend(for: requiredTask(id: taskID, db: db))
-            let attempt = CursorRunAttempt(
+            try update(task: task, db: db)
+            let attempt = OperatorRun(
                 id: id,
                 taskID: task.id,
                 repositoryID: task.repositoryID,
@@ -250,6 +264,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: model,
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
+                harness: task.harness,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
                 cursorAgentID: nil,
                 cursorRunID: nil,
                 cursorURL: nil,
@@ -272,7 +289,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         prompt: String,
         now: Date = Date(),
         stalePendingAge: TimeInterval = 10 * 60
-    ) throws -> CursorRunAttempt {
+    ) throws -> OperatorRun {
         try dbQueue.write { db in
             let task = try requiredTask(id: taskID, db: db)
             _ = try CursorTaskLifecyclePolicy.recordFailedSend(for: task)
@@ -286,7 +303,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 throw CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun
             }
 
-            let attempt = CursorRunAttempt(
+            let attempt = OperatorRun(
                 id: id,
                 taskID: task.id,
                 repositoryID: task.repositoryID,
@@ -296,6 +313,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: model,
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
+                harness: task.harness,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
                 cursorAgentID: nil,
                 cursorRunID: nil,
                 cursorURL: nil,
@@ -314,7 +334,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         cursorRunID: String,
         cursorURL: URL?,
         now: Date = Date()
-    ) throws -> CursorRunAttempt {
+    ) throws -> OperatorRun {
         try dbQueue.write { db in
             let pendingAttempt = try requiredRunAttempt(id: id, db: db)
             guard pendingAttempt.status == .pending else {
@@ -324,7 +344,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
             let updatedTask = try CursorTaskLifecyclePolicy.recordSuccessfulSend(for: task, now: now)
             try update(task: updatedTask, db: db)
 
-            let attempt = CursorRunAttempt(
+            let attempt = OperatorRun(
                 id: pendingAttempt.id,
                 taskID: pendingAttempt.taskID,
                 repositoryID: pendingAttempt.repositoryID,
@@ -334,6 +354,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: pendingAttempt.model,
                 autoCreatePR: pendingAttempt.autoCreatePR,
                 prompt: pendingAttempt.prompt,
+                harness: pendingAttempt.harness,
+                reasoningEffort: pendingAttempt.reasoningEffort,
+                useFastModel: pendingAttempt.useFastModel,
                 cursorAgentID: cursorAgentID,
                 cursorRunID: cursorRunID,
                 cursorURL: cursorURL,
@@ -351,23 +374,26 @@ public final class CursorOperatorStore: @unchecked Sendable {
         runID: String,
         errorMessage: String,
         now: Date = Date()
-    ) throws -> CursorRunAttempt {
+    ) throws -> OperatorRun {
         try dbQueue.write { db in
             let task = try requiredTask(id: taskID, db: db)
             let updatedTask = try CursorTaskLifecyclePolicy.markFailed(task, now: now)
             try update(task: updatedTask, db: db)
 
             let existingAttempt = try requiredSuccessfulRunAttempt(taskID: taskID, runID: runID, db: db)
-            let attempt = CursorRunAttempt(
+            let attempt = OperatorRun(
                 id: existingAttempt.id,
                 taskID: existingAttempt.taskID,
                 repositoryID: existingAttempt.repositoryID,
-                status: existingAttempt.status,
+                status: .failed,
                 repositoryURL: existingAttempt.repositoryURL,
                 startingRef: existingAttempt.startingRef,
                 model: existingAttempt.model,
                 autoCreatePR: existingAttempt.autoCreatePR,
                 prompt: existingAttempt.prompt,
+                harness: existingAttempt.harness,
+                reasoningEffort: existingAttempt.reasoningEffort,
+                useFastModel: existingAttempt.useFastModel,
                 cursorAgentID: existingAttempt.cursorAgentID,
                 cursorRunID: existingAttempt.cursorRunID,
                 cursorURL: existingAttempt.cursorURL,
@@ -387,14 +413,19 @@ public final class CursorOperatorStore: @unchecked Sendable {
         cursorURL: URL? = nil,
         errorMessage: String,
         now: Date = Date()
-    ) throws -> CursorRunAttempt {
+    ) throws -> OperatorRun {
         try dbQueue.write { db in
             let pendingAttempt = try requiredRunAttempt(id: id, db: db)
             guard pendingAttempt.status == .pending else {
                 throw CursorTaskLifecycleError.transitionNotAllowed
             }
+            let task = try requiredTask(id: pendingAttempt.taskID, db: db)
+            if task.status == .ready {
+                let updatedTask = try CursorTaskLifecyclePolicy.recordFailedSend(for: task, now: now)
+                try update(task: updatedTask, db: db)
+            }
 
-            let attempt = CursorRunAttempt(
+            let attempt = OperatorRun(
                 id: pendingAttempt.id,
                 taskID: pendingAttempt.taskID,
                 repositoryID: pendingAttempt.repositoryID,
@@ -404,6 +435,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: pendingAttempt.model,
                 autoCreatePR: pendingAttempt.autoCreatePR,
                 prompt: pendingAttempt.prompt,
+                harness: pendingAttempt.harness,
+                reasoningEffort: pendingAttempt.reasoningEffort,
+                useFastModel: pendingAttempt.useFastModel,
                 cursorAgentID: cursorAgentID,
                 cursorRunID: cursorRunID,
                 cursorURL: cursorURL,
@@ -428,7 +462,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         cursorRunID: String,
         cursorURL: URL?,
         now: Date = Date()
-    ) throws -> CursorRunAttempt {
+    ) throws -> OperatorRun {
         try dbQueue.write { db in
             let task = try requiredTask(id: taskID, db: db)
             guard try successfulRunAttemptCount(taskID: task.id, db: db) == 0 else {
@@ -438,7 +472,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
             let updatedTask = try CursorTaskLifecyclePolicy.recordSuccessfulSend(for: task, now: now)
             try update(task: updatedTask, db: db)
 
-            let attempt = CursorRunAttempt(
+            let attempt = OperatorRun(
                 id: id,
                 taskID: task.id,
                 repositoryID: task.repositoryID,
@@ -448,6 +482,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: model,
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
+                harness: task.harness,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
                 cursorAgentID: cursorAgentID,
                 cursorRunID: cursorRunID,
                 cursorURL: cursorURL,
@@ -460,15 +497,19 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
-    public func runAttempts(taskID: UUID) throws -> [CursorRunAttempt] {
+    public func runs(taskID: UUID) throws -> [OperatorRun] {
         try dbQueue.read { db in
             try Row.fetchAll(
                 db,
-                sql: "SELECT * FROM runAttempts WHERE taskID = ? ORDER BY createdAt, id",
+                sql: "SELECT * FROM runs WHERE taskID = ? ORDER BY createdAt, id",
                 arguments: [taskID.uuidString]
             )
             .map(Self.runAttempt(from:))
         }
+    }
+
+    public func runAttempts(taskID: UUID) throws -> [CursorRunAttempt] {
+        try runs(taskID: taskID)
     }
 
     private func updateTask(
@@ -502,17 +543,17 @@ public final class CursorOperatorStore: @unchecked Sendable {
         return try Self.task(from: row)
     }
 
-    private func requiredRunAttempt(id: UUID, db: Database) throws -> CursorRunAttempt {
-        guard let row = try Row.fetchOne(db, sql: "SELECT * FROM runAttempts WHERE id = ?", arguments: [id.uuidString]) else {
+    private func requiredRunAttempt(id: UUID, db: Database) throws -> OperatorRun {
+        guard let row = try Row.fetchOne(db, sql: "SELECT * FROM runs WHERE id = ?", arguments: [id.uuidString]) else {
             throw CursorOperatorStoreError.taskNotFound
         }
         return try Self.runAttempt(from: row)
     }
 
-    private func requiredSuccessfulRunAttempt(taskID: UUID, runID: String, db: Database) throws -> CursorRunAttempt {
+    private func requiredSuccessfulRunAttempt(taskID: UUID, runID: String, db: Database) throws -> OperatorRun {
         guard let row = try Row.fetchOne(
             db,
-            sql: "SELECT * FROM runAttempts WHERE taskID = ? AND cursorRunID = ? AND status = ?",
+            sql: "SELECT * FROM runs WHERE taskID = ? AND cursorRunID = ? AND status = ?",
             arguments: [taskID.uuidString, runID, CursorRunAttemptStatus.succeeded.rawValue]
         ) else {
             throw CursorOperatorStoreError.taskNotFound
@@ -523,7 +564,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
     private func successfulRunAttemptCount(taskID: UUID, db: Database) throws -> Int {
         try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM runAttempts WHERE taskID = ? AND status = ?",
+            sql: "SELECT COUNT(*) FROM runs WHERE taskID = ? AND status = ?",
             arguments: [taskID.uuidString, CursorRunAttemptStatus.succeeded.rawValue]
         ) ?? 0
     }
@@ -531,7 +572,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
     private func activeRunAttemptCount(taskID: UUID, db: Database) throws -> Int {
         try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM runAttempts WHERE taskID = ? AND status IN (?, ?)",
+            sql: "SELECT COUNT(*) FROM runs WHERE taskID = ? AND status IN (?, ?)",
             arguments: [
                 taskID.uuidString,
                 CursorRunAttemptStatus.pending.rawValue,
@@ -548,7 +589,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
     ) throws {
         try db.execute(
             sql: """
-                UPDATE runAttempts
+                UPDATE runs
                 SET status = ?, errorMessage = ?, completedAt = ?
                 WHERE taskID = ? AND status = ? AND createdAt < ?
                 """,
@@ -610,14 +651,15 @@ public final class CursorOperatorStore: @unchecked Sendable {
         )
     }
 
-    private func insert(runAttempt: CursorRunAttempt, db: Database) throws {
+    private func insert(runAttempt: OperatorRun, db: Database) throws {
         try db.execute(
             sql: """
-                INSERT INTO runAttempts (
+                INSERT INTO runs (
                     id, taskID, repositoryID, status, repositoryURL, startingRef, model,
-                    autoCreatePR, prompt, cursorAgentID, cursorRunID, cursorURL, errorMessage, createdAt, completedAt
+                    autoCreatePR, prompt, harness, reasoningEffort, useFastModel,
+                    cursorAgentID, cursorRunID, cursorURL, errorMessage, createdAt, completedAt
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 runAttempt.id.uuidString,
@@ -629,6 +671,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 runAttempt.model,
                 runAttempt.autoCreatePR,
                 runAttempt.prompt,
+                runAttempt.harness.rawValue,
+                runAttempt.reasoningEffort.rawValue,
+                runAttempt.useFastModel,
                 runAttempt.cursorAgentID,
                 runAttempt.cursorRunID,
                 runAttempt.cursorURL?.absoluteString,
@@ -639,10 +684,10 @@ public final class CursorOperatorStore: @unchecked Sendable {
         )
     }
 
-    private func update(runAttempt: CursorRunAttempt, db: Database) throws {
+    private func update(runAttempt: OperatorRun, db: Database) throws {
         try db.execute(
             sql: """
-                UPDATE runAttempts
+                UPDATE runs
                 SET status = ?, cursorAgentID = ?, cursorRunID = ?, cursorURL = ?, errorMessage = ?, completedAt = ?
                 WHERE id = ?
                 """,
@@ -734,6 +779,22 @@ extension CursorOperatorStore {
             }
         }
 
+        migrator.registerMigration("addRunAttemptHarnessConfigurationSnapshot") { db in
+            try db.alter(table: "runAttempts") { table in
+                table.add(column: "harness", .text)
+                    .notNull()
+                    .defaults(to: CursorHarness.cursor.rawValue)
+                table.add(column: "reasoningEffort", .text)
+                    .notNull()
+                    .defaults(to: CursorReasoningEffort.medium.rawValue)
+                table.add(column: "useFastModel", .boolean).notNull().defaults(to: false)
+            }
+        }
+
+        migrator.registerMigration("renameRunAttemptsToRuns") { db in
+            try db.execute(sql: "ALTER TABLE runAttempts RENAME TO runs")
+        }
+
         return migrator
     }
 
@@ -779,16 +840,22 @@ extension CursorOperatorStore {
         )
     }
 
-    private static func runAttempt(from row: Row) throws -> CursorRunAttempt {
+    private static func runAttempt(from row: Row) throws -> OperatorRun {
         guard let status = CursorRunAttemptStatus(rawValue: row["status"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("status")
+        }
+        guard let harness = CursorHarness(rawValue: row["harness"]) else {
+            throw CursorOperatorStoreError.invalidStoredValue("harness")
+        }
+        guard let reasoningEffort = CursorReasoningEffort(rawValue: row["reasoningEffort"]) else {
+            throw CursorOperatorStoreError.invalidStoredValue("reasoningEffort")
         }
         guard let repositoryURL = URL(string: row["repositoryURL"]) else {
             throw CursorOperatorStoreError.invalidStoredValue("repositoryURL")
         }
         let cursorURLString: String? = row["cursorURL"]
 
-        return CursorRunAttempt(
+        return OperatorRun(
             id: try uuid(row["id"]),
             taskID: try uuid(row["taskID"]),
             repositoryID: try uuid(row["repositoryID"]),
@@ -798,6 +865,9 @@ extension CursorOperatorStore {
             model: row["model"],
             autoCreatePR: row["autoCreatePR"],
             prompt: row["prompt"],
+            harness: harness,
+            reasoningEffort: reasoningEffort,
+            useFastModel: row["useFastModel"],
             cursorAgentID: row["cursorAgentID"],
             cursorRunID: row["cursorRunID"],
             cursorURL: cursorURLString.flatMap(URL.init(string:)),

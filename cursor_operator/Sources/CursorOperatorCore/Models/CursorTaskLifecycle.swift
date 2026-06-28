@@ -93,12 +93,12 @@ public enum CursorTaskLifecyclePolicy {
         return task.with(status: .running, now: now)
     }
 
-    public static func recordFailedSend(for task: CursorTask) throws -> CursorTask {
+    public static func recordFailedSend(for task: CursorTask, now: Date = Date()) throws -> CursorTask {
         guard task.status == .ready else {
             throw CursorTaskLifecycleError.transitionNotAllowed
         }
 
-        return task
+        return task.with(status: .failed, now: now)
     }
 
     public static func markDone(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
@@ -115,6 +115,14 @@ public enum CursorTaskLifecyclePolicy {
         }
 
         return task.with(status: .failed, now: now)
+    }
+
+    public static func recoverForRetry(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
+        guard task.status == .failed else {
+            throw CursorTaskLifecycleError.transitionNotAllowed
+        }
+
+        return task.with(status: .ready, now: now)
     }
 
     public static func archive(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
