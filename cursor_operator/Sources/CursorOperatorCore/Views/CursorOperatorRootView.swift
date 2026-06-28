@@ -441,6 +441,8 @@ private struct CursorBoardView: View {
                                     model.openInCursorReportingErrors(taskID: card.id)
                                 } markDone: {
                                     model.markDoneReportingErrors(taskID: card.id)
+                                } recover: {
+                                    model.recoverForRetryReportingErrors(taskID: card.id)
                                 } archive: {
                                     model.archiveReportingErrors(taskID: card.id)
                                 }
@@ -612,6 +614,7 @@ private struct CursorTaskCardView: View {
     let edit: () -> Void
     let openInCursor: () -> Void
     let markDone: () -> Void
+    let recover: () -> Void
     let archive: () -> Void
     @Environment(\.cursorOperatorSendDisabled) private var sendDisabled
     @Environment(\.cursorOperatorSendDisabledReason) private var sendDisabledReason
@@ -660,6 +663,11 @@ private struct CursorTaskCardView: View {
                     Button("Open in Cursor", action: openInCursor)
                         .buttonStyle(CursorGhostButtonStyle())
                         .help("Cursor hides SDK agents from the default sidebar. In Cursor, enable Filter > Source > SDK to show Operator runs in the list.")
+                }
+                if card.status == .failed {
+                    Button("Recover", action: recover)
+                        .buttonStyle(CursorGhostButtonStyle())
+                        .help("Move back to Ready for retry.")
                 }
                 if card.status != .archived {
                     Button("Archive", action: archive)
@@ -884,6 +892,7 @@ private struct CursorArchivedView: View {
                             } openInCursor: {
                                 model.openInCursorReportingErrors(taskID: card.id)
                             } markDone: {
+                            } recover: {
                             } archive: {
                             }
                         }

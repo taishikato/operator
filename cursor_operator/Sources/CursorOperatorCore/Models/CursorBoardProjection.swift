@@ -21,7 +21,9 @@ public struct CursorBoardProjection: Equatable, Sendable {
                     cursorURL: successfulAttempt.cursorURL
                 )
             }
-            if let failedAttempt = attempts.last(where: { $0.errorMessage != nil }),
+            if task.status == .failed,
+               let failedAttempt = attempts.last,
+               failedAttempt.status == .failed,
                let errorMessage = failedAttempt.errorMessage {
                 failedSendMessagesByTaskID[task.id] = errorMessage
             }

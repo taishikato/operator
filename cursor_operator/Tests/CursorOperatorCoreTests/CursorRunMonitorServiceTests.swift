@@ -68,6 +68,38 @@ import Testing
     let failedCard = try #require(projection.columns.first { $0.id == .failed }?.cards.first)
     #expect(failedCard.runStatusText == "Run failed")
     #expect(failedCard.failedSendMessage == "Cursor run failed during execution.")
+    #expect(failedCard.latestRun?.status == .failed)
+}
+
+@Test func runMonitorFailedRunCanBeRecoveredAndRetried() async throws {
+    let fixture = try RunMonitorFixture()
+    let runtime = FakeRunMonitoringRuntime(completion: CursorCloudAgentRunCompletion(
+        status: "failed",
+        result: "Cursor run failed during execution."
+    ))
+    let service = CursorRunMonitorService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    _ = try await service.resumeRunningTasks()
+    _ = try fixture.store.recoverTaskForRetry(id: fixture.task.id)
+    let retryRun = try fixture.store.recordSuccessfulSendAttempt(
+        taskID: fixture.task.id,
+        repositoryURL: fixture.repository.githubURL,
+        startingRef: fixture.repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: fixture.task.prompt,
+        cursorAgentID: "agent-retry",
+        cursorRunID: "run-retry",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-retry")!
+    )
+
+    let runs = try fixture.store.runAttempts(taskID: fixture.task.id)
+    #expect(retryRun.cursorRunID == "run-retry")
+    #expect(runs.map(\.status) == [.failed, .succeeded])
 }
 
 @Test func runMonitorContinuesAfterOneRuntimeWaitFails() async throws {
@@ -203,12 +235,13 @@ private final class SelectiveRunMonitoringRuntime: CursorCloudAgentRuntime, @unc
 
 private struct RunMonitorFixture {
     let store: CursorOperatorStore
+    let repository: CursorRepository
     let task: CursorTask
     let readyProvider: CursorCredentialProvider
 
     init() throws {
         store = try CursorOperatorStore(databaseURL: Self.temporaryDatabaseURL())
-        let repository = try store.createRepository(
+        repository = try store.createRepository(
             name: "operator",
             localPath: "/tmp/operator-run-monitor",
             githubURL: URL(string: "https://github.com/example/operator")!,

@@ -95,7 +95,7 @@ struct TaskCommand: ParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "task",
         abstract: "Create, inspect, archive, and send tasks.",
-        subcommands: [TaskAdd.self, TaskList.self, TaskShow.self, TaskArchive.self, TaskSend.self]
+        subcommands: [TaskAdd.self, TaskList.self, TaskShow.self, TaskArchive.self, TaskRecover.self, TaskSend.self]
     )
 }
 
@@ -231,6 +231,22 @@ struct TaskArchive: ParsableCommand {
 
     func run() throws {
         try output.render(running: { try makeCommands().archiveTask(id: id) }, human: renderTaskLine)
+    }
+}
+
+struct TaskRecover: ParsableCommand {
+    static let configuration = CommandConfiguration(
+        commandName: "recover",
+        abstract: "Move a failed task back to Ready for retry."
+    )
+
+    @Argument(help: "Task id.")
+    var id: String
+
+    @OptionGroup var output: OutputOptions
+
+    func run() throws {
+        try output.render(running: { try makeCommands().recoverTask(id: id) }, human: renderTaskLine)
     }
 }
 

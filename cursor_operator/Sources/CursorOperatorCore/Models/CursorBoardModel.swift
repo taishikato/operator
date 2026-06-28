@@ -190,6 +190,11 @@ public final class CursorBoardModel: ObservableObject {
         try load()
     }
 
+    public func recoverForRetry(taskID: UUID) throws {
+        _ = try store.recoverTaskForRetry(id: taskID)
+        try load()
+    }
+
     public func openInCursor(taskID: UUID) throws {
         guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded }) else {
             throw CursorOpenInCursorError.noCursorReference
@@ -332,6 +337,14 @@ public final class CursorBoardModel: ObservableObject {
     public func archiveReportingErrors(taskID: UUID) {
         do {
             try archive(taskID: taskID)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func recoverForRetryReportingErrors(taskID: UUID) {
+        do {
+            try recoverForRetry(taskID: taskID)
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }

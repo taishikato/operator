@@ -385,7 +385,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 id: existingAttempt.id,
                 taskID: existingAttempt.taskID,
                 repositoryID: existingAttempt.repositoryID,
-                status: existingAttempt.status,
+                status: .failed,
                 repositoryURL: existingAttempt.repositoryURL,
                 startingRef: existingAttempt.startingRef,
                 model: existingAttempt.model,

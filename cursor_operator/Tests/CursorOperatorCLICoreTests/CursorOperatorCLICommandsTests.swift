@@ -183,6 +183,27 @@ import CursorOperatorCore
     }
 }
 
+@Test func taskRecoverMovesFailedTaskBackToReady() throws {
+    let store = try temporaryStore()
+    let repository = try makeRepository(in: store, name: "operator")
+    let task = try store.createTask(repositoryID: repository.id, title: "Recover me", prompt: "P")
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "boom"
+    )
+    let commands = CursorOperatorCLICommands(store: store)
+
+    let recovered = try commands.recoverTask(id: task.id.uuidString)
+
+    #expect(recovered.status == "ready")
+    #expect(try store.task(id: task.id)?.status == .ready)
+}
+
 // MARK: - run list/send
 
 @Test func runListReturnsAttemptsForTaskWithStableNullFields() throws {

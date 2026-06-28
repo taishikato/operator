@@ -178,6 +178,7 @@ import Testing
     #expect(card.latestRun?.id == successfulRun.id)
     #expect(card.runHistory.map(\.status) == [.failed, .succeeded])
     #expect(card.runHistory.map(\.prompt) == ["First prompt", "Second prompt"])
+    #expect(card.failedSendMessage == nil)
 }
 
 @MainActor
@@ -462,6 +463,34 @@ import Testing
     // failed-send indicator, not just the transient global error message.
     let failedCard = try #require(model.projection.columns.first { $0.id == .failed }?.cards.first)
     #expect(failedCard.failedSendMessage == "Cursor rejected the run request.")
+}
+
+@MainActor
+@Test func boardModelRecoversFailedTaskForRetry() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Recover", prompt: "Prompt")
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "Temporary failure"
+    )
+    let model = CursorBoardModel(store: store)
+    try model.load()
+
+    try model.recoverForRetry(taskID: task.id)
+
+    #expect(try store.task(id: task.id)?.status == .ready)
+    #expect(model.projection.columns.first { $0.id == .ready }?.cards.map(\.id) == [task.id])
 }
 
 @MainActor
