@@ -127,12 +127,16 @@ public struct CodexTriggerService: @unchecked Sendable {
             }
             switch outcome {
             case .succeeded:
-                _ = try? store.completeStartedCodexRun(id: run.id)
+                if (try? store.completeStartedCodexRun(id: run.id)) != nil {
+                    NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
+                }
             case let .failed(message):
-                _ = try? store.failStartedCodexRun(
+                if (try? store.failStartedCodexRun(
                     id: run.id,
                     errorMessage: Self.shortErrorMessage(forMessage: message)
-                )
+                )) != nil {
+                    NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
+                }
             }
             _ = retainedAppServerClient
         }
@@ -147,10 +151,12 @@ public struct CodexTriggerService: @unchecked Sendable {
             if let threadVisibility, let threadID = run.codexThreadID {
                 _ = await threadVisibility.revealThread(id: threadID)
             }
-            _ = try? store.failStartedCodexRun(
+            if (try? store.failStartedCodexRun(
                 id: run.id,
                 errorMessage: "Codex run was interrupted before the initial turn completed."
-            )
+            )) != nil {
+                NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
+            }
         }
     }
 

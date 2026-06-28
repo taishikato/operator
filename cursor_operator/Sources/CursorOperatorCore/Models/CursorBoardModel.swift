@@ -24,6 +24,7 @@ public final class CursorBoardModel: ObservableObject {
     private let codexAppOpener: any CodexAppOpening
     private let codexTaskSender: (any CodexTaskSending)?
     private let codexRunRecoverer: (any CodexRunRecovering)?
+    private var cancellables: Set<AnyCancellable>
     private var cachedNodeState: CursorNodeSetupState?
     private var codexStatus: CodexStatus
 
@@ -52,6 +53,7 @@ public final class CursorBoardModel: ObservableObject {
         self.codexAppOpener = codexAppOpener
         self.codexTaskSender = codexTaskSender
         self.codexRunRecoverer = codexRunRecoverer
+        cancellables = []
         codexStatus = .notChecked
         repositoryRegistrationService = CursorRepositoryRegistrationService(
             store: store,
@@ -63,6 +65,12 @@ public final class CursorBoardModel: ObservableObject {
         editingTaskID = nil
         sendingTaskIDs = []
         creationDraft = CursorTaskCreationDraft(harness: settings.defaultHarness())
+        NotificationCenter.default.publisher(for: .cursorOperatorRunsChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.loadReportingErrors()
+            }
+            .store(in: &cancellables)
     }
 
     public func load() throws {

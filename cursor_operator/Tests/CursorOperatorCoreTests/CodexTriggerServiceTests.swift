@@ -109,6 +109,50 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .done)
 }
 
+@MainActor
+@Test func boardModelReloadsAfterCodexInitialTurnCompletion() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Auto reload", prompt: "Prompt", harness: .codex)
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-autoreload"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-autoreload", url: nil),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:])
+    )
+
+    _ = try await service.sendTaskToCodex(taskID: task.id)
+    try model.load()
+    #expect(model.projection.columns.first { $0.id == CursorBoardColumnID.running }?.cards.map(\.id) == [task.id])
+
+    await turnCompletion.complete()
+    let start = ContinuousClock.now
+    while model.projection.columns.first(where: { $0.id == CursorBoardColumnID.done })?.cards.map(\.id) != [task.id],
+          start.duration(to: .now) < .seconds(1) {
+        await Task.yield()
+    }
+
+    #expect(model.projection.columns.first { $0.id == CursorBoardColumnID.done }?.cards.map(\.id) == [task.id])
+}
+
 @Test func codexTriggerKeepsAppServerClientAliveUntilInitialTurnCompletion() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(
