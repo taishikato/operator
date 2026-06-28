@@ -173,6 +173,12 @@ public struct WorktreePreparer: Sendable {
     }
 }
 
+public protocol CodexWorktreePreparing: Sendable {
+    func prepareWorktree(for repository: CursorRepository) throws -> PreparedWorktree
+}
+
+extension WorktreePreparer: CodexWorktreePreparing {}
+
 private extension String {
     var worktreePreparerTrimmed: String {
         trimmingCharacters(in: .whitespacesAndNewlines)

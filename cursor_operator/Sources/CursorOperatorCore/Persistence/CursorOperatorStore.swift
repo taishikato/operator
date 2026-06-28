@@ -13,6 +13,7 @@ public struct CursorRepository: Equatable, Identifiable, Sendable {
 
 public enum OperatorRunStatus: String, Codable, CaseIterable, Sendable {
     case pending
+    case running
     case failed
     case succeeded
 }
@@ -35,9 +36,64 @@ public struct OperatorRun: Equatable, Identifiable, Sendable {
     public let cursorAgentID: String?
     public let cursorRunID: String?
     public let cursorURL: URL?
+    public let worktreePath: String?
+    public let baseBranch: String?
+    public let baseRef: String?
+    public let codexThreadID: String?
+    public let codexThreadURL: URL?
     public let errorMessage: String?
     public let createdAt: Date
     public let completedAt: Date
+
+    public init(
+        id: UUID,
+        taskID: UUID,
+        repositoryID: UUID,
+        status: CursorRunAttemptStatus,
+        repositoryURL: URL,
+        startingRef: String,
+        model: String,
+        autoCreatePR: Bool,
+        prompt: String,
+        harness: CursorHarness,
+        reasoningEffort: CursorReasoningEffort,
+        useFastModel: Bool,
+        cursorAgentID: String?,
+        cursorRunID: String?,
+        cursorURL: URL?,
+        worktreePath: String? = nil,
+        baseBranch: String? = nil,
+        baseRef: String? = nil,
+        codexThreadID: String? = nil,
+        codexThreadURL: URL? = nil,
+        errorMessage: String?,
+        createdAt: Date,
+        completedAt: Date
+    ) {
+        self.id = id
+        self.taskID = taskID
+        self.repositoryID = repositoryID
+        self.status = status
+        self.repositoryURL = repositoryURL
+        self.startingRef = startingRef
+        self.model = model
+        self.autoCreatePR = autoCreatePR
+        self.prompt = prompt
+        self.harness = harness
+        self.reasoningEffort = reasoningEffort
+        self.useFastModel = useFastModel
+        self.cursorAgentID = cursorAgentID
+        self.cursorRunID = cursorRunID
+        self.cursorURL = cursorURL
+        self.worktreePath = worktreePath
+        self.baseBranch = baseBranch
+        self.baseRef = baseRef
+        self.codexThreadID = codexThreadID
+        self.codexThreadURL = codexThreadURL
+        self.errorMessage = errorMessage
+        self.createdAt = createdAt
+        self.completedAt = completedAt
+    }
 }
 
 public typealias CursorRunAttempt = OperatorRun
@@ -498,6 +554,54 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func recordStartedCodexRun(
+        id: UUID = UUID(),
+        taskID: UUID,
+        worktreeURL: URL,
+        baseBranch: String,
+        baseRef: String,
+        codexThreadID: String,
+        codexThreadURL: URL?,
+        now: Date = Date()
+    ) throws -> OperatorRun {
+        try dbQueue.write { db in
+            let task = try requiredTask(id: taskID, db: db)
+            guard try activeRunAttemptCount(taskID: task.id, db: db) == 0 else {
+                throw CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun
+            }
+            let updatedTask = try CursorTaskLifecyclePolicy.recordSuccessfulSend(for: task, now: now)
+            try update(task: updatedTask, db: db)
+
+            let run = OperatorRun(
+                id: id,
+                taskID: task.id,
+                repositoryID: task.repositoryID,
+                status: .running,
+                repositoryURL: worktreeURL,
+                startingRef: baseRef,
+                model: CodexModel.fixed,
+                autoCreatePR: task.autoCreatePR,
+                prompt: task.prompt,
+                harness: .codex,
+                reasoningEffort: task.reasoningEffort,
+                useFastModel: task.useFastModel,
+                cursorAgentID: nil,
+                cursorRunID: nil,
+                cursorURL: nil,
+                worktreePath: worktreeURL.path,
+                baseBranch: baseBranch,
+                baseRef: baseRef,
+                codexThreadID: codexThreadID,
+                codexThreadURL: codexThreadURL,
+                errorMessage: nil,
+                createdAt: now,
+                completedAt: now
+            )
+            try insert(runAttempt: run, db: db)
+            return run
+        }
+    }
+
     public func runs(taskID: UUID) throws -> [OperatorRun] {
         try dbQueue.read { db in
             try Row.fetchAll(
@@ -658,9 +762,10 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 INSERT INTO runs (
                     id, taskID, repositoryID, status, repositoryURL, startingRef, model,
                     autoCreatePR, prompt, harness, reasoningEffort, useFastModel,
-                    cursorAgentID, cursorRunID, cursorURL, errorMessage, createdAt, completedAt
+                    cursorAgentID, cursorRunID, cursorURL, worktreePath, baseBranch,
+                    baseRef, codexThreadID, codexThreadURL, errorMessage, createdAt, completedAt
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
             arguments: [
                 runAttempt.id.uuidString,
@@ -678,6 +783,11 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 runAttempt.cursorAgentID,
                 runAttempt.cursorRunID,
                 runAttempt.cursorURL?.absoluteString,
+                runAttempt.worktreePath,
+                runAttempt.baseBranch,
+                runAttempt.baseRef,
+                runAttempt.codexThreadID,
+                runAttempt.codexThreadURL?.absoluteString,
                 runAttempt.errorMessage,
                 runAttempt.createdAt.storageValue,
                 runAttempt.completedAt.storageValue
@@ -689,7 +799,9 @@ public final class CursorOperatorStore: @unchecked Sendable {
         try db.execute(
             sql: """
                 UPDATE runs
-                SET status = ?, cursorAgentID = ?, cursorRunID = ?, cursorURL = ?, errorMessage = ?, completedAt = ?
+                SET status = ?, cursorAgentID = ?, cursorRunID = ?, cursorURL = ?,
+                    worktreePath = ?, baseBranch = ?, baseRef = ?, codexThreadID = ?,
+                    codexThreadURL = ?, errorMessage = ?, completedAt = ?
                 WHERE id = ?
                 """,
             arguments: [
@@ -697,6 +809,11 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 runAttempt.cursorAgentID,
                 runAttempt.cursorRunID,
                 runAttempt.cursorURL?.absoluteString,
+                runAttempt.worktreePath,
+                runAttempt.baseBranch,
+                runAttempt.baseRef,
+                runAttempt.codexThreadID,
+                runAttempt.codexThreadURL?.absoluteString,
                 runAttempt.errorMessage,
                 runAttempt.completedAt.storageValue,
                 runAttempt.id.uuidString
@@ -796,6 +913,16 @@ extension CursorOperatorStore {
             try db.execute(sql: "ALTER TABLE runAttempts RENAME TO runs")
         }
 
+        migrator.registerMigration("addCodexRunMetadata") { db in
+            try db.alter(table: "runs") { table in
+                table.add(column: "worktreePath", .text)
+                table.add(column: "baseBranch", .text)
+                table.add(column: "baseRef", .text)
+                table.add(column: "codexThreadID", .text)
+                table.add(column: "codexThreadURL", .text)
+            }
+        }
+
         return migrator
     }
 
@@ -855,6 +982,7 @@ extension CursorOperatorStore {
             throw CursorOperatorStoreError.invalidStoredValue("repositoryURL")
         }
         let cursorURLString: String? = row["cursorURL"]
+        let codexThreadURLString: String? = row["codexThreadURL"]
 
         return OperatorRun(
             id: try uuid(row["id"]),
@@ -872,6 +1000,11 @@ extension CursorOperatorStore {
             cursorAgentID: row["cursorAgentID"],
             cursorRunID: row["cursorRunID"],
             cursorURL: cursorURLString.flatMap(URL.init(string:)),
+            worktreePath: row["worktreePath"],
+            baseBranch: row["baseBranch"],
+            baseRef: row["baseRef"],
+            codexThreadID: row["codexThreadID"],
+            codexThreadURL: codexThreadURLString.flatMap(URL.init(string:)),
             errorMessage: row["errorMessage"],
             createdAt: Date(storageValue: row["createdAt"]),
             completedAt: Date(storageValue: row["completedAt"])
