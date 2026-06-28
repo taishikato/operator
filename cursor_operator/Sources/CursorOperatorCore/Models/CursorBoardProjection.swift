@@ -8,8 +8,10 @@ public struct CursorBoardProjection: Equatable, Sendable {
         let tasks = try store.tasks()
         var runReferencesByTaskID: [UUID: CursorTaskRunReference] = [:]
         var failedSendMessagesByTaskID: [UUID: String] = [:]
+        var runHistoryByTaskID: [UUID: [CursorTaskRunProjection]] = [:]
         for task in tasks {
             let attempts = try store.runAttempts(taskID: task.id)
+            runHistoryByTaskID[task.id] = attempts.map(CursorTaskRunProjection.init)
             let successfulAttempt = attempts
                 .last { $0.status == .succeeded }
             if let successfulAttempt {
@@ -27,14 +29,16 @@ public struct CursorBoardProjection: Equatable, Sendable {
         return CursorBoardProjection(
             tasks: tasks,
             runReferencesByTaskID: runReferencesByTaskID,
-            failedSendMessagesByTaskID: failedSendMessagesByTaskID
+            failedSendMessagesByTaskID: failedSendMessagesByTaskID,
+            runHistoryByTaskID: runHistoryByTaskID
         )
     }
 
     public init(
         tasks: [CursorTask],
         runReferencesByTaskID: [UUID: CursorTaskRunReference] = [:],
-        failedSendMessagesByTaskID: [UUID: String] = [:]
+        failedSendMessagesByTaskID: [UUID: String] = [:],
+        runHistoryByTaskID: [UUID: [CursorTaskRunProjection]] = [:]
     ) {
         let activeTasks = tasks.filter { $0.status != .archived }
         columns = [CursorTaskStatus.ready, .running, .failed, .done].map { status in
@@ -47,7 +51,8 @@ public struct CursorBoardProjection: Equatable, Sendable {
                         CursorTaskCardProjection(
                             task: $0,
                             runReference: runReferencesByTaskID[$0.id],
-                            failedSendMessage: failedSendMessagesByTaskID[$0.id]
+                            failedSendMessage: failedSendMessagesByTaskID[$0.id],
+                            runHistory: runHistoryByTaskID[$0.id] ?? []
                         )
                     }
             )
@@ -58,7 +63,8 @@ public struct CursorBoardProjection: Equatable, Sendable {
                 CursorTaskCardProjection(
                     task: $0,
                     runReference: runReferencesByTaskID[$0.id],
-                    failedSendMessage: failedSendMessagesByTaskID[$0.id]
+                    failedSendMessage: failedSendMessagesByTaskID[$0.id],
+                    runHistory: runHistoryByTaskID[$0.id] ?? []
                 )
             }
     }
@@ -78,11 +84,14 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     public let cursorRunID: String?
     public let cursorURL: URL?
     public let failedSendMessage: String?
+    public let latestRun: CursorTaskRunProjection?
+    public let runHistory: [CursorTaskRunProjection]
 
     public init(
         task: CursorTask,
         runReference: CursorTaskRunReference? = nil,
-        failedSendMessage: String? = nil
+        failedSendMessage: String? = nil,
+        runHistory: [CursorTaskRunProjection] = []
     ) {
         id = task.id
         title = task.title
@@ -91,6 +100,8 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
         cursorRunID = runReference?.cursorRunID
         cursorURL = runReference?.cursorURL
         self.failedSendMessage = failedSendMessage
+        latestRun = runHistory.last
+        self.runHistory = runHistory
     }
 
     public var canOpenInCursor: Bool {
@@ -110,6 +121,30 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
         case .archived:
             nil
         }
+    }
+}
+
+public struct CursorTaskRunProjection: Equatable, Identifiable, Sendable {
+    public let id: UUID
+    public let status: CursorRunAttemptStatus
+    public let harness: CursorHarness
+    public let prompt: String
+    public let errorMessage: String?
+    public let cursorRunID: String?
+    public let cursorURL: URL?
+    public let createdAt: Date
+    public let completedAt: Date
+
+    public init(run: CursorRunAttempt) {
+        id = run.id
+        status = run.status
+        harness = run.harness
+        prompt = run.prompt
+        errorMessage = run.errorMessage
+        cursorRunID = run.cursorRunID
+        cursorURL = run.cursorURL
+        createdAt = run.createdAt
+        completedAt = run.completedAt
     }
 }
 
