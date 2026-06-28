@@ -145,6 +145,49 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .failed)
 }
 
+@Test func codexTriggerRevealsHiddenThreadBeforeCompletingRun() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Hidden", prompt: "Prompt", harness: .codex)
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-hidden"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-hidden", url: nil),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let visibility = FakeThreadVisibilityController()
+    visibility.onReveal = { [store] _ in
+        visibility.recordTaskStatusAtReveal((try? store.task(id: task.id)?.status) ?? nil)
+    }
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer,
+        threadVisibility: visibility
+    )
+
+    _ = try await service.sendTaskToCodex(taskID: task.id)
+    await waitUntil { visibility.hideCalls == ["thread-hidden"] }
+    await turnCompletion.complete()
+    await waitUntil {
+        ((try? store.task(id: task.id)?.status) ?? nil) == .done
+    }
+
+    #expect(visibility.hideCalls == ["thread-hidden"])
+    #expect(visibility.revealCalls == ["thread-hidden"])
+    #expect(visibility.taskStatusAtReveal == .running)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
 private final class FakeCodexWorktreePreparer: CodexWorktreePreparing, @unchecked Sendable {
     private var preparedWorktrees: [PreparedWorktree]
     private(set) var repositories: [CursorRepository] = []
@@ -170,6 +213,48 @@ private final class FakeCodexAppServerClient: CodexAppServerClient, @unchecked S
     func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         requests.append(request)
         return try results.removeFirst().get()
+    }
+}
+
+private final class FakeThreadVisibilityController: CodexThreadVisibilityControlling, @unchecked Sendable {
+    private let lock = NSLock()
+    private var hideCallsValue: [String] = []
+    private var revealCallsValue: [String] = []
+    private var taskStatusAtRevealValue: CursorTaskStatus?
+    var hideResult = true
+    var onReveal: (@Sendable (String) -> Void)?
+
+    var hideCalls: [String] {
+        lock.withLock { hideCallsValue }
+    }
+
+    var revealCalls: [String] {
+        lock.withLock { revealCallsValue }
+    }
+
+    var taskStatusAtReveal: CursorTaskStatus? {
+        lock.withLock { taskStatusAtRevealValue }
+    }
+
+    func recordTaskStatusAtReveal(_ status: CursorTaskStatus?) {
+        lock.withLock {
+            taskStatusAtRevealValue = status
+        }
+    }
+
+    func hideThread(id: String) async -> Bool {
+        lock.withLock {
+            hideCallsValue.append(id)
+        }
+        return hideResult
+    }
+
+    func revealThread(id: String) async -> Bool {
+        onReveal?(id)
+        lock.withLock {
+            revealCallsValue.append(id)
+        }
+        return true
     }
 }
 

@@ -22,27 +22,32 @@ public struct CodexTriggerService: @unchecked Sendable {
     private let store: CursorOperatorStore
     private let worktreePreparer: any CodexWorktreePreparing
     private let appServerClientFactory: any CodexAppServerClientFactory
+    private let threadVisibility: (any CodexThreadVisibilityControlling)?
 
     public init(
         store: CursorOperatorStore,
         worktreePreparer: any CodexWorktreePreparing,
-        appServerClient: any CodexAppServerClient
+        appServerClient: any CodexAppServerClient,
+        threadVisibility: (any CodexThreadVisibilityControlling)? = nil
     ) {
         self.init(
             store: store,
             worktreePreparer: worktreePreparer,
-            appServerClientFactory: FixedCodexAppServerClientFactory(appServerClient: appServerClient)
+            appServerClientFactory: FixedCodexAppServerClientFactory(appServerClient: appServerClient),
+            threadVisibility: threadVisibility
         )
     }
 
     public init(
         store: CursorOperatorStore,
         worktreePreparer: any CodexWorktreePreparing,
-        appServerClientFactory: any CodexAppServerClientFactory
+        appServerClientFactory: any CodexAppServerClientFactory,
+        threadVisibility: (any CodexThreadVisibilityControlling)? = nil
     ) {
         self.store = store
         self.worktreePreparer = worktreePreparer
         self.appServerClientFactory = appServerClientFactory
+        self.threadVisibility = threadVisibility
     }
 
     public func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
@@ -86,18 +91,31 @@ public struct CodexTriggerService: @unchecked Sendable {
             )
         }
 
+        let threadID = startedThread.reference.id
+        let hideTask: Task<Bool, Never>? = threadVisibility.map { threadVisibility in
+            Task {
+                await threadVisibility.hideThread(id: threadID)
+            }
+        }
         let run = try store.recordStartedCodexRun(
             taskID: task.id,
             worktreeURL: preparedWorktree.worktreeURL,
             baseBranch: preparedWorktree.baseBranch,
             baseRef: preparedWorktree.baseRef,
-            codexThreadID: startedThread.reference.id,
+            codexThreadID: threadID,
             codexThreadURL: startedThread.reference.url
         )
         let store = store
+        let threadVisibility = threadVisibility
         let turnCompletion = startedThread.turnCompletion
         Task {
             await turnCompletion.waitUntilCompleted()
+            if let threadVisibility, let hideTask {
+                hideTask.cancel()
+                if await hideTask.value {
+                    await threadVisibility.revealThread(id: threadID)
+                }
+            }
             _ = try? store.completeStartedCodexRun(id: run.id)
         }
         return run
