@@ -684,6 +684,46 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func failStartedCodexRun(id: UUID, errorMessage: String, now: Date = Date()) throws -> OperatorRun {
+        try dbQueue.write { db in
+            let existingRun = try requiredRunAttempt(id: id, db: db)
+            guard existingRun.status == .running else {
+                throw CursorTaskLifecycleError.transitionNotAllowed
+            }
+            let task = try requiredTask(id: existingRun.taskID, db: db)
+            let updatedTask = try CursorTaskLifecyclePolicy.markFailed(task, now: now)
+            try update(task: updatedTask, db: db)
+
+            let failedRun = OperatorRun(
+                id: existingRun.id,
+                taskID: existingRun.taskID,
+                repositoryID: existingRun.repositoryID,
+                status: .failed,
+                repositoryURL: existingRun.repositoryURL,
+                startingRef: existingRun.startingRef,
+                model: existingRun.model,
+                autoCreatePR: existingRun.autoCreatePR,
+                prompt: existingRun.prompt,
+                harness: existingRun.harness,
+                reasoningEffort: existingRun.reasoningEffort,
+                useFastModel: existingRun.useFastModel,
+                cursorAgentID: existingRun.cursorAgentID,
+                cursorRunID: existingRun.cursorRunID,
+                cursorURL: existingRun.cursorURL,
+                worktreePath: existingRun.worktreePath,
+                baseBranch: existingRun.baseBranch,
+                baseRef: existingRun.baseRef,
+                codexThreadID: existingRun.codexThreadID,
+                codexThreadURL: existingRun.codexThreadURL,
+                errorMessage: errorMessage,
+                createdAt: existingRun.createdAt,
+                completedAt: now
+            )
+            try update(runAttempt: failedRun, db: db)
+            return failedRun
+        }
+    }
+
     public func runs(taskID: UUID) throws -> [OperatorRun] {
         try dbQueue.read { db in
             try Row.fetchAll(

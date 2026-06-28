@@ -54,37 +54,42 @@ public struct CodexThreadReference: Equatable, Sendable {
     }
 }
 
+public enum CodexTurnCompletionOutcome: Equatable, Sendable {
+    case succeeded
+    case failed(message: String)
+}
+
 public protocol CodexTurnCompletionWatching: Sendable {
-    func waitUntilCompleted() async
+    func waitUntilCompleted() async -> CodexTurnCompletionOutcome
 }
 
 public actor CodexTurnCompletionSignal: CodexTurnCompletionWatching {
-    private var isCompleted: Bool
-    private var continuations: [CheckedContinuation<Void, Never>] = []
+    private var outcome: CodexTurnCompletionOutcome?
+    private var continuations: [CheckedContinuation<CodexTurnCompletionOutcome, Never>] = []
 
     public init(isCompleted: Bool = false) {
-        self.isCompleted = isCompleted
+        outcome = isCompleted ? .succeeded : nil
     }
 
-    public func waitUntilCompleted() async {
-        if isCompleted {
-            return
+    public func waitUntilCompleted() async -> CodexTurnCompletionOutcome {
+        if let outcome {
+            return outcome
         }
 
-        await withCheckedContinuation { continuation in
+        return await withCheckedContinuation { continuation in
             continuations.append(continuation)
         }
     }
 
-    public func complete() {
-        guard !isCompleted else {
+    public func complete(_ outcome: CodexTurnCompletionOutcome = .succeeded) {
+        guard self.outcome == nil else {
             return
         }
-        isCompleted = true
+        self.outcome = outcome
         let continuations = continuations
         self.continuations.removeAll()
         for continuation in continuations {
-            continuation.resume()
+            continuation.resume(returning: outcome)
         }
     }
 }
@@ -397,26 +402,41 @@ private actor CodexAppServerStdioTransport {
     }
 
     private func handleServerNotification(_ response: CodexAppServerRPCResponse) {
-        guard let threadID = terminalTurnThreadID(from: response) else {
+        guard let outcome = terminalTurnOutcome(from: response) else {
             return
         }
+        let threadID = outcome.threadID
         guard let completion = pendingTurnCompletionsByThreadID.removeValue(forKey: threadID) else {
             return
         }
         Task {
-            await completion.complete()
+            await completion.complete(outcome.completionOutcome)
         }
     }
 
-    private func terminalTurnThreadID(from response: CodexAppServerRPCResponse) -> String? {
-        if response.method == "turn/completed" || response.method == "turn/aborted" {
-            return response.params?.threadId
+    private func terminalTurnOutcome(from response: CodexAppServerRPCResponse) -> TerminalTurnOutcome? {
+        if response.method == "turn/completed", let threadID = response.params?.threadId {
+            return TerminalTurnOutcome(threadID: threadID, completionOutcome: .succeeded)
+        }
+        if response.method == "turn/aborted", let threadID = response.params?.threadId {
+            return TerminalTurnOutcome(threadID: threadID, completionOutcome: .failed(message: "Codex turn was aborted."))
         }
 
-        guard response.method == "codex/event", response.params?.isTerminalTurnEvent == true else {
+        guard response.method == "codex/event",
+              let threadID = response.params?.threadId,
+              let eventType = response.params?.terminalTurnEventType else {
             return nil
         }
-        return response.params?.threadId
+        switch eventType {
+        case "task_complete":
+            return TerminalTurnOutcome(threadID: threadID, completionOutcome: .succeeded)
+        case "turn_aborted":
+            return TerminalTurnOutcome(threadID: threadID, completionOutcome: .failed(message: "Codex turn was aborted."))
+        case "interrupted":
+            return TerminalTurnOutcome(threadID: threadID, completionOutcome: .failed(message: "Codex turn was interrupted."))
+        default:
+            return nil
+        }
     }
 
     private func resetProcessState(terminate: Bool = true) {
@@ -435,7 +455,7 @@ private actor CodexAppServerStdioTransport {
         pendingTurnCompletionsByThreadID.removeAll()
         for completion in orphanedCompletions {
             Task {
-                await completion.complete()
+                await completion.complete(.failed(message: "codex app-server closed the connection."))
             }
         }
     }
@@ -471,11 +491,14 @@ private struct CodexAppServerRPCParams: Decodable, Sendable {
     let event: CodexAppServerRPCEvent?
     let msg: CodexAppServerRPCEvent?
 
-    var isTerminalTurnEvent: Bool {
+    var terminalTurnEventType: String? {
         let eventType = event?.type ?? msg?.type
-        return eventType == "task_complete"
+        guard eventType == "task_complete"
             || eventType == "turn_aborted"
-            || eventType == "interrupted"
+            || eventType == "interrupted" else {
+            return nil
+        }
+        return eventType
     }
 }
 
@@ -493,6 +516,11 @@ private struct CodexAppServerRPCThread: Decodable, Sendable {
 
 private struct CodexAppServerRPCError: Decodable, Sendable {
     let message: String?
+}
+
+private struct TerminalTurnOutcome: Sendable {
+    let threadID: String
+    let completionOutcome: CodexTurnCompletionOutcome
 }
 
 private actor AsyncGate {

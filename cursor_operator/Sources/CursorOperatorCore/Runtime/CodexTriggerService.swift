@@ -112,15 +112,25 @@ public struct CodexTriggerService: @unchecked Sendable {
         let store = store
         let threadVisibility = threadVisibility
         let turnCompletion = startedThread.turnCompletion
+        let retainedAppServerClient = appServerClient
         Task {
-            await turnCompletion.waitUntilCompleted()
+            let outcome = await turnCompletion.waitUntilCompleted()
             if let threadVisibility, let hideTask {
                 hideTask.cancel()
                 if await hideTask.value {
                     await threadVisibility.revealThread(id: threadID)
                 }
             }
-            _ = try? store.completeStartedCodexRun(id: run.id)
+            switch outcome {
+            case .succeeded:
+                _ = try? store.completeStartedCodexRun(id: run.id)
+            case let .failed(message):
+                _ = try? store.failStartedCodexRun(
+                    id: run.id,
+                    errorMessage: Self.shortErrorMessage(forMessage: message)
+                )
+            }
+            _ = retainedAppServerClient
         }
         return run
     }
@@ -133,6 +143,10 @@ public struct CodexTriggerService: @unchecked Sendable {
             rawMessage = String(describing: error)
         }
 
+        return shortErrorMessage(forMessage: rawMessage)
+    }
+
+    private static func shortErrorMessage(forMessage rawMessage: String) -> String {
         let collapsed = rawMessage
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")

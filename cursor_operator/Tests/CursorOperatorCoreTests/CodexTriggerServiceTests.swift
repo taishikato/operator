@@ -109,6 +109,86 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .done)
 }
 
+@Test func codexTriggerKeepsAppServerClientAliveUntilInitialTurnCompletion() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Keep alive", prompt: "Prompt", harness: .codex)
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-keepalive"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let deallocationRecorder = DeallocationRecorder()
+    let appServerFactory = DeinitTrackingCodexAppServerClientFactory(
+        startedThread: CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-keepalive", url: nil),
+            turnCompletion: turnCompletion
+        ),
+        deallocationRecorder: deallocationRecorder
+    )
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClientFactory: appServerFactory
+    )
+
+    _ = try await service.sendTaskToCodex(taskID: task.id)
+    await Task.yield()
+
+    #expect(deallocationRecorder.isDeallocated == false)
+
+    await turnCompletion.complete()
+    await waitUntil {
+        ((try? store.task(id: task.id)?.status) ?? nil) == .done
+    }
+    await waitUntil {
+        deallocationRecorder.isDeallocated
+    }
+
+    #expect(deallocationRecorder.isDeallocated)
+}
+
+@Test func codexTriggerMarksRunFailedWhenInitialTurnAborts() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Abort", prompt: "Prompt", harness: .codex)
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-aborted"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-aborted", url: URL(string: "codex://threads/thread-aborted")),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+    await turnCompletion.complete(.failed(message: "Codex turn was aborted."))
+    await waitUntil {
+        ((try? store.task(id: task.id)?.status) ?? nil) == .failed
+    }
+
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .failed)
+    #expect(try store.runs(taskID: task.id).first?.errorMessage == "Codex turn was aborted.")
+    #expect(try store.task(id: task.id)?.status == .failed)
+}
+
 @Test func codexTriggerRecordsProviderFailureAndMarksTaskFailed() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(
@@ -213,6 +293,56 @@ private final class FakeCodexAppServerClient: CodexAppServerClient, @unchecked S
     func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
         requests.append(request)
         return try results.removeFirst().get()
+    }
+}
+
+private final class DeinitTrackingCodexAppServerClientFactory: CodexAppServerClientFactory, @unchecked Sendable {
+    private let startedThread: CodexStartedThread
+    private let deallocationRecorder: DeallocationRecorder
+
+    init(startedThread: CodexStartedThread, deallocationRecorder: DeallocationRecorder) {
+        self.startedThread = startedThread
+        self.deallocationRecorder = deallocationRecorder
+    }
+
+    func makeAppServerClient() throws -> any CodexAppServerClient {
+        DeinitTrackingCodexAppServerClient(
+            startedThread: startedThread,
+            deallocationRecorder: deallocationRecorder
+        )
+    }
+}
+
+private final class DeinitTrackingCodexAppServerClient: CodexAppServerClient, @unchecked Sendable {
+    private let startedThread: CodexStartedThread
+    private let deallocationRecorder: DeallocationRecorder
+
+    init(startedThread: CodexStartedThread, deallocationRecorder: DeallocationRecorder) {
+        self.startedThread = startedThread
+        self.deallocationRecorder = deallocationRecorder
+    }
+
+    deinit {
+        deallocationRecorder.recordDeallocation()
+    }
+
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
+        startedThread
+    }
+}
+
+private final class DeallocationRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var isDeallocatedValue = false
+
+    var isDeallocated: Bool {
+        lock.withLock { isDeallocatedValue }
+    }
+
+    func recordDeallocation() {
+        lock.withLock {
+            isDeallocatedValue = true
+        }
     }
 }
 
