@@ -49,10 +49,10 @@ import Testing
     let script = try packageScript(named: "build_and_run.sh")
 
     #expect(script.contains("APP_HELPERS"))
-    #expect(script.contains("cursor-operator-cli"))
+    #expect(script.contains("operator-cli"))
     #expect(script.contains(#"cp "$BUILD_CLI" "$APP_CLI""#))
-    #expect(script.contains("skills/cursor-operator"))
-    #expect(script.contains(#"cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/cursor-operator""#))
+    #expect(script.contains("skills/operator"))
+    #expect(script.contains(#"cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/operator""#))
 }
 
 @Test func packageDistributionBuildsSignedNotarizableDMG() throws {
@@ -71,10 +71,10 @@ import Testing
 @Test func homebrewCaskRendererDocumentsRuntimeRequirements() throws {
     let script = try packageScript(named: "render_homebrew_cask.sh")
 
-    #expect(script.contains(#"cask "cursor-operator" do"#))
+    #expect(script.contains(#"cask "operator" do"#))
     #expect(script.contains(#"depends_on formula: "node""#))
     #expect(script.contains(#"depends_on macos: ">= :tahoe""#))
-    #expect(script.contains(#"app "CursorOperator.app""#))
+    #expect(script.contains(#"app "Operator.app""#))
     #expect(script.contains("Node.js 22.13 or newer"))
 }
 
@@ -89,11 +89,12 @@ import Testing
     #expect(script.contains("swift run CursorOperatorSmokeSupport wait-done"))
 }
 
-@Test func installCLIScriptInstallsCursorOperatorCommand() throws {
+@Test func installCLIScriptInstallsOperatorCommand() throws {
     let script = try packageScript(named: "install_cli.sh")
 
-    #expect(script.contains("swift build -c release --product cursor-operator-cli"))
-    #expect(script.contains(#"ln -sf "$BIN_PATH" "$INSTALL_DIR/cursor-operator""#))
+    #expect(script.contains("swift build -c release --product operator-cli"))
+    #expect(script.contains(#"ln -sf "$BIN_PATH" "$INSTALL_DIR/operator""#))
+    #expect(!script.contains(#"ln -sf "$BIN_PATH" "$INSTALL_DIR/cursor-operator""#))
 }
 
 @Test func installCLIScriptCopiesCursorSDKHelperNextToBuiltCLI() throws {
@@ -110,23 +111,23 @@ import Testing
     #expect(script.contains(#"cp -R "$HELPER_SRC" "$HELPER_INSTALL_DEST""#))
 }
 
-@Test func installSkillsScriptLinksCursorSpecificSkill() throws {
+@Test func installSkillsScriptLinksOperatorSkill() throws {
     let script = try packageScript(named: "install_skills.sh")
 
-    #expect(script.contains("cursor_operator/skills/cursor-operator"))
+    #expect(script.contains("cursor_operator/skills/operator"))
     #expect(script.contains(#""$HOME/.codex/skills""#))
     #expect(script.contains(#""$HOME/.cursor/skills""#))
 }
 
-@Test func cursorOperatorSkillDocumentsStableCLIContract() throws {
+@Test func operatorSkillDocumentsStableCLIContract() throws {
     let skill = packageRoot()
         .appending(path: "skills", directoryHint: .isDirectory)
-        .appending(path: "cursor-operator", directoryHint: .isDirectory)
+        .appending(path: "operator", directoryHint: .isDirectory)
         .appending(path: "SKILL.md")
     let text = try String(contentsOf: skill, encoding: .utf8)
 
-    #expect(text.contains("cursor-operator task add"))
-    #expect(text.contains("cursor-operator task send"))
+    #expect(text.contains("operator task add"))
+    #expect(text.contains("operator task send"))
     #expect(text.contains("CURSOR_OPERATOR_DB"))
     #expect(text.contains("Do not read or write"))
 }

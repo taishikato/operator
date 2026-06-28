@@ -441,11 +441,13 @@ private struct CursorBoardView: View {
                                     model.openInCursorReportingErrors(taskID: card.id)
                                 } markDone: {
                                     model.markDoneReportingErrors(taskID: card.id)
+                                } recover: {
+                                    model.recoverForRetryReportingErrors(taskID: card.id)
                                 } archive: {
                                     model.archiveReportingErrors(taskID: card.id)
                                 }
-                                .sendDisabled(!model.setupStatus.canSend || model.isSending(taskID: card.id))
-                                .sendDisabledReason(model.isSending(taskID: card.id) ? "Send already in progress." : model.setupStatus.sendDisabledReason)
+                                .sendDisabled(!card.canSend(using: model.setupStatus) || model.isSending(taskID: card.id))
+                                .sendDisabledReason(model.isSending(taskID: card.id) ? "Send already in progress." : card.sendDisabledReason(using: model.setupStatus))
                                 .sendStatusText(model.sendStatusText(taskID: card.id))
                             }
                         }
@@ -612,6 +614,7 @@ private struct CursorTaskCardView: View {
     let edit: () -> Void
     let openInCursor: () -> Void
     let markDone: () -> Void
+    let recover: () -> Void
     let archive: () -> Void
     @Environment(\.cursorOperatorSendDisabled) private var sendDisabled
     @Environment(\.cursorOperatorSendDisabledReason) private var sendDisabledReason
@@ -640,6 +643,12 @@ private struct CursorTaskCardView: View {
                     .foregroundStyle(card.status == .done ? CursorTheme.green : CursorTheme.textSecondary)
             }
 
+            if let harnessBadgeText = card.harnessBadgeText {
+                Label(harnessBadgeText, systemImage: "bolt.horizontal")
+                    .font(.caption)
+                    .foregroundStyle(CursorTheme.textSecondary)
+            }
+
             if sendStatusText == nil, let failedSendMessage = card.failedSendMessage {
                 Label(failedSendMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
@@ -660,6 +669,11 @@ private struct CursorTaskCardView: View {
                     Button("Open in Cursor", action: openInCursor)
                         .buttonStyle(CursorGhostButtonStyle())
                         .help("Cursor hides SDK agents from the default sidebar. In Cursor, enable Filter > Source > SDK to show Operator runs in the list.")
+                }
+                if card.status == .failed {
+                    Button("Recover", action: recover)
+                        .buttonStyle(CursorGhostButtonStyle())
+                        .help("Move back to Ready for retry.")
                 }
                 if card.status != .archived {
                     Button("Archive", action: archive)
@@ -739,8 +753,27 @@ private struct CursorTaskCreationSheet: View {
                 }
                 .pickerStyle(.menu)
 
-                Toggle("Auto-create PR", isOn: autoCreatePRBinding)
-                    .toggleStyle(.checkbox)
+                Picker("Harness", selection: harnessBinding) {
+                    Text("Cursor").tag(CursorHarness.cursor)
+                    Text("Codex").tag(CursorHarness.codex)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 180)
+
+                if model.creationDraft.harness == .cursor {
+                    Toggle("Auto-create PR", isOn: autoCreatePRBinding)
+                        .toggleStyle(.checkbox)
+                }
+
+                if model.creationDraft.harness == .codex {
+                    Picker("Reasoning", selection: reasoningEffortBinding) {
+                        Text("Low").tag(CursorReasoningEffort.low)
+                        Text("Medium").tag(CursorReasoningEffort.medium)
+                        Text("High").tag(CursorReasoningEffort.high)
+                        Text("XHigh").tag(CursorReasoningEffort.xhigh)
+                    }
+                    .pickerStyle(.menu)
+                }
 
                 if model.editingTaskID == nil {
                     Toggle("Auto-send", isOn: autoSendBinding)
@@ -763,7 +796,12 @@ private struct CursorTaskCreationSheet: View {
                     Text("Repository: \(preview.repositoryURL.absoluteString)")
                     Text("Starting ref: \(preview.startingRef)")
                     Text("Model: \(preview.model)")
-                    Text("Auto-create PR: \(preview.autoCreatePR ? "On" : "Off")")
+                    if preview.harness == .cursor {
+                        Text("Auto-create PR: \(preview.autoCreatePR ? "On" : "Off")")
+                    }
+                    if preview.harness == .codex {
+                        Text("Reasoning: \(preview.reasoningEffort.rawValue)")
+                    }
                     Text(preview.prompt)
                         .font(.callout)
                         .textSelection(.enabled)
@@ -804,7 +842,10 @@ private struct CursorTaskCreationSheet: View {
             repositoryID: repository.id,
             title: model.creationDraft.title,
             prompt: model.creationDraft.prompt,
-            autoCreatePR: model.creationDraft.autoCreatePR
+            autoCreatePR: model.creationDraft.autoCreatePR,
+            reasoningEffort: model.creationDraft.reasoningEffort,
+            useFastModel: model.creationDraft.useFastModel,
+            harness: model.creationDraft.harness
         )
         return try? CursorSendPreview(task: task, repository: repository)
     }
@@ -855,6 +896,23 @@ private struct CursorTaskCreationSheet: View {
         }
     }
 
+    private var reasoningEffortBinding: Binding<CursorReasoningEffort> {
+        Binding {
+            model.creationDraft.reasoningEffort
+        } set: {
+            model.creationDraft.reasoningEffort = $0
+        }
+    }
+
+    private var harnessBinding: Binding<CursorHarness> {
+        Binding {
+            model.creationDraft.harness
+        } set: {
+            model.creationDraft.harness = $0
+            model.loadReportingErrors()
+        }
+    }
+
     private var autoSendBinding: Binding<Bool> {
         Binding {
             model.creationDraft.autoSend
@@ -884,6 +942,7 @@ private struct CursorArchivedView: View {
                             } openInCursor: {
                                 model.openInCursorReportingErrors(taskID: card.id)
                             } markDone: {
+                            } recover: {
                             } archive: {
                             }
                         }

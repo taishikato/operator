@@ -68,6 +68,62 @@ import Testing
     let failedCard = try #require(projection.columns.first { $0.id == .failed }?.cards.first)
     #expect(failedCard.runStatusText == "Run failed")
     #expect(failedCard.failedSendMessage == "Cursor run failed during execution.")
+    #expect(failedCard.latestRun?.status == .failed)
+}
+
+@Test func runMonitorSanitizesTerminalFailedRunMessageBeforePersisting() async throws {
+    let fixture = try RunMonitorFixture()
+    let runtime = FakeRunMonitoringRuntime(completion: CursorCloudAgentRunCompletion(
+        status: "failed",
+        result: "HTTP 500 body {\"token\":\"crsr_secret_123\",\"detail\":\"raw response\"}"
+    ))
+    let service = CursorRunMonitorService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    let outcomes = try await service.resumeRunningTasks()
+
+    #expect(outcomes == [.failed(
+        taskID: fixture.task.id,
+        runID: "run-monitor",
+        message: "Cursor run failed. See Cursor for details."
+    )])
+    let failedRun = try #require(fixture.store.runs(taskID: fixture.task.id).last)
+    #expect(failedRun.errorMessage == "Cursor run failed. See Cursor for details.")
+    #expect(failedRun.errorMessage?.contains("crsr_secret_123") == false)
+}
+
+@Test func runMonitorFailedRunCanBeRecoveredAndRetried() async throws {
+    let fixture = try RunMonitorFixture()
+    let runtime = FakeRunMonitoringRuntime(completion: CursorCloudAgentRunCompletion(
+        status: "failed",
+        result: "Cursor run failed during execution."
+    ))
+    let service = CursorRunMonitorService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    _ = try await service.resumeRunningTasks()
+    _ = try fixture.store.recoverTaskForRetry(id: fixture.task.id)
+    let retryRun = try fixture.store.recordSuccessfulSendAttempt(
+        taskID: fixture.task.id,
+        repositoryURL: fixture.repository.githubURL,
+        startingRef: fixture.repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: fixture.task.prompt,
+        cursorAgentID: "agent-retry",
+        cursorRunID: "run-retry",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-retry")!
+    )
+
+    let runs = try fixture.store.runAttempts(taskID: fixture.task.id)
+    #expect(retryRun.cursorRunID == "run-retry")
+    #expect(runs.map(\.status) == [.failed, .succeeded])
 }
 
 @Test func runMonitorContinuesAfterOneRuntimeWaitFails() async throws {
@@ -203,12 +259,13 @@ private final class SelectiveRunMonitoringRuntime: CursorCloudAgentRuntime, @unc
 
 private struct RunMonitorFixture {
     let store: CursorOperatorStore
+    let repository: CursorRepository
     let task: CursorTask
     let readyProvider: CursorCredentialProvider
 
     init() throws {
         store = try CursorOperatorStore(databaseURL: Self.temporaryDatabaseURL())
-        let repository = try store.createRepository(
+        repository = try store.createRepository(
             name: "operator",
             localPath: "/tmp/operator-run-monitor",
             githubURL: URL(string: "https://github.com/example/operator")!,
@@ -247,6 +304,6 @@ private struct RunMonitorFixture {
         let directory = FileManager.default.temporaryDirectory
             .appending(path: "CursorRunMonitorServiceTests-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        return directory.appending(path: "cursor-operator.sqlite")
+        return directory.appending(path: "operator.sqlite")
     }
 }

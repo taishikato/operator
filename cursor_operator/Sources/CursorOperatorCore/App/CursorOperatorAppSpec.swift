@@ -5,9 +5,9 @@ public struct CursorOperatorAppSpec: Equatable, Sendable {
     public let databaseFileName: String
 
     public static let mvp = CursorOperatorAppSpec(
-        displayName: "Cursor Operator",
-        bundleIdentifier: "com.focus.cursor-operator",
-        applicationSupportDirectoryName: "Cursor Operator",
-        databaseFileName: "cursor-operator.sqlite"
+        displayName: "Operator",
+        bundleIdentifier: "com.focus.operator",
+        applicationSupportDirectoryName: "Operator",
+        databaseFileName: "operator.sqlite"
     )
 }

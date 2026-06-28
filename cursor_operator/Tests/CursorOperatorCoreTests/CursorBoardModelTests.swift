@@ -75,6 +75,35 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelProjectsCodexReadinessForSelectedHarness() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    _ = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let binaryURL = URL(filePath: "/opt/homebrew/bin/codex")
+    let settingsStore = InMemoryBoardModelOperatorSettingsStore()
+    try OperatorSettingsManager(store: settingsStore).setDefaultHarness(.codex)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        nodeResolver: MissingBoardModelNodeResolver(),
+        settings: OperatorSettingsManager(store: settingsStore),
+        codexBinarySettings: StaticCodexBinarySettingsProvider(binaryURL: binaryURL),
+        codexStatusChecker: StubCodexStatusChecker(status: .ready(binaryURL))
+    )
+
+    try await model.checkCodexStatus()
+
+    #expect(model.setupStatus.selectedHarness == .codex)
+    #expect(model.setupStatus.codexState == .ready(binaryPath: binaryURL.path))
+    #expect(model.setupStatus.canSend == false)
+    #expect(model.setupStatus.sendDisabledReason == "Codex sending is not available yet.")
+}
+
+@MainActor
 @Test func boardModelRechecksMissingNodeOnNextLoad() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     _ = try store.createRepository(
@@ -133,6 +162,122 @@ import Testing
     try model.archive(taskID: task.id)
     #expect(try store.task(id: task.id)?.status == .archived)
     #expect(model.projection.columns.flatMap(\.cards).isEmpty)
+}
+
+@MainActor
+@Test func boardProjectionKeepsRunHistoryAfterFailedRetry() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Retry", prompt: "First prompt")
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "first failure"
+    )
+    _ = try store.recoverTaskForRetry(id: task.id)
+    let retriedTask = try store.updateTaskContent(
+        id: task.id,
+        title: "Retry",
+        prompt: "Second prompt"
+    )
+    let successfulRun = try store.recordSuccessfulSendAttempt(
+        taskID: retriedTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: retriedTask.prompt,
+        cursorAgentID: "agent-retry",
+        cursorRunID: "run-retry",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-retry")!
+    )
+
+    let projection = try CursorBoardProjection.load(from: store)
+    let card = try #require(projection.columns.first { $0.id == .running }?.cards.first)
+
+    #expect(card.latestRun?.id == successfulRun.id)
+    #expect(card.runHistory.map(\.status) == [.failed, .succeeded])
+    #expect(card.runHistory.map(\.prompt) == ["First prompt", "Second prompt"])
+    #expect(card.failedSendMessage == nil)
+}
+
+@MainActor
+@Test(arguments: [
+    (CursorHarness.cursor, "Cursor"),
+    (CursorHarness.codex, "Codex"),
+    (CursorHarness.claudeCode, "Claude Code"),
+])
+func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, expectedBadge: String) throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Harness run",
+        prompt: "Prompt",
+        harness: harness
+    )
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        cursorAgentID: "agent-badge",
+        cursorRunID: "run-badge",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-badge")!
+    )
+
+    let projection = try CursorBoardProjection.load(from: store)
+    let card = try #require(projection.columns.first { $0.id == .running }?.cards.first)
+
+    // Proves the badge reflects the latest run's actual harness (not a constant),
+    // and exercises every CursorHarness -> badge-text mapping.
+    #expect(card.harnessBadgeText == expectedBadge)
+}
+
+@MainActor
+@Test func boardProjectionDisablesCodexTaskSendEvenWhenCursorIsReady() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Codex task",
+        prompt: "Do not send through Cursor.",
+        harness: .codex
+    )
+
+    let projection = try CursorBoardProjection.load(from: store)
+    let card = try #require(projection.columns.first { $0.id == .ready }?.cards.first)
+    let cursorReady = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready,
+        nodeState: .ready(version: "v22.13.0"),
+        selectedHarness: .cursor
+    )
+
+    #expect(card.id == task.id)
+    #expect(card.canSend(using: cursorReady) == false)
+    #expect(card.sendDisabledReason(using: cursorReady) == "Codex sending is not available yet.")
 }
 
 @MainActor
@@ -411,12 +556,40 @@ import Testing
     }
 
     #expect(model.errorMessage == "Cursor send failed: Cursor rejected the run request.")
-    #expect(try store.task(id: task.id)?.status == .ready)
+    #expect(try store.task(id: task.id)?.status == .failed)
 
     // The projection must refresh on failure so the card shows the persistent
     // failed-send indicator, not just the transient global error message.
-    let readyCard = try #require(model.projection.columns.first { $0.id == .ready }?.cards.first)
-    #expect(readyCard.failedSendMessage == "Cursor rejected the run request.")
+    let failedCard = try #require(model.projection.columns.first { $0.id == .failed }?.cards.first)
+    #expect(failedCard.failedSendMessage == "Cursor rejected the run request.")
+}
+
+@MainActor
+@Test func boardModelRecoversFailedTaskForRetry() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Recover", prompt: "Prompt")
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "Temporary failure"
+    )
+    let model = CursorBoardModel(store: store)
+    try model.load()
+
+    try model.recoverForRetry(taskID: task.id)
+
+    #expect(try store.task(id: task.id)?.status == .ready)
+    #expect(model.projection.columns.first { $0.id == .ready }?.cards.map(\.id) == [task.id])
 }
 
 @MainActor
@@ -709,6 +882,34 @@ private final class RecoveringBoardModelNodeResolver: CursorNodeResolving, @unch
     }
 }
 
+private struct StaticCodexBinarySettingsProvider: CodexBinarySettingsProviding {
+    let binaryURL: URL?
+
+    func configuration() throws -> CodexBinaryConfiguration {
+        CodexBinaryConfiguration(detectedBinaryURL: binaryURL, overrideBinaryURL: nil)
+    }
+}
+
+private struct StubCodexStatusChecker: CodexStatusChecking {
+    let status: CodexStatus
+
+    func checkStatus(binaryURL: URL?) async -> CodexStatus {
+        status
+    }
+}
+
+private final class InMemoryBoardModelOperatorSettingsStore: OperatorSettingsStoring, @unchecked Sendable {
+    private var storedDefaultHarness: String?
+
+    func defaultHarnessRawValue() -> String? {
+        storedDefaultHarness
+    }
+
+    func setDefaultHarnessRawValue(_ rawValue: String?) {
+        storedDefaultHarness = rawValue
+    }
+}
+
 @MainActor
 private final class BoardModelFakeExternalOpener: CursorExternalOpening {
     private(set) var actions: [CursorExternalOpenAction] = []
@@ -722,7 +923,7 @@ private func temporaryBoardModelDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorBoardModelTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory.appending(path: "cursor-operator.sqlite")
+    return directory.appending(path: "operator.sqlite")
 }
 
 @MainActor

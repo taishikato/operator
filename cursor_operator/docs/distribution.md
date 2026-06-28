@@ -1,6 +1,6 @@
-# Cursor Operator Distribution
+# Operator Distribution
 
-Cursor Operator should produce a DMG before treating Homebrew Cask as a primary install path.
+Operator should produce a DMG before treating Homebrew Cask as a primary install path.
 
 The reason is structural: a Homebrew Cask is an install channel that points to an already-built artifact URL plus its checksum. For a GUI app, that artifact is normally a signed and notarized DMG or ZIP. A Cask without a stable signed/notarized artifact is only a local convenience, not a real public distribution path.
 
@@ -25,17 +25,17 @@ From `cursor_operator/`:
 
 Outputs:
 
-- `dist/release/CursorOperator-<version>.dmg`
-- `dist/release/CursorOperator-<version>.dmg.sha256`
+- `dist/release/Operator-<version>.dmg`
+- `dist/release/Operator-<version>.dmg.sha256`
 
-The DMG contains `CursorOperator.app` plus bundled agent support files:
+The DMG contains `Operator.app` plus bundled agent support files:
 
-- `Contents/Library/Helpers/cursor-operator-cli`
+- `Contents/Library/Helpers/operator-cli`
 - `Contents/Resources/CursorSDKHelper`
-- `Contents/Resources/skills/cursor-operator`
+- `Contents/Resources/skills/operator`
 
 Users install the CLI and skills from the app's Settings window. The app links
-`cursor-operator` into `~/.local/bin`, copies the SDK helper next to that
+`operator` into `~/.local/bin`, copies the SDK helper next to that
 symlink, and links the skill into `~/.codex/skills`, `~/.cursor/skills`, and
 `~/.claude/skills`.
 
@@ -67,7 +67,7 @@ The script signs the app bundle with hardened runtime and verifies the signature
 Use a stored notarytool keychain profile:
 
 ```bash
-xcrun notarytool store-credentials cursor-operator-notary \
+xcrun notarytool store-credentials operator-notary \
   --apple-id "developer@example.com" \
   --team-id "TEAMID1234" \
   --password "app-specific-password"
@@ -76,7 +76,7 @@ CURSOR_OPERATOR_VERSION=0.1.0 \
 CURSOR_OPERATOR_BUILD_NUMBER=42 \
 CURSOR_OPERATOR_CODESIGN_IDENTITY="Developer ID Application: Example, Inc. (TEAMID1234)" \
 CURSOR_OPERATOR_NOTARIZE=1 \
-CURSOR_OPERATOR_NOTARY_PROFILE=cursor-operator-notary \
+CURSOR_OPERATOR_NOTARY_PROFILE=operator-notary \
 ./script/package_distribution.sh dmg
 ```
 
@@ -102,13 +102,13 @@ After uploading the notarized DMG, render a Cask:
 ```bash
 ./script/render_homebrew_cask.sh \
   0.1.0 \
-  https://github.com/taishikato/operator/releases/download/cursor-operator-v0.1.0/CursorOperator-0.1.0.dmg \
-  "$(cut -d ' ' -f 1 dist/release/CursorOperator-0.1.0.dmg.sha256)"
+  https://github.com/taishikato/operator/releases/download/operator-v0.1.0/Operator-0.1.0.dmg \
+  "$(cut -d ' ' -f 1 dist/release/Operator-0.1.0.dmg.sha256)"
 ```
 
 The rendered Cask:
 
-- installs `CursorOperator.app`
+- installs `Operator.app`
 - depends on Homebrew `node`
 - declares `depends_on macos: ">= :tahoe"` for macOS 26+
 - includes caveats for the runtime Node.js 22.13+ requirement

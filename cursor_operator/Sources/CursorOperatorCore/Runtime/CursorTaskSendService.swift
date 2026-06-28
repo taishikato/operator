@@ -12,6 +12,25 @@ public struct CursorRuntimeFailure: Error, Equatable, Sendable {
         self.message = Self.sanitized(message)
     }
 
+    // Substrings that signal a message may carry a raw response body, a header,
+    // or a credential. Matching is intentionally broad: the sanitized output is
+    // persisted on the run and rendered in the UI, so we would rather over-redact
+    // a benign message than echo an upstream secret. The original detail stays
+    // available in Cursor itself.
+    private static let sensitiveMarkers = [
+        "{",
+        "body",
+        "authorization",
+        "bearer",
+        "cookie",
+        "token",
+        "secret",
+        "password",
+        "api_key",
+        "apikey",
+        "crsr_",
+    ]
+
     private static func sanitized(_ message: String) -> String {
         let collapsed = message
             .split(whereSeparator: \.isWhitespace)
@@ -22,10 +41,10 @@ public struct CursorRuntimeFailure: Error, Equatable, Sendable {
             return "Cursor run failed."
         }
 
-        if collapsed.contains("{")
-            || collapsed.range(of: "body", options: .caseInsensitive) != nil
-            || collapsed.range(of: "authorization", options: .caseInsensitive) != nil
-            || collapsed.range(of: "crsr_", options: .caseInsensitive) != nil {
+        let containsSensitiveMarker = sensitiveMarkers.contains { marker in
+            collapsed.range(of: marker, options: .caseInsensitive) != nil
+        }
+        if containsSensitiveMarker {
             return "Cursor run failed. See Cursor for details."
         }
 
@@ -73,6 +92,7 @@ public extension CursorCloudAgentRuntime {
 
 public enum CursorTaskSendError: Error, Equatable, LocalizedError, Sendable {
     case missingCredentials
+    case unsupportedHarness(CursorHarness)
     case sendFailed(message: String)
     case startedRunCouldNotBeRecorded(CursorCloudAgentReference)
 
@@ -80,6 +100,8 @@ public enum CursorTaskSendError: Error, Equatable, LocalizedError, Sendable {
         switch self {
         case .missingCredentials:
             "Cursor API key is required before sending."
+        case let .unsupportedHarness(harness):
+            "\(harness.displayName) sending is not available yet."
         case let .sendFailed(message):
             "Cursor send failed: \(message)"
         case let .startedRunCouldNotBeRecorded(reference):
@@ -104,11 +126,15 @@ public struct CursorTaskSendService: Sendable {
     }
 
     public func send(taskID: UUID) async throws -> CursorRunAttempt {
-        let apiKey = try credentialReadiness.apiKeyForSending()
         guard let task = try store.task(id: taskID),
               let repository = try store.repository(id: task.repositoryID) else {
             throw CursorOperatorStoreError.taskNotFound
         }
+        guard task.harness == .cursor else {
+            throw CursorTaskSendError.unsupportedHarness(task.harness)
+        }
+
+        let apiKey = try credentialReadiness.apiKeyForSending()
 
         guard try store.runAttempts(taskID: task.id).allSatisfy({ $0.status != .succeeded }) else {
             throw CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun
@@ -130,7 +156,8 @@ public struct CursorTaskSendService: Sendable {
             startingRef: request.startingRef,
             model: request.model,
             autoCreatePR: request.autoCreatePR,
-            prompt: request.prompt
+            prompt: request.prompt,
+            harness: .cursor
         )
 
         do {

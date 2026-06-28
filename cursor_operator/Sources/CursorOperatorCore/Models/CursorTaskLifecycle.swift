@@ -4,16 +4,32 @@ public enum CursorModel {
     public static let fixed = "composer-2.5"
 }
 
+public enum CodexModel {
+    public static let fixed = "gpt-5.5"
+}
+
 public enum CursorHarness: String, Codable, CaseIterable, Sendable {
     case cursor
     case codex
     case claudeCode = "claude-code"
+
+    public var displayName: String {
+        switch self {
+        case .cursor:
+            "Cursor"
+        case .codex:
+            "Codex"
+        case .claudeCode:
+            "Claude Code"
+        }
+    }
 }
 
 public enum CursorReasoningEffort: String, Codable, CaseIterable, Sendable {
     case low
     case medium
     case high
+    case xhigh
 }
 
 public enum CursorTaskStatus: String, Codable, CaseIterable, Sendable {
@@ -93,12 +109,12 @@ public enum CursorTaskLifecyclePolicy {
         return task.with(status: .running, now: now)
     }
 
-    public static func recordFailedSend(for task: CursorTask) throws -> CursorTask {
+    public static func recordFailedSend(for task: CursorTask, now: Date = Date()) throws -> CursorTask {
         guard task.status == .ready else {
             throw CursorTaskLifecycleError.transitionNotAllowed
         }
 
-        return task
+        return task.with(status: .failed, now: now)
     }
 
     public static func markDone(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
@@ -115,6 +131,14 @@ public enum CursorTaskLifecyclePolicy {
         }
 
         return task.with(status: .failed, now: now)
+    }
+
+    public static func recoverForRetry(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {
+        guard task.status == .failed else {
+            throw CursorTaskLifecycleError.transitionNotAllowed
+        }
+
+        return task.with(status: .ready, now: now)
     }
 
     public static func archive(_ task: CursorTask, now: Date = Date()) throws -> CursorTask {

@@ -2,8 +2,8 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="CursorOperator"
-BUNDLE_ID="com.focus.cursor-operator"
+APP_NAME="Operator"
+BUNDLE_ID="com.focus.operator"
 MIN_SYSTEM_VERSION="26.0"
 APP_VERSION="${CURSOR_OPERATOR_VERSION:-0.1.0}"
 BUILD_NUMBER="${CURSOR_OPERATOR_BUILD_NUMBER:-1}"
@@ -17,13 +17,13 @@ APP_MACOS="$APP_CONTENTS/MacOS"
 APP_HELPERS="$APP_CONTENTS/Library/Helpers"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$APP_NAME"
-APP_CLI="$APP_HELPERS/cursor-operator-cli"
+APP_CLI="$APP_HELPERS/operator-cli"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 SDK_HELPER_SRC="$ROOT_DIR/Resources/CursorSDKHelper"
 SDK_HELPER_DST="$APP_RESOURCES/CursorSDKHelper"
 APP_ICON_SRC="$ROOT_DIR/Resources/AppIcon.icns"
 APP_ICON_FILE="AppIcon.icns"
-SKILL_SOURCE="$ROOT_DIR/skills/cursor-operator"
+SKILL_SOURCE="$ROOT_DIR/skills/operator"
 APP_SKILLS_DIR="$APP_RESOURCES/skills"
 
 cd "$ROOT_DIR"
@@ -32,7 +32,7 @@ pkill -x "$APP_NAME" >/dev/null 2>&1 || true
 
 swift build -c "$SWIFT_CONFIGURATION"
 BUILD_BINARY="$(swift build -c "$SWIFT_CONFIGURATION" --show-bin-path)/$APP_NAME"
-BUILD_CLI="$(swift build -c "$SWIFT_CONFIGURATION" --show-bin-path)/cursor-operator-cli"
+BUILD_CLI="$(swift build -c "$SWIFT_CONFIGURATION" --show-bin-path)/operator-cli"
 
 rm -rf "$APP_BUNDLE"
 mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
@@ -48,7 +48,7 @@ fi
 
 if [ -d "$SKILL_SOURCE" ]; then
   mkdir -p "$APP_SKILLS_DIR"
-  cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/cursor-operator"
+  cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/operator"
 else
   echo "missing skill source: $SKILL_SOURCE" >&2
   exit 1
@@ -70,7 +70,7 @@ cat >"$INFO_PLIST" <<PLIST
   <key>CFBundleIdentifier</key>
   <string>$BUNDLE_ID</string>
   <key>CFBundleName</key>
-  <string>Cursor Operator</string>
+  <string>Operator</string>
   <key>CFBundlePackageType</key>
   <string>APPL</string>
   <key>CFBundleShortVersionString</key>

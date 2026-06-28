@@ -12,6 +12,36 @@ import Testing
     #expect(try storage.loadAPIKey() == nil)
 }
 
+@Test func codexBinaryOverrideRejectsRelativePath() throws {
+    let settings = CodexBinarySettings(
+        store: InMemoryCodexBinarySettingsStore(),
+        detector: StubCodexBinaryDetector(detectedBinaryURL: nil)
+    )
+
+    #expect(throws: CodexBinarySettingsError.overrideMustBeAbsolute) {
+        try settings.setOverridePath("bin/codex")
+    }
+}
+
+@Test func codexStatusCheckerMapsMissingBinaryToNotFound() async {
+    let checker = CodexStatusChecker(runner: StubCodexStatusRunner(result: .success(.ready)))
+
+    let status = await checker.checkStatus(binaryURL: nil)
+
+    #expect(status == .notFound)
+}
+
+@Test func operatorSettingsDefaultsHarnessToCursorAndPersistsCodex() throws {
+    let store = InMemoryOperatorSettingsStore()
+    let settings = OperatorSettingsManager(store: store)
+
+    #expect(settings.defaultHarness() == .cursor)
+
+    try settings.setDefaultHarness(.codex)
+
+    #expect(settings.defaultHarness() == .codex)
+}
+
 @Test func credentialProviderUsesEnvironmentFallbackWhenKeychainIsMissing() throws {
     let storage = InMemoryCursorCredentialStore()
     let provider = CursorCredentialProvider(
@@ -185,5 +215,45 @@ private final class NotificationRecorder: @unchecked Sendable {
         lock.withLock {
             recordedNames.append(name)
         }
+    }
+}
+
+private final class InMemoryCodexBinarySettingsStore: CodexBinarySettingsStoring, @unchecked Sendable {
+    private var overridePath: String?
+
+    func codexBinaryOverridePath() -> String? {
+        overridePath
+    }
+
+    func setCodexBinaryOverridePath(_ path: String?) {
+        overridePath = path
+    }
+}
+
+private struct StubCodexBinaryDetector: CodexBinaryDetecting {
+    let detectedBinaryURL: URL?
+
+    func detectedCodexBinaryURL() -> URL? {
+        detectedBinaryURL
+    }
+}
+
+private struct StubCodexStatusRunner: CodexStatusRunning {
+    let result: Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>
+
+    func runCodexStatus(binaryURL: URL) async -> Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure> {
+        result
+    }
+}
+
+private final class InMemoryOperatorSettingsStore: OperatorSettingsStoring, @unchecked Sendable {
+    private var storedDefaultHarness: String?
+
+    func defaultHarnessRawValue() -> String? {
+        storedDefaultHarness
+    }
+
+    func setDefaultHarnessRawValue(_ rawValue: String?) {
+        storedDefaultHarness = rawValue
     }
 }

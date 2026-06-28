@@ -36,6 +36,19 @@ import Testing
     #expect(CursorTaskCreationDraft(autoSend: true).autoSend)
 }
 
+@MainActor
+@Test func newTaskDraftUsesStoredDefaultHarness() throws {
+    let settingsStore = InMemoryOperatorSettingsStore()
+    try OperatorSettingsManager(store: settingsStore).setDefaultHarness(.codex)
+
+    let model = CursorBoardModel(
+        store: try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL()),
+        settings: OperatorSettingsManager(store: settingsStore)
+    )
+
+    #expect(model.creationDraft.harness == .codex)
+}
+
 @Test func taskCreationDraftStoresHarnessReasoningAndFastModelIntent() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL())
     let repository = try store.createRepository(
@@ -59,6 +72,28 @@ import Testing
     #expect(task.autoCreatePR)
     #expect(task.reasoningEffort == .high)
     #expect(task.useFastModel)
+    #expect(task.harness == .codex)
+}
+
+@Test func codexTaskCreationStoresXHighReasoningEffort() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let draft = CursorTaskCreationDraft(
+        repositoryID: repository.id,
+        title: "Deep Codex pass",
+        prompt: "Use the highest supported Codex effort.",
+        reasoningEffort: .xhigh,
+        harness: .codex
+    )
+
+    let task = try draft.createTask(in: store)
+
+    #expect(task.reasoningEffort == .xhigh)
     #expect(task.harness == .codex)
 }
 
@@ -108,7 +143,7 @@ import Testing
         autoCreatePR: true,
         reasoningEffort: .high,
         useFastModel: true,
-        harness: .codex
+        harness: .cursor
     )
 
     let preview = try CursorSendPreview(task: task, repository: repository)
@@ -120,13 +155,54 @@ import Testing
     #expect(preview.autoCreatePR)
     #expect(preview.reasoningEffort == .high)
     #expect(preview.useFastModel)
-    #expect(preview.harness == .codex)
+    #expect(preview.harness == .cursor)
     #expect(preview.prompt == prompt)
+}
+
+@Test func codexSendPreviewUsesCodexModelAndIgnoresCursorOnlyFields() throws {
+    let repository = CursorRepository(
+        id: UUID(),
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "trunk",
+        createdAt: Date(),
+        updatedAt: Date()
+    )
+    let task = CursorTask.new(
+        repositoryID: repository.id,
+        title: "Codex Preview",
+        prompt: "Codex should not receive Cursor-only settings.",
+        autoCreatePR: true,
+        reasoningEffort: .xhigh,
+        useFastModel: true,
+        harness: .codex
+    )
+
+    let preview = try CursorSendPreview(task: task, repository: repository)
+
+    #expect(preview.model == CodexModel.fixed)
+    #expect(preview.autoCreatePR == false)
+    #expect(preview.useFastModel == false)
+    #expect(preview.reasoningEffort == .xhigh)
+    #expect(preview.harness == .codex)
 }
 
 private func temporaryTaskCreationDatabaseURL() throws -> URL {
     let directory = FileManager.default.temporaryDirectory
         .appending(path: "CursorTaskCreationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-    return directory.appending(path: "cursor-operator.sqlite")
+    return directory.appending(path: "operator.sqlite")
+}
+
+private final class InMemoryOperatorSettingsStore: OperatorSettingsStoring, @unchecked Sendable {
+    private var storedDefaultHarness: String?
+
+    func defaultHarnessRawValue() -> String? {
+        storedDefaultHarness
+    }
+
+    func setDefaultHarnessRawValue(_ rawValue: String?) {
+        storedDefaultHarness = rawValue
+    }
 }

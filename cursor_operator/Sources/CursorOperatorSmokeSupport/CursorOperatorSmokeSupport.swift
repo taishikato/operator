@@ -88,7 +88,7 @@ private struct SmokeOptions {
         self.repositoryURL = repositoryURL
         self.startingRef = startingRef
         localPath = values["--local-path"] ?? FileManager.default.temporaryDirectory
-            .appending(path: "cursor-operator-ui-smoke-repo", directoryHint: .isDirectory)
+            .appending(path: "operator-ui-smoke-repo", directoryHint: .isDirectory)
             .path
         prompt = values["--prompt"] ?? "Please reply with exactly: cursor operator ui send smoke ok. Do not modify files or create a pull request."
         taskID = values["--task-id"].flatMap(UUID.init(uuidString:))

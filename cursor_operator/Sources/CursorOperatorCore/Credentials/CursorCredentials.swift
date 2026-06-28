@@ -33,7 +33,7 @@ public final class KeychainCursorCredentialStore: CursorCredentialStoring, @unch
     private let account: String
 
     public init(
-        service: String = "com.focus.cursor-operator",
+        service: String = "com.focus.operator",
         account: String = "Cursor API Key"
     ) {
         self.service = service
@@ -293,7 +293,7 @@ public final class CursorCredentialSettingsModel: ObservableObject {
            let errorDescription = localizedError.errorDescription {
             return errorDescription
         }
-        return "Cursor Operator could not update the Cursor API key."
+        return "Operator could not update the Cursor API key."
     }
 
     private static func mask(_ apiKey: String) -> String {

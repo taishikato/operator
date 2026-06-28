@@ -4,8 +4,9 @@ This repository contains native Operator clients for running coding agents again
 
 [Codex Operator](codex_operator/) (`codex_operator`) is a desktop app for Codex App. It is a Kanban board that triggers Codex directly, then opens the chat session in Codex App so you can continue working there.
 
-[Cursor Operator](cursor_operator/) (`CursorOperator.app` / `cursor-operator`) is a native macOS SwiftUI app and companion CLI for preparing and sending Cursor Cloud Agent tasks for local Git repositories through the Cursor SDK.
+[Operator](cursor_operator/) (`Operator.app` / `operator`) is the integrated product direction for preparing and sending coding-agent tasks from a native macOS SwiftUI board.
+This foundation currently keeps the Cursor Cloud Agent runtime inside `cursor_operator` and does not migrate old Cursor Operator or Codex Operator local databases.
 
 See the [Codex Operator README](codex_operator/README.md) for desktop app setup and usage details.
 
-See the [Cursor Operator README](cursor_operator/README.md) for Cursor app setup and usage details.
+See the [Operator README](cursor_operator/README.md) for Cursor runtime setup and usage details.

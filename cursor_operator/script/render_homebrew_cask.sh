@@ -5,7 +5,7 @@ usage() {
   cat <<USAGE
 usage: $0 VERSION DMG_URL SHA256
 
-Renders a Homebrew Cask for a signed and notarized Cursor Operator DMG.
+Renders a Homebrew Cask for a signed and notarized Operator DMG.
 USAGE
 }
 
@@ -24,31 +24,31 @@ if [[ -z "$VERSION" || -z "$DMG_URL" || -z "$SHA256" ]]; then
 fi
 
 cat <<CASK
-cask "cursor-operator" do
+cask "operator" do
   version "$VERSION"
   sha256 "$SHA256"
 
   url "$DMG_URL",
       verified: "github.com/taishikato/operator/"
-  name "Cursor Operator"
+  name "Operator"
   desc "Prepare Cursor Cloud Agent tasks"
   homepage "https://github.com/taishikato/operator"
 
   depends_on formula: "node"
   depends_on macos: ">= :tahoe"
 
-  app "CursorOperator.app"
+  app "Operator.app"
 
   caveats <<~EOS
-    Cursor Operator requires Node.js 22.13 or newer at runtime.
+    Operator requires Node.js 22.13 or newer at runtime.
     If Homebrew's node is not the Node executable you want the app to use,
     set CURSOR_NODE_PATH to an executable Node.js 22.13+ binary.
   EOS
 
   zap trash: [
-    "~/Library/Application Support/Cursor Operator",
-    "~/Library/Preferences/com.focus.cursor-operator.plist",
-    "~/Library/Saved Application State/com.focus.cursor-operator.savedState",
+    "~/Library/Application Support/Operator",
+    "~/Library/Preferences/com.focus.operator.plist",
+    "~/Library/Saved Application State/com.focus.operator.savedState",
   ]
 end
 CASK

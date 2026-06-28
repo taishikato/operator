@@ -42,14 +42,13 @@ import Testing
     #expect(CursorOperatorSidebarSelection.board.selectionAfterAppMenuCommand(.newTask) == .board)
 }
 
-@Test func cursorOperatorUsesIsolatedIdentityAndDataRoot() {
+@Test func operatorUsesIsolatedIdentityAndDataRoot() {
     let app = CursorOperatorAppSpec.mvp
 
-    #expect(app.displayName == "Cursor Operator")
-    #expect(app.bundleIdentifier == "com.focus.cursor-operator")
-    #expect(app.applicationSupportDirectoryName == "Cursor Operator")
-    #expect(app.databaseFileName == "cursor-operator.sqlite")
-    #expect(app.applicationSupportDirectoryName != "Operator")
+    #expect(app.displayName == "Operator")
+    #expect(app.bundleIdentifier == "com.focus.operator")
+    #expect(app.applicationSupportDirectoryName == "Operator")
+    #expect(app.databaseFileName == "operator.sqlite")
 }
 
 @Test func mvpScopeKeepsCursorAndGitOrchestrationOutOfScope() {
@@ -83,4 +82,34 @@ import Testing
     #expect(missingNode.canSend == false)
     #expect(missingNode.nodeMessage == "Node.js: 22.13+ required")
     #expect(missingNode.nodeIconName == "exclamationmark.triangle")
+}
+
+@Test func setupStatusUsesSelectedHarnessReadinessBeforeSending() {
+    let codexReady = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .missing,
+        nodeState: .missing,
+        codexState: .ready(binaryPath: "/opt/homebrew/bin/codex"),
+        selectedHarness: .codex
+    )
+    let cursorReady = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready,
+        nodeState: .ready(version: "v22.13.0"),
+        codexState: .notFound,
+        selectedHarness: .cursor
+    )
+    let codexMissing = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready,
+        nodeState: .ready(version: "v22.13.0"),
+        codexState: .notFound,
+        selectedHarness: .codex
+    )
+
+    #expect(codexReady.canSend == false)
+    #expect(codexReady.sendDisabledReason == "Codex sending is not available yet.")
+    #expect(cursorReady.canSend)
+    #expect(codexMissing.canSend == false)
+    #expect(codexMissing.sendDisabledReason == "Codex sending is not available yet.")
 }

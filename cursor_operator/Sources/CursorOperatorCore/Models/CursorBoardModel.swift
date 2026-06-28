@@ -16,23 +16,34 @@ public final class CursorBoardModel: ObservableObject {
     private let repositoryRegistrationService: CursorRepositoryRegistrationService
     private let credentialProvider: CursorCredentialProvider
     private let nodeResolver: any CursorNodeResolving
+    private let settings: OperatorSettingsManager
+    private let codexBinarySettings: any CodexBinarySettingsProviding
+    private let codexStatusChecker: any CodexStatusChecking
     private let runtime: any CursorCloudAgentRuntime
     private let externalOpener: any CursorExternalOpening
     private var cachedNodeState: CursorNodeSetupState?
+    private var codexStatus: CodexStatus
 
     public init(
         store: CursorOperatorStore,
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
         nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
+        settings: OperatorSettingsManager = OperatorSettingsManager(),
+        codexBinarySettings: any CodexBinarySettingsProviding = CodexBinarySettings(),
+        codexStatusChecker: any CodexStatusChecking = CodexStatusChecker(),
         runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
         externalOpener: any CursorExternalOpening = SystemCursorExternalOpener()
     ) {
         self.store = store
         self.credentialProvider = credentialProvider
         self.nodeResolver = nodeResolver
+        self.settings = settings
+        self.codexBinarySettings = codexBinarySettings
+        self.codexStatusChecker = codexStatusChecker
         self.runtime = runtime
         self.externalOpener = externalOpener
+        codexStatus = .notChecked
         repositoryRegistrationService = CursorRepositoryRegistrationService(
             store: store,
             inspector: repositoryInspector
@@ -42,7 +53,7 @@ public final class CursorBoardModel: ObservableObject {
         setupStatus = .empty
         editingTaskID = nil
         sendingTaskIDs = []
-        creationDraft = CursorTaskCreationDraft()
+        creationDraft = CursorTaskCreationDraft(harness: settings.defaultHarness())
     }
 
     public func load() throws {
@@ -50,10 +61,18 @@ public final class CursorBoardModel: ObservableObject {
         setupStatus = try CursorSetupStatusProjection(
             repositoryState: repositories.isEmpty ? .missing : .registered(count: repositories.count),
             credentialState: CursorSendReadiness(provider: credentialProvider).credentialState(),
-            nodeState: nodeSetupState()
+            nodeState: nodeSetupState(),
+            codexState: codexSetupState(),
+            selectedHarness: creationDraft.harness
         )
         projection = try CursorBoardProjection.load(from: store)
         errorMessage = nil
+    }
+
+    public func checkCodexStatus() async throws {
+        let configuration = try codexBinarySettings.configuration()
+        codexStatus = await codexStatusChecker.checkStatus(binaryURL: configuration.effectiveBinaryURL)
+        try load()
     }
 
     public func createLocalTask(title: String, prompt: String) throws {
@@ -68,7 +87,10 @@ public final class CursorBoardModel: ObservableObject {
 
     public func createTaskFromDraft() throws -> CursorTask {
         let task = try creationDraft.createTask(in: store)
-        creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
+        creationDraft = CursorTaskCreationDraft(
+            repositoryID: creationDraft.repositoryID,
+            harness: settings.defaultHarness()
+        )
         editingTaskID = nil
         try load()
         return task
@@ -130,7 +152,10 @@ public final class CursorBoardModel: ObservableObject {
             useFastModel: creationDraft.useFastModel,
             harness: creationDraft.harness
         )
-        creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
+        creationDraft = CursorTaskCreationDraft(
+            repositoryID: creationDraft.repositoryID,
+            harness: settings.defaultHarness()
+        )
         editingTaskID = nil
         try load()
         return task
@@ -190,6 +215,11 @@ public final class CursorBoardModel: ObservableObject {
         try load()
     }
 
+    public func recoverForRetry(taskID: UUID) throws {
+        _ = try store.recoverTaskForRetry(id: taskID)
+        try load()
+    }
+
     public func openInCursor(taskID: UUID) throws {
         guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded }) else {
             throw CursorOpenInCursorError.noCursorReference
@@ -245,7 +275,7 @@ public final class CursorBoardModel: ObservableObject {
         do {
             try createLocalTask(
                 title: "Local Cursor task",
-                prompt: "This local placeholder task proves the Cursor Operator SQLite lifecycle."
+                prompt: "This local placeholder task proves the Operator SQLite lifecycle."
             )
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
@@ -337,6 +367,14 @@ public final class CursorBoardModel: ObservableObject {
         }
     }
 
+    public func recoverForRetryReportingErrors(taskID: UUID) {
+        do {
+            try recoverForRetry(taskID: taskID)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
     public func openInCursorReportingErrors(taskID: UUID) {
         do {
             try openInCursor(taskID: taskID)
@@ -369,9 +407,9 @@ public final class CursorBoardModel: ObservableObject {
         return try store.createRepository(
             name: "Local Cursor Repository",
             localPath: FileManager.default.temporaryDirectory
-                .appending(path: "cursor-operator-placeholder", directoryHint: .isDirectory)
+                .appending(path: "operator-placeholder", directoryHint: .isDirectory)
                 .path,
-            githubURL: URL(string: "https://github.com/local/cursor-operator-placeholder")!,
+            githubURL: URL(string: "https://github.com/local/operator-placeholder")!,
             defaultBranch: "main"
         )
     }
@@ -393,11 +431,24 @@ public final class CursorBoardModel: ObservableObject {
         return state
     }
 
+    private func codexSetupState() -> CodexSetupState {
+        switch codexStatus {
+        case .notChecked:
+            .notChecked
+        case let .ready(binaryURL):
+            .ready(binaryPath: binaryURL.path)
+        case .notFound:
+            .notFound
+        case let .notAuthenticatedOrUnavailable(message):
+            .unavailable(message)
+        }
+    }
+
     private static func userFacingMessage(for error: Error) -> String {
         if let localizedError = error as? LocalizedError,
            let errorDescription = localizedError.errorDescription {
             return errorDescription
         }
-        return "Cursor Operator could not update the board."
+        return "Operator could not update the board."
     }
 }
