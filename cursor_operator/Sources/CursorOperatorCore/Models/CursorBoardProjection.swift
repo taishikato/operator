@@ -88,6 +88,7 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     public let failedSendMessage: String?
     public let latestRun: CursorTaskRunProjection?
     public let runHistory: [CursorTaskRunProjection]
+    public let harness: CursorHarness
 
     public init(
         task: CursorTask,
@@ -104,6 +105,7 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
         self.failedSendMessage = failedSendMessage
         latestRun = runHistory.last
         self.runHistory = runHistory
+        harness = task.harness
     }
 
     public var canOpenInCursor: Bool {
@@ -112,6 +114,17 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
 
     public var harnessBadgeText: String? {
         latestRun?.harness.badgeText
+    }
+
+    public func canSend(using setupStatus: CursorSetupStatusProjection) -> Bool {
+        harness == .cursor && setupStatus.canSend
+    }
+
+    public func sendDisabledReason(using setupStatus: CursorSetupStatusProjection) -> String {
+        guard harness == .cursor else {
+            return "\(harness.displayName) sending is not available yet."
+        }
+        return setupStatus.sendDisabledReason
     }
 
     public var runStatusText: String? {

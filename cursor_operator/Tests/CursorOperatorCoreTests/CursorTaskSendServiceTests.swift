@@ -32,7 +32,7 @@ import Testing
     )])
 }
 
-@Test func sendServiceRecordsCursorHarnessRunThroughNeutralRunsAPI() async throws {
+@Test func sendServiceRejectsCodexTaskBeforeStartingCursorRuntime() async throws {
     let fixture = try SendServiceFixture(
         taskHarness: .codex,
         reasoningEffort: .high,
@@ -49,13 +49,13 @@ import Testing
         runtime: runtime
     )
 
-    _ = try await service.send(taskID: fixture.task.id)
+    await #expect(throws: CursorTaskSendError.unsupportedHarness(.codex)) {
+        try await service.send(taskID: fixture.task.id)
+    }
 
-    let run = try #require(fixture.store.runs(taskID: fixture.task.id).last)
-    #expect(run.harness == .cursor)
-    #expect(run.prompt == "Prompt exactly")
-    #expect(run.reasoningEffort == .high)
-    #expect(run.useFastModel)
+    #expect(runtime.requests.isEmpty)
+    #expect(try fixture.store.runs(taskID: fixture.task.id).isEmpty)
+    #expect(try fixture.store.task(id: fixture.task.id)?.status == .ready)
 }
 
 @Test func sendServiceRecordsFailureMovesTaskFailedAndAllowsExplicitRetry() async throws {

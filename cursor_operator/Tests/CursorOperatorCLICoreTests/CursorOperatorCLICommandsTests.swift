@@ -311,6 +311,10 @@ import CursorOperatorCore
     #expect(missingCredential.exitCode == 4)
     #expect(missingCredential.code == "cursorUnavailable")
 
+    let unsupportedHarness = cursorCLIFailure(for: CursorTaskSendError.unsupportedHarness(.codex))
+    #expect(unsupportedHarness.exitCode == 5)
+    #expect(unsupportedHarness.code == "sendFailed")
+
     let sendFailed = cursorCLIFailure(for: CursorOperatorCLIError.sendFailed(message: "boom"))
     #expect(sendFailed.exitCode == 5)
     #expect(sendFailed.code == "sendFailed")

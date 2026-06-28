@@ -56,12 +56,7 @@ public struct CursorSetupStatusProjection: Equatable, Sendable {
                 return false
             }
         case .codex:
-            switch codexState {
-            case .ready:
-                return true
-            case .notChecked, .notFound, .unavailable:
-                return false
-            }
+            return false
         case .claudeCode:
             return false
         }
@@ -110,12 +105,7 @@ public struct CursorSetupStatusProjection: Equatable, Sendable {
                 return ""
             }
         case .codex:
-            switch codexState {
-            case .ready:
-                return ""
-            case .notChecked, .notFound, .unavailable:
-                return "Codex must be ready before sending."
-            }
+            return "Codex sending is not available yet."
         case .claudeCode:
             return "Claude Code sending is not available yet."
         }

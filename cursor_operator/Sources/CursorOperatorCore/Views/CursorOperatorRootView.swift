@@ -446,8 +446,8 @@ private struct CursorBoardView: View {
                                 } archive: {
                                     model.archiveReportingErrors(taskID: card.id)
                                 }
-                                .sendDisabled(!model.setupStatus.canSend || model.isSending(taskID: card.id))
-                                .sendDisabledReason(model.isSending(taskID: card.id) ? "Send already in progress." : model.setupStatus.sendDisabledReason)
+                                .sendDisabled(!card.canSend(using: model.setupStatus) || model.isSending(taskID: card.id))
+                                .sendDisabledReason(model.isSending(taskID: card.id) ? "Send already in progress." : card.sendDisabledReason(using: model.setupStatus))
                                 .sendStatusText(model.sendStatusText(taskID: card.id))
                             }
                         }

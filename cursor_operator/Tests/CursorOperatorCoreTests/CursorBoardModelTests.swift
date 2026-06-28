@@ -99,7 +99,8 @@ import Testing
 
     #expect(model.setupStatus.selectedHarness == .codex)
     #expect(model.setupStatus.codexState == .ready(binaryPath: binaryURL.path))
-    #expect(model.setupStatus.canSend)
+    #expect(model.setupStatus.canSend == false)
+    #expect(model.setupStatus.sendDisabledReason == "Codex sending is not available yet.")
 }
 
 @MainActor
@@ -247,6 +248,36 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
     // Proves the badge reflects the latest run's actual harness (not a constant),
     // and exercises every CursorHarness -> badge-text mapping.
     #expect(card.harnessBadgeText == expectedBadge)
+}
+
+@MainActor
+@Test func boardProjectionDisablesCodexTaskSendEvenWhenCursorIsReady() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Codex task",
+        prompt: "Do not send through Cursor.",
+        harness: .codex
+    )
+
+    let projection = try CursorBoardProjection.load(from: store)
+    let card = try #require(projection.columns.first { $0.id == .ready }?.cards.first)
+    let cursorReady = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready,
+        nodeState: .ready(version: "v22.13.0"),
+        selectedHarness: .cursor
+    )
+
+    #expect(card.id == task.id)
+    #expect(card.canSend(using: cursorReady) == false)
+    #expect(card.sendDisabledReason(using: cursorReady) == "Codex sending is not available yet.")
 }
 
 @MainActor

@@ -12,6 +12,17 @@ public enum CursorHarness: String, Codable, CaseIterable, Sendable {
     case cursor
     case codex
     case claudeCode = "claude-code"
+
+    public var displayName: String {
+        switch self {
+        case .cursor:
+            "Cursor"
+        case .codex:
+            "Codex"
+        case .claudeCode:
+            "Claude Code"
+        }
+    }
 }
 
 public enum CursorReasoningEffort: String, Codable, CaseIterable, Sendable {

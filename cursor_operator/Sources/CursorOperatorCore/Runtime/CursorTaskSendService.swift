@@ -92,6 +92,7 @@ public extension CursorCloudAgentRuntime {
 
 public enum CursorTaskSendError: Error, Equatable, LocalizedError, Sendable {
     case missingCredentials
+    case unsupportedHarness(CursorHarness)
     case sendFailed(message: String)
     case startedRunCouldNotBeRecorded(CursorCloudAgentReference)
 
@@ -99,6 +100,8 @@ public enum CursorTaskSendError: Error, Equatable, LocalizedError, Sendable {
         switch self {
         case .missingCredentials:
             "Cursor API key is required before sending."
+        case let .unsupportedHarness(harness):
+            "\(harness.displayName) sending is not available yet."
         case let .sendFailed(message):
             "Cursor send failed: \(message)"
         case let .startedRunCouldNotBeRecorded(reference):
@@ -123,11 +126,15 @@ public struct CursorTaskSendService: Sendable {
     }
 
     public func send(taskID: UUID) async throws -> CursorRunAttempt {
-        let apiKey = try credentialReadiness.apiKeyForSending()
         guard let task = try store.task(id: taskID),
               let repository = try store.repository(id: task.repositoryID) else {
             throw CursorOperatorStoreError.taskNotFound
         }
+        guard task.harness == .cursor else {
+            throw CursorTaskSendError.unsupportedHarness(task.harness)
+        }
+
+        let apiKey = try credentialReadiness.apiKeyForSending()
 
         guard try store.runAttempts(taskID: task.id).allSatisfy({ $0.status != .succeeded }) else {
             throw CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun

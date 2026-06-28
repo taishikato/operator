@@ -107,8 +107,9 @@ import Testing
         selectedHarness: .codex
     )
 
-    #expect(codexReady.canSend)
+    #expect(codexReady.canSend == false)
+    #expect(codexReady.sendDisabledReason == "Codex sending is not available yet.")
     #expect(cursorReady.canSend)
     #expect(codexMissing.canSend == false)
-    #expect(codexMissing.sendDisabledReason == "Codex must be ready before sending.")
+    #expect(codexMissing.sendDisabledReason == "Codex sending is not available yet.")
 }
