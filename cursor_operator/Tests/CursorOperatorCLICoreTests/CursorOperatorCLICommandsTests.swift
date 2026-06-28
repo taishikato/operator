@@ -260,7 +260,7 @@ import CursorOperatorCore
     #expect(try store.task(id: task.id)?.status == .running)
 }
 
-@Test func sendFailureIsReturnedForCursorRuntimeFailuresAndTaskStaysReady() async throws {
+@Test func sendFailureIsReturnedForCursorRuntimeFailuresAndTaskMovesFailed() async throws {
     let store = try temporaryStore()
     let repository = try makeRepository(in: store, name: "operator")
     let task = try store.createTask(repositoryID: repository.id, title: "Send", prompt: "P")
@@ -274,7 +274,7 @@ import CursorOperatorCore
         _ = try await commands.sendTask(id: task.id.uuidString, wait: false)
     }
 
-    #expect(try store.task(id: task.id)?.status == .ready)
+    #expect(try store.task(id: task.id)?.status == .failed)
 }
 
 @Test func failuresMapToTheDocumentedExitCodesAndCodes() {

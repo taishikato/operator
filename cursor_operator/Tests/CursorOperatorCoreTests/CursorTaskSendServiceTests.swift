@@ -32,7 +32,7 @@ import Testing
     )])
 }
 
-@Test func sendServiceRecordsFailureLeavesTaskReadyAndAllowsRetry() async throws {
+@Test func sendServiceRecordsFailureMovesTaskFailedAndAllowsExplicitRetry() async throws {
     let fixture = try SendServiceFixture()
     let runtime = FakeCursorRuntime(result: .failure(CursorRuntimeFailure(
         message: "HTTP 500 body {\"token\":\"crsr_secret_123\",\"detail\":\"raw response\"}"
@@ -49,8 +49,9 @@ import Testing
     #expect(failedAttempt.errorMessage == "Cursor run failed. See Cursor for details.")
     #expect(failedAttempt.errorMessage?.contains("crsr_secret_123") == false)
     #expect((failedAttempt.errorMessage?.count ?? 0) <= 160)
-    #expect(try fixture.store.task(id: fixture.task.id)?.status == .ready)
+    #expect(try fixture.store.task(id: fixture.task.id)?.status == .failed)
 
+    _ = try fixture.store.recoverTaskForRetry(id: fixture.task.id)
     runtime.result = .success(CursorCloudAgentReference(
         agentID: "agent-456",
         runID: "run-456",
@@ -156,6 +157,7 @@ import Testing
     #expect(failedAttempt.status == .failed)
     #expect(failedAttempt.errorMessage == "Cursor send was interrupted before Cursor returned a run reference.")
 
+    _ = try fixture.store.recoverTaskForRetry(id: fixture.task.id)
     let retryService = CursorTaskSendService(
         store: fixture.store,
         credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
@@ -183,8 +185,8 @@ import Testing
     _ = try await service.send(taskID: fixture.task.id)
 
     let projection = try CursorBoardProjection.load(from: fixture.store)
-    let readyCard = try #require(projection.columns.first { $0.id == .ready }?.cards.first)
-    #expect(readyCard.failedSendMessage == "Cursor rejected the run request.")
+    let failedCard = try #require(projection.columns.first { $0.id == .failed }?.cards.first)
+    #expect(failedCard.failedSendMessage == "Cursor rejected the run request.")
 }
 
 private final class FakeCursorRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
