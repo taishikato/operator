@@ -12,6 +12,17 @@ import Testing
     #expect(try storage.loadAPIKey() == nil)
 }
 
+@Test func codexBinaryOverrideRejectsRelativePath() throws {
+    let settings = CodexBinarySettings(
+        store: InMemoryCodexBinarySettingsStore(),
+        detector: StubCodexBinaryDetector(detectedBinaryURL: nil)
+    )
+
+    #expect(throws: CodexBinarySettingsError.overrideMustBeAbsolute) {
+        try settings.setOverridePath("bin/codex")
+    }
+}
+
 @Test func credentialProviderUsesEnvironmentFallbackWhenKeychainIsMissing() throws {
     let storage = InMemoryCursorCredentialStore()
     let provider = CursorCredentialProvider(
@@ -185,5 +196,25 @@ private final class NotificationRecorder: @unchecked Sendable {
         lock.withLock {
             recordedNames.append(name)
         }
+    }
+}
+
+private final class InMemoryCodexBinarySettingsStore: CodexBinarySettingsStoring, @unchecked Sendable {
+    private var overridePath: String?
+
+    func codexBinaryOverridePath() -> String? {
+        overridePath
+    }
+
+    func setCodexBinaryOverridePath(_ path: String?) {
+        overridePath = path
+    }
+}
+
+private struct StubCodexBinaryDetector: CodexBinaryDetecting {
+    let detectedBinaryURL: URL?
+
+    func detectedCodexBinaryURL() -> URL? {
+        detectedBinaryURL
     }
 }
