@@ -83,3 +83,32 @@ import Testing
     #expect(missingNode.nodeMessage == "Node.js: 22.13+ required")
     #expect(missingNode.nodeIconName == "exclamationmark.triangle")
 }
+
+@Test func setupStatusUsesSelectedHarnessReadinessBeforeSending() {
+    let codexReady = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .missing,
+        nodeState: .missing,
+        codexState: .ready(binaryPath: "/opt/homebrew/bin/codex"),
+        selectedHarness: .codex
+    )
+    let cursorReady = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready,
+        nodeState: .ready(version: "v22.13.0"),
+        codexState: .notFound,
+        selectedHarness: .cursor
+    )
+    let codexMissing = CursorSetupStatusProjection(
+        repositoryState: .registered(count: 1),
+        credentialState: .ready,
+        nodeState: .ready(version: "v22.13.0"),
+        codexState: .notFound,
+        selectedHarness: .codex
+    )
+
+    #expect(codexReady.canSend)
+    #expect(cursorReady.canSend)
+    #expect(codexMissing.canSend == false)
+    #expect(codexMissing.sendDisabledReason == "Codex must be ready before sending.")
+}

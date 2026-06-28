@@ -8,10 +8,19 @@ public enum CursorNodeSetupState: Equatable, Sendable {
     case ready(version: String)
 }
 
+public enum CodexSetupState: Equatable, Sendable {
+    case notChecked
+    case ready(binaryPath: String)
+    case notFound
+    case unavailable(String)
+}
+
 public struct CursorSetupStatusProjection: Equatable, Sendable {
     public let repositoryState: CursorRepositorySetupState
     public let credentialState: CursorCredentialState
     public let nodeState: CursorNodeSetupState
+    public let codexState: CodexSetupState
+    public let selectedHarness: CursorHarness
 
     public static let empty = CursorSetupStatusProjection(
         repositoryState: .missing,
@@ -22,19 +31,39 @@ public struct CursorSetupStatusProjection: Equatable, Sendable {
     public init(
         repositoryState: CursorRepositorySetupState,
         credentialState: CursorCredentialState,
-        nodeState: CursorNodeSetupState
+        nodeState: CursorNodeSetupState,
+        codexState: CodexSetupState = .notChecked,
+        selectedHarness: CursorHarness = .cursor
     ) {
         self.repositoryState = repositoryState
         self.credentialState = credentialState
         self.nodeState = nodeState
+        self.codexState = codexState
+        self.selectedHarness = selectedHarness
     }
 
     public var canSend: Bool {
-        switch (repositoryState, credentialState, nodeState) {
-        case (.registered, .ready, .ready):
-            true
-        default:
-            false
+        guard case .registered = repositoryState else {
+            return false
+        }
+
+        switch selectedHarness {
+        case .cursor:
+            switch (credentialState, nodeState) {
+            case (.ready, .ready):
+                return true
+            default:
+                return false
+            }
+        case .codex:
+            switch codexState {
+            case .ready:
+                return true
+            case .notChecked, .notFound, .unavailable:
+                return false
+            }
+        case .claudeCode:
+            return false
         }
     }
 
@@ -66,15 +95,64 @@ public struct CursorSetupStatusProjection: Equatable, Sendable {
     }
 
     public var sendDisabledReason: String {
-        switch (repositoryState, credentialState, nodeState) {
-        case (.missing, _, _):
-            "Register a repository before sending."
-        case (_, .missing, _):
-            "Cursor API key is required before sending."
-        case (_, _, .missing):
-            "Node.js 22.13 or newer is required for the Cursor SDK."
-        case (.registered, .ready, .ready):
-            ""
+        guard case .registered = repositoryState else {
+            return "Register a repository before sending."
+        }
+
+        switch selectedHarness {
+        case .cursor:
+            switch (credentialState, nodeState) {
+            case (.missing, _):
+                return "Cursor API key is required before sending."
+            case (_, .missing):
+                return "Node.js 22.13 or newer is required for the Cursor SDK."
+            case (.ready, .ready):
+                return ""
+            }
+        case .codex:
+            switch codexState {
+            case .ready:
+                return ""
+            case .notChecked, .notFound, .unavailable:
+                return "Codex must be ready before sending."
+            }
+        case .claudeCode:
+            return "Claude Code sending is not available yet."
+        }
+    }
+
+    public var codexMessage: String {
+        switch codexState {
+        case .notChecked:
+            "Codex: not checked"
+        case let .ready(binaryPath):
+            "Codex: \(binaryPath)"
+        case .notFound:
+            "Codex: not found"
+        case let .unavailable(message):
+            "Codex: \(message)"
+        }
+    }
+
+    public var codexIconName: String {
+        switch codexState {
+        case .ready:
+            "checkmark.circle"
+        case .notChecked:
+            "questionmark.circle"
+        case .notFound, .unavailable:
+            "exclamationmark.triangle"
+        }
+    }
+
+    public var selectedHarnessMessage: String {
+        switch selectedHarness {
+        case .cursor:
+            "Harness: Cursor"
+        case .codex:
+            "Harness: Codex"
+        case .claudeCode:
+            "Harness: Claude Code"
         }
     }
 

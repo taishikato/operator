@@ -75,6 +75,34 @@ import Testing
 }
 
 @MainActor
+@Test func boardModelProjectsCodexReadinessForSelectedHarness() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    _ = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let binaryURL = URL(filePath: "/opt/homebrew/bin/codex")
+    let settingsStore = InMemoryBoardModelOperatorSettingsStore()
+    try OperatorSettingsManager(store: settingsStore).setDefaultHarness(.codex)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        nodeResolver: MissingBoardModelNodeResolver(),
+        settings: OperatorSettingsManager(store: settingsStore),
+        codexBinarySettings: StaticCodexBinarySettingsProvider(binaryURL: binaryURL),
+        codexStatusChecker: StubCodexStatusChecker(status: .ready(binaryURL))
+    )
+
+    try await model.checkCodexStatus()
+
+    #expect(model.setupStatus.selectedHarness == .codex)
+    #expect(model.setupStatus.codexState == .ready(binaryPath: binaryURL.path))
+    #expect(model.setupStatus.canSend)
+}
+
+@MainActor
 @Test func boardModelRechecksMissingNodeOnNextLoad() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     _ = try store.createRepository(
@@ -820,6 +848,34 @@ private final class RecoveringBoardModelNodeResolver: CursorNodeResolving, @unch
             executableURL: URL(filePath: "/opt/homebrew/bin/node"),
             version: "v22.13.0"
         )
+    }
+}
+
+private struct StaticCodexBinarySettingsProvider: CodexBinarySettingsProviding {
+    let binaryURL: URL?
+
+    func configuration() throws -> CodexBinaryConfiguration {
+        CodexBinaryConfiguration(detectedBinaryURL: binaryURL, overrideBinaryURL: nil)
+    }
+}
+
+private struct StubCodexStatusChecker: CodexStatusChecking {
+    let status: CodexStatus
+
+    func checkStatus(binaryURL: URL?) async -> CodexStatus {
+        status
+    }
+}
+
+private final class InMemoryBoardModelOperatorSettingsStore: OperatorSettingsStoring, @unchecked Sendable {
+    private var storedDefaultHarness: String?
+
+    func defaultHarnessRawValue() -> String? {
+        storedDefaultHarness
+    }
+
+    func setDefaultHarnessRawValue(_ rawValue: String?) {
+        storedDefaultHarness = rawValue
     }
 }
 
