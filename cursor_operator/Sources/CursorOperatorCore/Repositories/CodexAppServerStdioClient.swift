@@ -151,11 +151,9 @@ private actor CodexAppServerStdioTransport {
     private var stdout: FileHandle?
     private var stderr: FileHandle?
     private var stdoutBuffer = Data()
-    private var stderrBuffer = Data()
+    private let stderrCapture = StderrCapture()
     private var stdoutContinuation: AsyncStream<Data>.Continuation?
-    private var stderrContinuation: AsyncStream<Data>.Continuation?
     private var stdoutPumpTask: Task<Void, Never>?
-    private var stderrPumpTask: Task<Void, Never>?
     private var nextRequestID = 1
     private var initialized = false
     private var pendingResponses: [Int: CheckedContinuation<CodexAppServerRPCResponse, Error>] = [:]
@@ -327,15 +325,9 @@ private actor CodexAppServerStdioTransport {
             stdoutStream.continuation.yield(handle.availableData)
         }
 
-        let stderrStream = AsyncStream.makeStream(of: Data.self)
-        stderrContinuation = stderrStream.continuation
-        stderrPumpTask = Task { [weak self] in
-            for await data in stderrStream.stream {
-                await self?.receiveStderrData(data)
-            }
-        }
+        let stderrCapture = stderrCapture
         stderr?.readabilityHandler = { handle in
-            stderrStream.continuation.yield(handle.availableData)
+            stderrCapture.append(handle.availableData)
         }
     }
 
@@ -387,17 +379,6 @@ private actor CodexAppServerStdioTransport {
                 continue
             }
             handleStdoutLine(Data(line))
-        }
-    }
-
-    private func receiveStderrData(_ data: Data) {
-        guard !data.isEmpty else {
-            return
-        }
-        stderrBuffer.append(data)
-        let maximumBytes = 8 * 1_024
-        if stderrBuffer.count > maximumBytes {
-            stderrBuffer.removeFirst(stderrBuffer.count - maximumBytes)
         }
     }
 
@@ -471,9 +452,7 @@ private actor CodexAppServerStdioTransport {
         stdout?.readabilityHandler = nil
         stderr?.readabilityHandler = nil
         stdoutContinuation?.finish()
-        stderrContinuation?.finish()
         stdoutPumpTask?.cancel()
-        stderrPumpTask?.cancel()
         if terminate {
             process?.terminate()
         }
@@ -482,11 +461,9 @@ private actor CodexAppServerStdioTransport {
         stdout = nil
         stderr = nil
         stdoutBuffer.removeAll()
-        stderrBuffer.removeAll()
+        stderrCapture.removeAll()
         stdoutContinuation = nil
-        stderrContinuation = nil
         stdoutPumpTask = nil
-        stderrPumpTask = nil
         initialized = false
         let orphanedCompletions = Array(pendingTurnCompletionsByThreadID.values)
         pendingTurnCompletionsByThreadID.removeAll()
@@ -510,17 +487,7 @@ private actor CodexAppServerStdioTransport {
     }
 
     private func recentStderrMessage() -> String? {
-        guard !stderrBuffer.isEmpty else {
-            return nil
-        }
-        let decoded = String(decoding: stderrBuffer, as: UTF8.self)
-            .split(whereSeparator: \.isWhitespace)
-            .joined(separator: " ")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !decoded.isEmpty else {
-            return nil
-        }
-        return decoded
+        stderrCapture.message()
     }
 
     private func threadReference(fromThreadStartResponse response: CodexAppServerRPCResponse) throws -> CodexThreadReference {
@@ -576,6 +543,45 @@ private struct CodexAppServerRPCError: Decodable, Sendable {
 private struct TerminalTurnOutcome: Sendable {
     let threadID: String
     let completionOutcome: CodexTurnCompletionOutcome
+}
+
+private final class StderrCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer = Data()
+
+    func append(_ data: Data) {
+        guard !data.isEmpty else {
+            return
+        }
+        lock.withLock {
+            buffer.append(data)
+            let maximumBytes = 8 * 1_024
+            if buffer.count > maximumBytes {
+                buffer.removeFirst(buffer.count - maximumBytes)
+            }
+        }
+    }
+
+    func removeAll() {
+        lock.withLock {
+            buffer.removeAll()
+        }
+    }
+
+    func message() -> String? {
+        let snapshot = lock.withLock { buffer }
+        guard !snapshot.isEmpty else {
+            return nil
+        }
+        let decoded = String(decoding: snapshot, as: UTF8.self)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !decoded.isEmpty else {
+            return nil
+        }
+        return decoded
+    }
 }
 
 private actor AsyncGate {
