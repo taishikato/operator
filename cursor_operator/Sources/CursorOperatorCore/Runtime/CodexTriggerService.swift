@@ -75,7 +75,7 @@ public struct CodexTriggerService: @unchecked Sendable {
             )
         )
 
-        return try store.recordStartedCodexRun(
+        let run = try store.recordStartedCodexRun(
             taskID: task.id,
             worktreeURL: preparedWorktree.worktreeURL,
             baseBranch: preparedWorktree.baseBranch,
@@ -83,6 +83,13 @@ public struct CodexTriggerService: @unchecked Sendable {
             codexThreadID: startedThread.reference.id,
             codexThreadURL: startedThread.reference.url
         )
+        let store = store
+        let turnCompletion = startedThread.turnCompletion
+        Task {
+            await turnCompletion.waitUntilCompleted()
+            _ = try? store.completeStartedCodexRun(id: run.id)
+        }
+        return run
     }
 }
 

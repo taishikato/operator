@@ -64,6 +64,51 @@ import Testing
     ])
 }
 
+@Test func codexTriggerCompletesRunAndTaskAfterInitialTurnCompletion() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Wait for turn",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-running"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let turnCompletion = CodexTurnCompletionSignal()
+    let appServer = FakeCodexAppServerClient(results: [
+        .success(CodexStartedThread(
+            reference: CodexThreadReference(id: "thread-running", url: URL(string: "codex://threads/thread-running")),
+            turnCompletion: turnCompletion
+        ))
+    ])
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer
+    )
+
+    let run = try await service.sendTaskToCodex(taskID: task.id)
+
+    #expect(run.status == .running)
+    #expect(try store.task(id: task.id)?.status == .running)
+
+    await turnCompletion.complete()
+    await waitUntil {
+        ((try? store.task(id: task.id)?.status) ?? nil) == .done
+    }
+
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .succeeded)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
 private final class FakeCodexWorktreePreparer: CodexWorktreePreparing, @unchecked Sendable {
     private var preparedWorktrees: [PreparedWorktree]
     private(set) var repositories: [CursorRepository] = []
@@ -104,4 +149,14 @@ private func temporaryDatabaseURL() throws -> URL {
         .appending(path: "CodexTriggerServiceTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appending(path: "operator.sqlite")
+}
+
+private func waitUntil(
+    timeout: Duration = .seconds(1),
+    condition: @escaping @Sendable () -> Bool
+) async {
+    let start = ContinuousClock.now
+    while !condition(), start.duration(to: .now) < timeout {
+        await Task.yield()
+    }
 }

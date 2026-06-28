@@ -602,6 +602,46 @@ public final class CursorOperatorStore: @unchecked Sendable {
         }
     }
 
+    public func completeStartedCodexRun(id: UUID, now: Date = Date()) throws -> OperatorRun {
+        try dbQueue.write { db in
+            let existingRun = try requiredRunAttempt(id: id, db: db)
+            guard existingRun.status == .running else {
+                throw CursorTaskLifecycleError.transitionNotAllowed
+            }
+            let task = try requiredTask(id: existingRun.taskID, db: db)
+            let updatedTask = try CursorTaskLifecyclePolicy.markDone(task, now: now)
+            try update(task: updatedTask, db: db)
+
+            let completedRun = OperatorRun(
+                id: existingRun.id,
+                taskID: existingRun.taskID,
+                repositoryID: existingRun.repositoryID,
+                status: .succeeded,
+                repositoryURL: existingRun.repositoryURL,
+                startingRef: existingRun.startingRef,
+                model: existingRun.model,
+                autoCreatePR: existingRun.autoCreatePR,
+                prompt: existingRun.prompt,
+                harness: existingRun.harness,
+                reasoningEffort: existingRun.reasoningEffort,
+                useFastModel: existingRun.useFastModel,
+                cursorAgentID: existingRun.cursorAgentID,
+                cursorRunID: existingRun.cursorRunID,
+                cursorURL: existingRun.cursorURL,
+                worktreePath: existingRun.worktreePath,
+                baseBranch: existingRun.baseBranch,
+                baseRef: existingRun.baseRef,
+                codexThreadID: existingRun.codexThreadID,
+                codexThreadURL: existingRun.codexThreadURL,
+                errorMessage: nil,
+                createdAt: existingRun.createdAt,
+                completedAt: now
+            )
+            try update(runAttempt: completedRun, db: db)
+            return completedRun
+        }
+    }
+
     public func runs(taskID: UUID) throws -> [OperatorRun] {
         try dbQueue.read { db in
             try Row.fetchAll(
