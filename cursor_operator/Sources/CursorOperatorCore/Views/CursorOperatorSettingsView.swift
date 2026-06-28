@@ -6,8 +6,16 @@ public struct CursorOperatorSettingsView: View {
     private let appDataURL: URL
     private let nodeResolver: any CursorNodeResolving
     private let agentSupportInstaller: any CursorAgentSupportInstalling
+    private let operatorSettings: OperatorSettingsManager
+    private let codexBinarySettings: any CodexBinarySettingsManaging
+    private let codexStatusChecker: any CodexStatusChecking
     @StateObject private var credentialModel: CursorCredentialSettingsModel
     @State private var apiKeyDraft = ""
+    @State private var defaultHarness: CursorHarness = .cursor
+    @State private var codexBinaryOverrideDraft = ""
+    @State private var codexConfiguration = CodexBinaryConfiguration(detectedBinaryURL: nil, overrideBinaryURL: nil)
+    @State private var codexStatus: CodexStatus = .notChecked
+    @State private var codexSettingsErrorMessage: String?
     @State private var nodeProjection = CursorNodeSettingsProjection(result: .failure(.missingCompatibleNode))
     @State private var agentSupportStatus: CursorAgentSupportStatus?
     @State private var agentSupportErrorMessage: String?
@@ -17,12 +25,18 @@ public struct CursorOperatorSettingsView: View {
         appDataURL: URL,
         credentialModel: CursorCredentialSettingsModel = CursorCredentialSettingsModel(),
         nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
-        agentSupportInstaller: any CursorAgentSupportInstalling = CursorAgentSupportInstaller.bundled()
+        agentSupportInstaller: any CursorAgentSupportInstalling = CursorAgentSupportInstaller.bundled(),
+        operatorSettings: OperatorSettingsManager = OperatorSettingsManager(),
+        codexBinarySettings: any CodexBinarySettingsManaging = CodexBinarySettings(),
+        codexStatusChecker: any CodexStatusChecking = CodexStatusChecker()
     ) {
         self.appSpec = appSpec
         self.appDataURL = appDataURL
         self.nodeResolver = nodeResolver
         self.agentSupportInstaller = agentSupportInstaller
+        self.operatorSettings = operatorSettings
+        self.codexBinarySettings = codexBinarySettings
+        self.codexStatusChecker = codexStatusChecker
         _credentialModel = StateObject(wrappedValue: credentialModel)
     }
 
@@ -58,6 +72,11 @@ public struct CursorOperatorSettingsView: View {
 
             Section("Operator") {
                 LabeledContent("App", value: appSpec.displayName)
+                Picker("Default Harness", selection: $defaultHarness) {
+                    Text("Cursor").tag(CursorHarness.cursor)
+                    Text("Codex").tag(CursorHarness.codex)
+                }
+                .pickerStyle(.segmented)
                 LabeledContent("Node.js", value: nodeProjection.status)
                 LabeledContent("Node Path") {
                     Text(nodeProjection.path)
@@ -72,6 +91,35 @@ public struct CursorOperatorSettingsView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .help(appDataURL.path)
+                }
+            }
+
+            Section("Codex CLI") {
+                LabeledContent("Binary", value: codexConfiguration.displayPath)
+                LabeledContent("Status", value: codexStatus.title)
+                Text(codexStatus.message)
+                    .foregroundStyle(CursorTheme.textSecondary)
+
+                TextField("Absolute Codex binary path", text: $codexBinaryOverrideDraft)
+
+                HStack {
+                    Button("Save Path") {
+                        saveCodexBinaryOverrideReportingErrors()
+                    }
+
+                    Button("Clear Path") {
+                        codexBinaryOverrideDraft = ""
+                        saveCodexBinaryOverrideReportingErrors()
+                    }
+
+                    Button("Check Status") {
+                        Task { await checkCodexStatusReportingErrors() }
+                    }
+                }
+
+                if let codexSettingsErrorMessage {
+                    Label(codexSettingsErrorMessage, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(CursorTheme.danger)
                 }
             }
 
@@ -114,8 +162,13 @@ public struct CursorOperatorSettingsView: View {
         .containerBackground(CursorTheme.bgContent, for: .window)
         .preferredColorScheme(.dark)
         .onAppear {
+            refreshDefaultHarness()
+            refreshCodexConfiguration()
             refreshNodeProjection()
             refreshAgentSupportStatus()
+        }
+        .onChange(of: defaultHarness) { _, newValue in
+            saveDefaultHarnessReportingErrors(newValue)
         }
     }
 
@@ -139,6 +192,52 @@ public struct CursorOperatorSettingsView: View {
             nodeProjection = CursorNodeSettingsProjection(result: .failure(.missingCompatibleNode))
         } catch {
             nodeProjection = CursorNodeSettingsProjection(result: .failure(.missingCompatibleNode))
+        }
+    }
+
+    private func refreshDefaultHarness() {
+        defaultHarness = operatorSettings.defaultHarness()
+    }
+
+    private func saveDefaultHarnessReportingErrors(_ harness: CursorHarness) {
+        do {
+            try operatorSettings.setDefaultHarness(harness)
+            codexSettingsErrorMessage = nil
+        } catch {
+            codexSettingsErrorMessage = userFacingSettingsMessage(for: error)
+            refreshDefaultHarness()
+        }
+    }
+
+    private func refreshCodexConfiguration() {
+        do {
+            codexConfiguration = try codexBinarySettings.configuration()
+            codexBinaryOverrideDraft = codexConfiguration.overrideBinaryURL?.path ?? ""
+            codexSettingsErrorMessage = nil
+        } catch {
+            codexConfiguration = CodexBinaryConfiguration(detectedBinaryURL: nil, overrideBinaryURL: nil)
+            codexSettingsErrorMessage = userFacingSettingsMessage(for: error)
+        }
+    }
+
+    private func saveCodexBinaryOverrideReportingErrors() {
+        do {
+            try codexBinarySettings.setOverridePath(codexBinaryOverrideDraft)
+            refreshCodexConfiguration()
+        } catch {
+            codexSettingsErrorMessage = userFacingSettingsMessage(for: error)
+        }
+    }
+
+    private func checkCodexStatusReportingErrors() async {
+        do {
+            let configuration = try codexBinarySettings.configuration()
+            codexConfiguration = configuration
+            codexStatus = await codexStatusChecker.checkStatus(binaryURL: configuration.effectiveBinaryURL)
+            codexSettingsErrorMessage = nil
+        } catch {
+            codexStatus = .notFound
+            codexSettingsErrorMessage = userFacingSettingsMessage(for: error)
         }
     }
 
@@ -176,6 +275,14 @@ public struct CursorOperatorSettingsView: View {
             return errorDescription
         }
         return "Operator could not update agent support."
+    }
+
+    private func userFacingSettingsMessage(for error: Error) -> String {
+        if let localizedError = error as? LocalizedError,
+           let errorDescription = localizedError.errorDescription {
+            return errorDescription
+        }
+        return "Operator could not update settings."
     }
 }
 

@@ -753,8 +753,27 @@ private struct CursorTaskCreationSheet: View {
                 }
                 .pickerStyle(.menu)
 
-                Toggle("Auto-create PR", isOn: autoCreatePRBinding)
-                    .toggleStyle(.checkbox)
+                Picker("Harness", selection: harnessBinding) {
+                    Text("Cursor").tag(CursorHarness.cursor)
+                    Text("Codex").tag(CursorHarness.codex)
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 180)
+
+                if model.creationDraft.harness == .cursor {
+                    Toggle("Auto-create PR", isOn: autoCreatePRBinding)
+                        .toggleStyle(.checkbox)
+                }
+
+                if model.creationDraft.harness == .codex {
+                    Picker("Reasoning", selection: reasoningEffortBinding) {
+                        Text("Low").tag(CursorReasoningEffort.low)
+                        Text("Medium").tag(CursorReasoningEffort.medium)
+                        Text("High").tag(CursorReasoningEffort.high)
+                        Text("XHigh").tag(CursorReasoningEffort.xhigh)
+                    }
+                    .pickerStyle(.menu)
+                }
 
                 if model.editingTaskID == nil {
                     Toggle("Auto-send", isOn: autoSendBinding)
@@ -777,7 +796,12 @@ private struct CursorTaskCreationSheet: View {
                     Text("Repository: \(preview.repositoryURL.absoluteString)")
                     Text("Starting ref: \(preview.startingRef)")
                     Text("Model: \(preview.model)")
-                    Text("Auto-create PR: \(preview.autoCreatePR ? "On" : "Off")")
+                    if preview.harness == .cursor {
+                        Text("Auto-create PR: \(preview.autoCreatePR ? "On" : "Off")")
+                    }
+                    if preview.harness == .codex {
+                        Text("Reasoning: \(preview.reasoningEffort.rawValue)")
+                    }
                     Text(preview.prompt)
                         .font(.callout)
                         .textSelection(.enabled)
@@ -818,7 +842,10 @@ private struct CursorTaskCreationSheet: View {
             repositoryID: repository.id,
             title: model.creationDraft.title,
             prompt: model.creationDraft.prompt,
-            autoCreatePR: model.creationDraft.autoCreatePR
+            autoCreatePR: model.creationDraft.autoCreatePR,
+            reasoningEffort: model.creationDraft.reasoningEffort,
+            useFastModel: model.creationDraft.useFastModel,
+            harness: model.creationDraft.harness
         )
         return try? CursorSendPreview(task: task, repository: repository)
     }
@@ -866,6 +893,23 @@ private struct CursorTaskCreationSheet: View {
             model.creationDraft.autoCreatePR
         } set: {
             model.creationDraft.autoCreatePR = $0
+        }
+    }
+
+    private var reasoningEffortBinding: Binding<CursorReasoningEffort> {
+        Binding {
+            model.creationDraft.reasoningEffort
+        } set: {
+            model.creationDraft.reasoningEffort = $0
+        }
+    }
+
+    private var harnessBinding: Binding<CursorHarness> {
+        Binding {
+            model.creationDraft.harness
+        } set: {
+            model.creationDraft.harness = $0
+            model.loadReportingErrors()
         }
     }
 
