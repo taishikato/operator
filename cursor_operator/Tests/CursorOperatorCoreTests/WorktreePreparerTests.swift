@@ -36,6 +36,10 @@ import Testing
     ])))
 }
 
+@Test func worktreePreparerProductionRootUsesCodexWorktreesDirectory() {
+    #expect(WorktreePreparer.productionWorktreeRootURL().path == "\(NSHomeDirectory())/.codex/worktrees")
+}
+
 private final class RecordingWorktreeGitCommandRunner: CursorGitCommandRunning, @unchecked Sendable {
     struct Command: Equatable {
         let repositoryURL: URL?
