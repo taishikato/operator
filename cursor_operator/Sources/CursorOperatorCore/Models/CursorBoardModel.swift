@@ -16,6 +16,7 @@ public final class CursorBoardModel: ObservableObject {
     private let repositoryRegistrationService: CursorRepositoryRegistrationService
     private let credentialProvider: CursorCredentialProvider
     private let nodeResolver: any CursorNodeResolving
+    private let settings: OperatorSettingsManager
     private let runtime: any CursorCloudAgentRuntime
     private let externalOpener: any CursorExternalOpening
     private var cachedNodeState: CursorNodeSetupState?
@@ -25,12 +26,14 @@ public final class CursorBoardModel: ObservableObject {
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
         nodeResolver: any CursorNodeResolving = CursorNodeExecutableResolver(),
+        settings: OperatorSettingsManager = OperatorSettingsManager(),
         runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
         externalOpener: any CursorExternalOpening = SystemCursorExternalOpener()
     ) {
         self.store = store
         self.credentialProvider = credentialProvider
         self.nodeResolver = nodeResolver
+        self.settings = settings
         self.runtime = runtime
         self.externalOpener = externalOpener
         repositoryRegistrationService = CursorRepositoryRegistrationService(
@@ -42,7 +45,7 @@ public final class CursorBoardModel: ObservableObject {
         setupStatus = .empty
         editingTaskID = nil
         sendingTaskIDs = []
-        creationDraft = CursorTaskCreationDraft()
+        creationDraft = CursorTaskCreationDraft(harness: settings.defaultHarness())
     }
 
     public func load() throws {
@@ -68,7 +71,10 @@ public final class CursorBoardModel: ObservableObject {
 
     public func createTaskFromDraft() throws -> CursorTask {
         let task = try creationDraft.createTask(in: store)
-        creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
+        creationDraft = CursorTaskCreationDraft(
+            repositoryID: creationDraft.repositoryID,
+            harness: settings.defaultHarness()
+        )
         editingTaskID = nil
         try load()
         return task
@@ -130,7 +136,10 @@ public final class CursorBoardModel: ObservableObject {
             useFastModel: creationDraft.useFastModel,
             harness: creationDraft.harness
         )
-        creationDraft = CursorTaskCreationDraft(repositoryID: creationDraft.repositoryID)
+        creationDraft = CursorTaskCreationDraft(
+            repositoryID: creationDraft.repositoryID,
+            harness: settings.defaultHarness()
+        )
         editingTaskID = nil
         try load()
         return task

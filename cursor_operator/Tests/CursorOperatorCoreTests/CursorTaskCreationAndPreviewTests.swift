@@ -36,6 +36,19 @@ import Testing
     #expect(CursorTaskCreationDraft(autoSend: true).autoSend)
 }
 
+@MainActor
+@Test func newTaskDraftUsesStoredDefaultHarness() throws {
+    let settingsStore = InMemoryOperatorSettingsStore()
+    try OperatorSettingsManager(store: settingsStore).setDefaultHarness(.codex)
+
+    let model = CursorBoardModel(
+        store: try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL()),
+        settings: OperatorSettingsManager(store: settingsStore)
+    )
+
+    #expect(model.creationDraft.harness == .codex)
+}
+
 @Test func taskCreationDraftStoresHarnessReasoningAndFastModelIntent() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryTaskCreationDatabaseURL())
     let repository = try store.createRepository(
@@ -129,4 +142,16 @@ private func temporaryTaskCreationDatabaseURL() throws -> URL {
         .appending(path: "CursorTaskCreationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
     return directory.appending(path: "operator.sqlite")
+}
+
+private final class InMemoryOperatorSettingsStore: OperatorSettingsStoring, @unchecked Sendable {
+    private var storedDefaultHarness: String?
+
+    func defaultHarnessRawValue() -> String? {
+        storedDefaultHarness
+    }
+
+    func setDefaultHarnessRawValue(_ rawValue: String?) {
+        storedDefaultHarness = rawValue
+    }
 }
