@@ -182,7 +182,12 @@ import Testing
 }
 
 @MainActor
-@Test func boardProjectionSurfacesCursorHarnessBadgeFromLatestRun() throws {
+@Test(arguments: [
+    (CursorHarness.cursor, "Cursor"),
+    (CursorHarness.codex, "Codex"),
+    (CursorHarness.claudeCode, "Claude Code"),
+])
+func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, expectedBadge: String) throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
         name: "operator",
@@ -190,7 +195,12 @@ import Testing
         githubURL: URL(string: "https://github.com/example/operator")!,
         defaultBranch: "main"
     )
-    let task = try store.createTask(repositoryID: repository.id, title: "Cursor run", prompt: "Prompt")
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Harness run",
+        prompt: "Prompt",
+        harness: harness
+    )
     _ = try store.recordSuccessfulSendAttempt(
         taskID: task.id,
         repositoryURL: repository.githubURL,
@@ -206,7 +216,9 @@ import Testing
     let projection = try CursorBoardProjection.load(from: store)
     let card = try #require(projection.columns.first { $0.id == .running }?.cards.first)
 
-    #expect(card.harnessBadgeText == "Cursor")
+    // Proves the badge reflects the latest run's actual harness (not a constant),
+    // and exercises every CursorHarness -> badge-text mapping.
+    #expect(card.harnessBadgeText == expectedBadge)
 }
 
 @MainActor
