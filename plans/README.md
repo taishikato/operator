@@ -22,7 +22,7 @@ them to a plan later.
 | 006  | Introduce unified Task and Run model with Failed retry | P1 | L | 005 | DONE |
 | 007  | Port Cursor harness behavior onto Operator Task and Run | P1 | M | 006 | DONE |
 | 008  | Add Codex readiness and task configuration to Operator | P1 | M | 005, 006 | DONE |
-| 009  | Implement Codex app-server harness in Operator | P1 | L | 006, 008 | TODO |
+| 009  | Implement Codex app-server harness in Operator | P1 | L | 006, 008 | DONE |
 | 010  | Ship canonical operator CLI and agent support | P2 | M | 007, 009 | TODO |
 | 011  | Update Operator release docs and regression checklist | P2 | S | 005, 007, 009, 010 | TODO |
 
