@@ -269,6 +269,41 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .failed)
 }
 
+@Test func codexTriggerRevealsThreadWhenRecordingStartedRunFails() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/taishikato/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(repositoryID: repository.id, title: "Record fails", prompt: "Prompt", harness: .codex)
+    let worktreePreparer = FakeCodexWorktreePreparer(preparedWorktrees: [
+        PreparedWorktree(worktreeURL: URL(filePath: "/tmp/operator-worktree-record-fails"), baseBranch: "main", baseRef: "abc123")
+    ])
+    let appServer = RecordingFailureCodexAppServerClient(
+        startedThread: startedThread(id: "thread-record-fails", url: nil),
+        onStart: {
+            _ = try? store.archiveTask(id: task.id)
+        }
+    )
+    let visibility = FakeThreadVisibilityController()
+    let service = CodexTriggerService(
+        store: store,
+        worktreePreparer: worktreePreparer,
+        appServerClient: appServer,
+        threadVisibility: visibility
+    )
+
+    await #expect(throws: CursorTaskLifecycleError.transitionNotAllowed) {
+        try await service.sendTaskToCodex(taskID: task.id)
+    }
+
+    #expect(visibility.hideCalls == ["thread-record-fails"])
+    #expect(visibility.revealCalls == ["thread-record-fails"])
+    #expect(try store.runs(taskID: task.id).isEmpty)
+}
+
 @Test func codexTriggerRevealsHiddenThreadBeforeCompletingRun() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(
@@ -421,6 +456,21 @@ private final class DeallocationRecorder: @unchecked Sendable {
         lock.withLock {
             isDeallocatedValue = true
         }
+    }
+}
+
+private final class RecordingFailureCodexAppServerClient: CodexAppServerClient, @unchecked Sendable {
+    let startedThread: CodexStartedThread
+    let onStart: @Sendable () -> Void
+
+    init(startedThread: CodexStartedThread, onStart: @escaping @Sendable () -> Void) {
+        self.startedThread = startedThread
+        self.onStart = onStart
+    }
+
+    func startThreadAndTurn(_ request: CodexThreadStartRequest) async throws -> CodexStartedThread {
+        onStart()
+        return startedThread
     }
 }
 

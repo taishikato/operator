@@ -71,9 +71,10 @@ public struct CodexTriggerService: @unchecked Sendable {
 
         let appServerClient = try appServerClientFactory.makeAppServerClient()
         let preparedWorktree = try worktreePreparer.prepareWorktree(for: repository)
-        let startedThread: CodexStartedThread
+        var startedThreadID: String?
+        var hideTask: Task<Bool, Never>?
         do {
-            startedThread = try await appServerClient.startThreadAndTurn(
+            let startedThread = try await appServerClient.startThreadAndTurn(
                 CodexThreadStartRequest(
                     cwd: preparedWorktree.worktreeURL,
                     gitInfo: preparedWorktree.gitOriginURL.map {
@@ -89,7 +90,60 @@ public struct CodexTriggerService: @unchecked Sendable {
                     displayName: task.title
                 )
             )
+            let threadID = startedThread.reference.id
+            startedThreadID = threadID
+            hideTask = threadVisibility.map { threadVisibility in
+                Task {
+                    await threadVisibility.hideThread(id: threadID)
+                }
+            }
+            let run = try store.recordStartedCodexRun(
+                taskID: task.id,
+                worktreeURL: preparedWorktree.worktreeURL,
+                baseBranch: preparedWorktree.baseBranch,
+                baseRef: preparedWorktree.baseRef,
+                codexThreadID: threadID,
+                codexThreadURL: startedThread.reference.url
+            )
+            let store = store
+            let threadVisibility = threadVisibility
+            let turnCompletion = startedThread.turnCompletion
+            let retainedAppServerClient = appServerClient
+            let pendingHideTask = hideTask
+            Task {
+                let outcome = await turnCompletion.waitUntilCompleted()
+                if let threadVisibility, let pendingHideTask {
+                    pendingHideTask.cancel()
+                    if await pendingHideTask.value {
+                        await threadVisibility.revealThread(id: threadID)
+                    }
+                }
+                switch outcome {
+                case .succeeded:
+                    if (try? store.completeStartedCodexRun(id: run.id)) != nil {
+                        NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
+                    }
+                case let .failed(message):
+                    if (try? store.failStartedCodexRun(
+                        id: run.id,
+                        errorMessage: Self.shortErrorMessage(forMessage: message)
+                    )) != nil {
+                        NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
+                    }
+                }
+                _ = retainedAppServerClient
+            }
+            return run
         } catch {
+            if let threadVisibility, let hideTask, let startedThreadID {
+                hideTask.cancel()
+                if await hideTask.value {
+                    await threadVisibility.revealThread(id: startedThreadID)
+                }
+            }
+            guard startedThreadID == nil else {
+                throw error
+            }
             return try store.recordFailedCodexRun(
                 taskID: task.id,
                 worktreeURL: preparedWorktree.worktreeURL,
@@ -98,49 +152,6 @@ public struct CodexTriggerService: @unchecked Sendable {
                 errorMessage: Self.shortErrorMessage(for: error)
             )
         }
-
-        let threadID = startedThread.reference.id
-        let hideTask: Task<Bool, Never>? = threadVisibility.map { threadVisibility in
-            Task {
-                await threadVisibility.hideThread(id: threadID)
-            }
-        }
-        let run = try store.recordStartedCodexRun(
-            taskID: task.id,
-            worktreeURL: preparedWorktree.worktreeURL,
-            baseBranch: preparedWorktree.baseBranch,
-            baseRef: preparedWorktree.baseRef,
-            codexThreadID: threadID,
-            codexThreadURL: startedThread.reference.url
-        )
-        let store = store
-        let threadVisibility = threadVisibility
-        let turnCompletion = startedThread.turnCompletion
-        let retainedAppServerClient = appServerClient
-        Task {
-            let outcome = await turnCompletion.waitUntilCompleted()
-            if let threadVisibility, let hideTask {
-                hideTask.cancel()
-                if await hideTask.value {
-                    await threadVisibility.revealThread(id: threadID)
-                }
-            }
-            switch outcome {
-            case .succeeded:
-                if (try? store.completeStartedCodexRun(id: run.id)) != nil {
-                    NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
-                }
-            case let .failed(message):
-                if (try? store.failStartedCodexRun(
-                    id: run.id,
-                    errorMessage: Self.shortErrorMessage(forMessage: message)
-                )) != nil {
-                    NotificationCenter.default.post(name: .cursorOperatorRunsChanged, object: nil)
-                }
-            }
-            _ = retainedAppServerClient
-        }
-        return run
     }
 
     public func recoverInterruptedRuns() async {
