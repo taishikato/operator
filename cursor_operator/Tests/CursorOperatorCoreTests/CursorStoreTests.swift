@@ -379,6 +379,52 @@ import Testing
     #expect(try store.task(id: task.id)?.status == .failed)
 }
 
+@Test func claimSendAttemptInheritsTaskHarnessByDefaultAndHonorsExplicitOverride() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+
+    // Omitting `harness` must inherit the task's configured harness.
+    let inheritTask = try store.createTask(
+        repositoryID: repository.id,
+        title: "Codex task",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let inheritedRun = try store.claimSendAttempt(
+        taskID: inheritTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: inheritTask.prompt
+    )
+    #expect(inheritedRun.harness == .codex)
+
+    // An explicit override records the run's actual execution harness, even when
+    // it differs from the task's configured harness (the Plan 007 Cursor path).
+    let overrideTask = try store.createTask(
+        repositoryID: repository.id,
+        title: "Codex task sent via Cursor",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let overriddenRun = try store.claimSendAttempt(
+        taskID: overrideTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: overrideTask.prompt,
+        harness: .cursor
+    )
+    #expect(overriddenRun.harness == .cursor)
+}
+
 @Test func storeExpiresStalePendingSendClaimsBeforeRetry() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(

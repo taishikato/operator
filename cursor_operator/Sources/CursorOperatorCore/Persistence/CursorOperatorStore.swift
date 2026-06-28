@@ -287,6 +287,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
         model: String,
         autoCreatePR: Bool,
         prompt: String,
+        harness: CursorHarness? = nil,
         now: Date = Date(),
         stalePendingAge: TimeInterval = 10 * 60
     ) throws -> OperatorRun {
@@ -313,7 +314,7 @@ public final class CursorOperatorStore: @unchecked Sendable {
                 model: model,
                 autoCreatePR: autoCreatePR,
                 prompt: prompt,
-                harness: task.harness,
+                harness: harness ?? task.harness,
                 reasoningEffort: task.reasoningEffort,
                 useFastModel: task.useFastModel,
                 cursorAgentID: nil,

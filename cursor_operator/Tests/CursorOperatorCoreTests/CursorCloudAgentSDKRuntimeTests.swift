@@ -105,6 +105,17 @@ import Testing
     #expect(CursorRuntimeFailure(message: String(repeating: "x", count: 200)).message.count == 160)
 }
 
+@Test func cursorRuntimeFailureRedactsCredentialsWithoutCursorPrefixOrJSONBody() {
+    // Secrets can appear in upstream failure strings without a `crsr_` prefix or a
+    // JSON `{` body, e.g. a raw header or query echo. These must still be redacted
+    // before they are persisted on a run or shown in the UI.
+    #expect(CursorRuntimeFailure(message: "Run failed: token=abc123def456").message == "Cursor run failed. See Cursor for details.")
+    #expect(CursorRuntimeFailure(message: "Rejected with Bearer eyJhbGciOiJIUzI1NiJ9").message == "Cursor run failed. See Cursor for details.")
+    #expect(CursorRuntimeFailure(message: "Set-Cookie: session=deadbeef").message == "Cursor run failed. See Cursor for details.")
+    #expect(CursorRuntimeFailure(message: "api_key=sk-live-1234567890").message == "Cursor run failed. See Cursor for details.")
+    #expect(CursorRuntimeFailure(message: "password=hunter2").message == "Cursor run failed. See Cursor for details.")
+}
+
 @Test func sdkHelperSanitizeErrorRedactsCursorAPIKeys() throws {
     guard let nodeURL = nodeExecutableURL() else {
         return

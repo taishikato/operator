@@ -32,6 +32,32 @@ import Testing
     )])
 }
 
+@Test func sendServiceRecordsCursorHarnessRunThroughNeutralRunsAPI() async throws {
+    let fixture = try SendServiceFixture(
+        taskHarness: .codex,
+        reasoningEffort: .high,
+        useFastModel: true
+    )
+    let runtime = FakeCursorRuntime(result: .success(CursorCloudAgentReference(
+        agentID: "agent-operator",
+        runID: "run-operator",
+        openURL: URL(string: "https://cursor.com/agents/agent-operator")!
+    )))
+    let service = CursorTaskSendService(
+        store: fixture.store,
+        credentialReadiness: CursorSendReadiness(provider: fixture.readyProvider),
+        runtime: runtime
+    )
+
+    _ = try await service.send(taskID: fixture.task.id)
+
+    let run = try #require(fixture.store.runs(taskID: fixture.task.id).last)
+    #expect(run.harness == .cursor)
+    #expect(run.prompt == "Prompt exactly")
+    #expect(run.reasoningEffort == .high)
+    #expect(run.useFastModel)
+}
+
 @Test func sendServiceRecordsFailureMovesTaskFailedAndAllowsExplicitRetry() async throws {
     let fixture = try SendServiceFixture()
     let runtime = FakeCursorRuntime(result: .failure(CursorRuntimeFailure(
@@ -260,7 +286,11 @@ private struct SendServiceFixture {
     let readyProvider: CursorCredentialProvider
     let missingProvider: CursorCredentialProvider
 
-    init() throws {
+    init(
+        taskHarness: CursorHarness = .cursor,
+        reasoningEffort: CursorReasoningEffort = .medium,
+        useFastModel: Bool = false
+    ) throws {
         store = try CursorOperatorStore(databaseURL: Self.temporaryDatabaseURL())
         repository = try store.createRepository(
             name: "operator",
@@ -272,7 +302,10 @@ private struct SendServiceFixture {
             repositoryID: repository.id,
             title: "Send",
             prompt: "Prompt exactly",
-            autoCreatePR: true
+            autoCreatePR: true,
+            reasoningEffort: reasoningEffort,
+            useFastModel: useFastModel,
+            harness: taskHarness
         )
         readyProvider = CursorCredentialProvider(
             store: InMemoryCursorCredentialStore(apiKey: "crsr_test_key"),

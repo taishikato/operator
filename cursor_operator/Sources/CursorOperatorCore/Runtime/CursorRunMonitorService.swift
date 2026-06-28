@@ -87,7 +87,7 @@ public struct CursorRunMonitorService: Sendable {
         }
 
         if completion.isTerminalFailure {
-            let message = completion.terminalFailureMessage
+            let message = CursorRuntimeFailure(message: completion.terminalFailureMessage).message
             if try store.task(id: runningReference.taskID)?.status == .running {
                 _ = try store.recordRunFailure(
                     taskID: runningReference.taskID,

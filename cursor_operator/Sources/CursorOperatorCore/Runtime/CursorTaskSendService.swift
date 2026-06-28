@@ -12,6 +12,25 @@ public struct CursorRuntimeFailure: Error, Equatable, Sendable {
         self.message = Self.sanitized(message)
     }
 
+    // Substrings that signal a message may carry a raw response body, a header,
+    // or a credential. Matching is intentionally broad: the sanitized output is
+    // persisted on the run and rendered in the UI, so we would rather over-redact
+    // a benign message than echo an upstream secret. The original detail stays
+    // available in Cursor itself.
+    private static let sensitiveMarkers = [
+        "{",
+        "body",
+        "authorization",
+        "bearer",
+        "cookie",
+        "token",
+        "secret",
+        "password",
+        "api_key",
+        "apikey",
+        "crsr_",
+    ]
+
     private static func sanitized(_ message: String) -> String {
         let collapsed = message
             .split(whereSeparator: \.isWhitespace)
@@ -22,10 +41,10 @@ public struct CursorRuntimeFailure: Error, Equatable, Sendable {
             return "Cursor run failed."
         }
 
-        if collapsed.contains("{")
-            || collapsed.range(of: "body", options: .caseInsensitive) != nil
-            || collapsed.range(of: "authorization", options: .caseInsensitive) != nil
-            || collapsed.range(of: "crsr_", options: .caseInsensitive) != nil {
+        let containsSensitiveMarker = sensitiveMarkers.contains { marker in
+            collapsed.range(of: marker, options: .caseInsensitive) != nil
+        }
+        if containsSensitiveMarker {
             return "Cursor run failed. See Cursor for details."
         }
 
@@ -130,7 +149,8 @@ public struct CursorTaskSendService: Sendable {
             startingRef: request.startingRef,
             model: request.model,
             autoCreatePR: request.autoCreatePR,
-            prompt: request.prompt
+            prompt: request.prompt,
+            harness: .cursor
         )
 
         do {

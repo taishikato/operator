@@ -643,6 +643,12 @@ private struct CursorTaskCardView: View {
                     .foregroundStyle(card.status == .done ? CursorTheme.green : CursorTheme.textSecondary)
             }
 
+            if let harnessBadgeText = card.harnessBadgeText {
+                Label(harnessBadgeText, systemImage: "bolt.horizontal")
+                    .font(.caption)
+                    .foregroundStyle(CursorTheme.textSecondary)
+            }
+
             if sendStatusText == nil, let failedSendMessage = card.failedSendMessage {
                 Label(failedSendMessage, systemImage: "exclamationmark.triangle")
                     .font(.caption)
