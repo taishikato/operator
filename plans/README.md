@@ -20,7 +20,7 @@ them to a plan later.
 | 004  | Design spike: "operator skills" — agent-facing CLI + thin skills | P2 | M | — (soft: 001, 003 outputs) | DONE — PRD at `.scratch/operator-skills/PRD.md`; at the maintainer's request the same pass also shipped the implementation (WAL store, `operator-cli` target, `skills/operator/SKILL.md`) |
 | 005  | Rebrand Cursor Operator foundation to Operator | P1 | M | — | DONE |
 | 006  | Introduce unified Task and Run model with Failed retry | P1 | L | 005 | DONE |
-| 007  | Port Cursor harness behavior onto Operator Task and Run | P1 | M | 006 | TODO |
+| 007  | Port Cursor harness behavior onto Operator Task and Run | P1 | M | 006 | DONE |
 | 008  | Add Codex readiness and task configuration to Operator | P1 | M | 005, 006 | TODO |
 | 009  | Implement Codex app-server harness in Operator | P1 | L | 006, 008 | TODO |
 | 010  | Ship canonical operator CLI and agent support | P2 | M | 007, 009 | TODO |
