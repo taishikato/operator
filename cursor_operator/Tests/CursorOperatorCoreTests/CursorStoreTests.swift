@@ -465,6 +465,45 @@ import Testing
     #expect(attempts.last?.id == retryClaim.id)
 }
 
+@Test func storePreventsSecondCodexRunWhenRunningRunAlreadyExists() throws {
+    let databaseURL = try temporaryDatabaseURL()
+    let store = try CursorOperatorStore(databaseURL: databaseURL)
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Codex duplicate guard",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    _ = try store.recordStartedCodexRun(
+        taskID: task.id,
+        worktreeURL: URL(filePath: "/tmp/operator-codex-worktree-1"),
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-1",
+        codexThreadURL: URL(string: "codex://threads/thread-1")
+    )
+
+    try resetTaskStatusForDuplicateGuardTest(databaseURL: databaseURL, taskID: task.id, status: .ready)
+
+    #expect(throws: CursorTaskLifecycleError.taskAlreadyHasSuccessfulRun) {
+        try store.recordStartedCodexRun(
+            taskID: task.id,
+            worktreeURL: URL(filePath: "/tmp/operator-codex-worktree-2"),
+            baseBranch: "main",
+            baseRef: "def456",
+            codexThreadID: "thread-2",
+            codexThreadURL: URL(string: "codex://threads/thread-2")
+        )
+    }
+    #expect(try store.runs(taskID: task.id).map(\.codexThreadID) == ["thread-1"])
+}
+
 // Migrates a fresh database up to the last migration that predates the harness configuration
 // columns, then inserts a task row using only the columns that existed at that point. The raw
 // connection is released when this function returns so the store can reopen the file cleanly.
@@ -504,6 +543,20 @@ private func seedLegacyTaskPredatingHarnessConfiguration(at databaseURL: URL, ta
                 0.0,
                 0.0
             ]
+        )
+    }
+}
+
+private func resetTaskStatusForDuplicateGuardTest(
+    databaseURL: URL,
+    taskID: UUID,
+    status: CursorTaskStatus
+) throws {
+    let queue = try DatabaseQueue(path: databaseURL.path)
+    try queue.write { db in
+        try db.execute(
+            sql: "UPDATE tasks SET status = ? WHERE id = ?",
+            arguments: [status.rawValue, taskID.uuidString]
         )
     }
 }

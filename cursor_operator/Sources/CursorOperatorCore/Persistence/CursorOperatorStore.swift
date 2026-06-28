@@ -799,10 +799,11 @@ public final class CursorOperatorStore: @unchecked Sendable {
     private func activeRunAttemptCount(taskID: UUID, db: Database) throws -> Int {
         try Int.fetchOne(
             db,
-            sql: "SELECT COUNT(*) FROM runs WHERE taskID = ? AND status IN (?, ?)",
+            sql: "SELECT COUNT(*) FROM runs WHERE taskID = ? AND status IN (?, ?, ?)",
             arguments: [
                 taskID.uuidString,
                 CursorRunAttemptStatus.pending.rawValue,
+                CursorRunAttemptStatus.running.rawValue,
                 CursorRunAttemptStatus.succeeded.rawValue
             ]
         ) ?? 0
@@ -1043,6 +1044,12 @@ extension CursorOperatorStore {
                 table.add(column: "codexThreadID", .text)
                 table.add(column: "codexThreadURL", .text)
             }
+        }
+
+        migrator.registerMigration("includeRunningRunsInActiveSendGuard") { db in
+            try db.execute(sql: "DROP INDEX IF EXISTS runAttempts_one_active_send_per_task")
+            try db.execute(sql: "DROP INDEX IF EXISTS runs_one_active_send_per_task")
+            try db.execute(sql: "CREATE UNIQUE INDEX runs_one_active_send_per_task ON runs(taskID) WHERE status IN ('pending', 'running', 'succeeded')")
         }
 
         return migrator
