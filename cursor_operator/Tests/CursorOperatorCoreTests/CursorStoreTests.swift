@@ -303,6 +303,59 @@ import Testing
     #expect(run.useFastModel == true)
 }
 
+@Test func storePreservesPreviousRunSnapshotsAfterFailedRetryEdit() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Snapshot retry",
+        prompt: "First prompt",
+        reasoningEffort: .high,
+        useFastModel: true,
+        harness: .codex
+    )
+    _ = try store.recordFailedSendAttempt(
+        taskID: task.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: task.prompt,
+        errorMessage: "first failure"
+    )
+    _ = try store.recoverTaskForRetry(id: task.id)
+    let editedTask = try store.updateTaskContent(
+        id: task.id,
+        title: "Snapshot retry",
+        prompt: "Second prompt",
+        reasoningEffort: .low,
+        useFastModel: false,
+        harness: .cursor
+    )
+    _ = try store.recordSuccessfulSendAttempt(
+        taskID: editedTask.id,
+        repositoryURL: repository.githubURL,
+        startingRef: repository.defaultBranch,
+        model: CursorModel.fixed,
+        autoCreatePR: false,
+        prompt: editedTask.prompt,
+        cursorAgentID: "agent-123",
+        cursorRunID: "run-123",
+        cursorURL: URL(string: "https://cursor.com/agents/agent-123")!
+    )
+
+    let runs = try store.runAttempts(taskID: task.id)
+    #expect(runs.map(\.prompt) == ["First prompt", "Second prompt"])
+    #expect(runs.map(\.harness) == [.codex, .cursor])
+    #expect(runs.map(\.reasoningEffort) == [.high, .low])
+    #expect(runs.map(\.useFastModel) == [true, false])
+}
+
 @Test func failedClaimedSendMovesTaskToFailed() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryDatabaseURL())
     let repository = try store.createRepository(
