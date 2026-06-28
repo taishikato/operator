@@ -4,6 +4,10 @@ public protocol CodexAppServerClientFactory: Sendable {
     func makeAppServerClient() throws -> any CodexAppServerClient
 }
 
+public protocol CodexTaskSending: Sendable {
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun
+}
+
 public enum CodexTriggerError: Error, Equatable, LocalizedError, Sendable {
     case repositoryNotFound
     case unsupportedHarness(CursorHarness)
@@ -153,5 +157,44 @@ private struct FixedCodexAppServerClientFactory: CodexAppServerClientFactory {
 
     func makeAppServerClient() throws -> any CodexAppServerClient {
         appServerClient
+    }
+}
+
+extension CodexTriggerService: CodexTaskSending {}
+
+public final class ConfiguredCodexAppServerClientFactory: CodexAppServerClientFactory, @unchecked Sendable {
+    private let settings: any CodexBinarySettingsProviding
+    private let makeClient: @Sendable (URL) -> any CodexAppServerClient
+    private let lock = NSLock()
+    private var cachedBinaryURL: URL?
+    private var cachedAppServerClient: (any CodexAppServerClient)?
+
+    public init(
+        settings: any CodexBinarySettingsProviding = CodexBinarySettings(),
+        makeClient: @escaping @Sendable (URL) -> any CodexAppServerClient = { binaryURL in
+            CodexAppServerStdioClient(codexBinaryURL: binaryURL)
+        }
+    ) {
+        self.settings = settings
+        self.makeClient = makeClient
+    }
+
+    public func makeAppServerClient() throws -> any CodexAppServerClient {
+        lock.lock()
+        defer {
+            lock.unlock()
+        }
+
+        guard let binaryURL = try settings.configuration().effectiveBinaryURL else {
+            throw CodexBinaryConfigurationError.notFound
+        }
+        if let cachedAppServerClient, cachedBinaryURL == binaryURL {
+            return cachedAppServerClient
+        }
+
+        let appServerClient = makeClient(binaryURL)
+        cachedBinaryURL = binaryURL
+        cachedAppServerClient = appServerClient
+        return appServerClient
     }
 }

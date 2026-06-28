@@ -99,8 +99,8 @@ import Testing
 
     #expect(model.setupStatus.selectedHarness == .codex)
     #expect(model.setupStatus.codexState == .ready(binaryPath: binaryURL.path))
-    #expect(model.setupStatus.canSend == false)
-    #expect(model.setupStatus.sendDisabledReason == "Codex sending is not available yet.")
+    #expect(model.setupStatus.canSend)
+    #expect(model.setupStatus.sendDisabledReason == "")
 }
 
 @MainActor
@@ -251,7 +251,7 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
-@Test func boardProjectionDisablesCodexTaskSendEvenWhenCursorIsReady() throws {
+@Test func boardProjectionEnablesCodexTaskSendWhenCodexIsReady() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
         name: "operator",
@@ -268,16 +268,17 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 
     let projection = try CursorBoardProjection.load(from: store)
     let card = try #require(projection.columns.first { $0.id == .ready }?.cards.first)
-    let cursorReady = CursorSetupStatusProjection(
+    let codexReady = CursorSetupStatusProjection(
         repositoryState: .registered(count: 1),
-        credentialState: .ready,
-        nodeState: .ready(version: "v22.13.0"),
-        selectedHarness: .cursor
+        credentialState: .missing,
+        nodeState: .missing,
+        codexState: .ready(binaryPath: "/opt/homebrew/bin/codex"),
+        selectedHarness: .codex
     )
 
     #expect(card.id == task.id)
-    #expect(card.canSend(using: cursorReady) == false)
-    #expect(card.sendDisabledReason(using: cursorReady) == "Codex sending is not available yet.")
+    #expect(card.canSend(using: codexReady))
+    #expect(card.sendDisabledReason(using: codexReady) == "")
 }
 
 @MainActor
@@ -662,6 +663,43 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
+@Test func boardModelSendsCodexTaskWithInjectedCodexSender() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Send Codex",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let runtime = BoardModelFakeRuntime(reference: CursorCloudAgentReference(
+        agentID: "agent-unused",
+        runID: "run-unused",
+        openURL: URL(string: "https://cursor.com/agents/unused")!
+    ))
+    let codexSender = BoardModelFakeCodexSender(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        runtime: runtime,
+        codexTaskSender: codexSender
+    )
+    try model.load()
+
+    try await model.send(taskID: task.id)
+
+    #expect(codexSender.sentTaskIDs == [task.id])
+    #expect(runtime.requests.isEmpty)
+    #expect(try store.task(id: task.id)?.status == .running)
+    #expect(try store.runs(taskID: task.id).first?.harness == .codex)
+}
+
+@MainActor
 @Test func boardModelIgnoresDuplicateSendReportsWhileTaskIsAlreadySending() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
@@ -850,6 +888,27 @@ private final class BoardModelMonitoringRuntime: CursorCloudAgentRuntime, @unche
     func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
         waits.append(reference)
         return completion
+    }
+}
+
+private final class BoardModelFakeCodexSender: CodexTaskSending, @unchecked Sendable {
+    let store: CursorOperatorStore
+    private(set) var sentTaskIDs: [UUID] = []
+
+    init(store: CursorOperatorStore) {
+        self.store = store
+    }
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        sentTaskIDs.append(taskID)
+        return try store.recordStartedCodexRun(
+            taskID: taskID,
+            worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+            baseBranch: "main",
+            baseRef: "abc123",
+            codexThreadID: "thread-board",
+            codexThreadURL: URL(string: "codex://threads/thread-board")
+        )
     }
 }
 

@@ -21,6 +21,7 @@ public final class CursorBoardModel: ObservableObject {
     private let codexStatusChecker: any CodexStatusChecking
     private let runtime: any CursorCloudAgentRuntime
     private let externalOpener: any CursorExternalOpening
+    private let codexTaskSender: (any CodexTaskSending)?
     private var cachedNodeState: CursorNodeSetupState?
     private var codexStatus: CodexStatus
 
@@ -33,7 +34,8 @@ public final class CursorBoardModel: ObservableObject {
         codexBinarySettings: any CodexBinarySettingsProviding = CodexBinarySettings(),
         codexStatusChecker: any CodexStatusChecking = CodexStatusChecker(),
         runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
-        externalOpener: any CursorExternalOpening = SystemCursorExternalOpener()
+        externalOpener: any CursorExternalOpening = SystemCursorExternalOpener(),
+        codexTaskSender: (any CodexTaskSending)? = nil
     ) {
         self.store = store
         self.credentialProvider = credentialProvider
@@ -43,6 +45,7 @@ public final class CursorBoardModel: ObservableObject {
         self.codexStatusChecker = codexStatusChecker
         self.runtime = runtime
         self.externalOpener = externalOpener
+        self.codexTaskSender = codexTaskSender
         codexStatus = .notChecked
         repositoryRegistrationService = CursorRepositoryRegistrationService(
             store: store,
@@ -178,21 +181,42 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     public func send(taskID: UUID) async throws {
-        let service = CursorTaskSendService(
-            store: store,
-            credentialReadiness: CursorSendReadiness(provider: credentialProvider),
-            runtime: runtime
-        )
-        let attempt = try await service.send(taskID: taskID)
+        guard let task = try store.task(id: taskID) else {
+            throw CursorOperatorStoreError.taskNotFound
+        }
+        let attempt: OperatorRun
+        switch task.harness {
+        case .cursor:
+            let service = CursorTaskSendService(
+                store: store,
+                credentialReadiness: CursorSendReadiness(provider: credentialProvider),
+                runtime: runtime
+            )
+            attempt = try await service.send(taskID: taskID)
+        case .codex:
+            let sender = codexTaskSender ?? productionCodexTaskSender()
+            attempt = try await sender.sendTaskToCodex(taskID: taskID)
+        case .claudeCode:
+            throw CursorTaskSendError.unsupportedHarness(task.harness)
+        }
         // Reload before surfacing a failure so the board projection reflects the
         // recorded failed attempt (the per-card failed-send indicator), not just
         // the transient global error message.
         try load()
-        guard attempt.status == .succeeded else {
+        guard attempt.status != .failed else {
             throw CursorTaskSendError.sendFailed(
-                message: attempt.errorMessage ?? "Cursor did not start the run."
+                message: attempt.errorMessage ?? "\(task.harness.displayName) did not start the run."
             )
         }
+    }
+
+    private func productionCodexTaskSender() -> any CodexTaskSending {
+        CodexTriggerService(
+            store: store,
+            worktreePreparer: WorktreePreparer(),
+            appServerClientFactory: ConfiguredCodexAppServerClientFactory(settings: codexBinarySettings),
+            threadVisibility: CodexCLIThreadVisibilityController(settings: codexBinarySettings)
+        )
     }
 
     public func resumeRunMonitoring() async throws {

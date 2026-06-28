@@ -117,12 +117,12 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     }
 
     public func canSend(using setupStatus: CursorSetupStatusProjection) -> Bool {
-        harness == .cursor && setupStatus.canSend
+        harness == setupStatus.selectedHarness && setupStatus.canSend
     }
 
     public func sendDisabledReason(using setupStatus: CursorSetupStatusProjection) -> String {
-        guard harness == .cursor else {
-            return "\(harness.displayName) sending is not available yet."
+        guard harness == setupStatus.selectedHarness else {
+            return "Select \(harness.displayName) before sending this task."
         }
         return setupStatus.sendDisabledReason
     }
