@@ -151,6 +151,11 @@ private actor CodexAppServerStdioTransport {
     private var stdout: FileHandle?
     private var stderr: FileHandle?
     private var stdoutBuffer = Data()
+    private var stderrBuffer = Data()
+    private var stdoutContinuation: AsyncStream<Data>.Continuation?
+    private var stderrContinuation: AsyncStream<Data>.Continuation?
+    private var stdoutPumpTask: Task<Void, Never>?
+    private var stderrPumpTask: Task<Void, Never>?
     private var nextRequestID = 1
     private var initialized = false
     private var pendingResponses: [Int: CheckedContinuation<CodexAppServerRPCResponse, Error>] = [:]
@@ -311,14 +316,26 @@ private actor CodexAppServerStdioTransport {
         stdout = outputPipe.fileHandleForReading
         stderr = errorPipe.fileHandleForReading
 
-        stdout?.readabilityHandler = { [weak self] handle in
-            let data = handle.availableData
-            Task {
+        let stdoutStream = AsyncStream.makeStream(of: Data.self)
+        stdoutContinuation = stdoutStream.continuation
+        stdoutPumpTask = Task { [weak self] in
+            for await data in stdoutStream.stream {
                 await self?.receiveStdoutData(data)
             }
         }
+        stdout?.readabilityHandler = { handle in
+            stdoutStream.continuation.yield(handle.availableData)
+        }
+
+        let stderrStream = AsyncStream.makeStream(of: Data.self)
+        stderrContinuation = stderrStream.continuation
+        stderrPumpTask = Task { [weak self] in
+            for await data in stderrStream.stream {
+                await self?.receiveStderrData(data)
+            }
+        }
         stderr?.readabilityHandler = { handle in
-            _ = handle.availableData
+            stderrStream.continuation.yield(handle.availableData)
         }
     }
 
@@ -352,12 +369,12 @@ private actor CodexAppServerStdioTransport {
 
     private func cancelRequest(id: Int) {
         pendingResponses.removeValue(forKey: id)?
-            .resume(throwing: CodexAppServerClientError.connectionClosed)
+            .resume(throwing: connectionClosedError())
     }
 
     private func receiveStdoutData(_ data: Data) {
         guard !data.isEmpty else {
-            failPendingResponses(with: CodexAppServerClientError.connectionClosed)
+            failPendingResponses(with: connectionClosedError())
             resetProcessState(terminate: false)
             return
         }
@@ -373,9 +390,20 @@ private actor CodexAppServerStdioTransport {
         }
     }
 
+    private func receiveStderrData(_ data: Data) {
+        guard !data.isEmpty else {
+            return
+        }
+        stderrBuffer.append(data)
+        let maximumBytes = 8 * 1_024
+        if stderrBuffer.count > maximumBytes {
+            stderrBuffer.removeFirst(stderrBuffer.count - maximumBytes)
+        }
+    }
+
     private func handleStdoutLine(_ line: Data) {
         guard let response = try? JSONDecoder().decode(CodexAppServerRPCResponse.self, from: line) else {
-            failPendingResponses(with: CodexAppServerClientError.invalidResponse)
+            failPendingResponses(with: CodexAppServerClientError.invalidResponse(message: recentStderrMessage()))
             resetProcessState()
             return
         }
@@ -442,6 +470,10 @@ private actor CodexAppServerStdioTransport {
     private func resetProcessState(terminate: Bool = true) {
         stdout?.readabilityHandler = nil
         stderr?.readabilityHandler = nil
+        stdoutContinuation?.finish()
+        stderrContinuation?.finish()
+        stdoutPumpTask?.cancel()
+        stderrPumpTask?.cancel()
         if terminate {
             process?.terminate()
         }
@@ -450,6 +482,11 @@ private actor CodexAppServerStdioTransport {
         stdout = nil
         stderr = nil
         stdoutBuffer.removeAll()
+        stderrBuffer.removeAll()
+        stdoutContinuation = nil
+        stderrContinuation = nil
+        stdoutPumpTask = nil
+        stderrPumpTask = nil
         initialized = false
         let orphanedCompletions = Array(pendingTurnCompletionsByThreadID.values)
         pendingTurnCompletionsByThreadID.removeAll()
@@ -468,9 +505,27 @@ private actor CodexAppServerStdioTransport {
         }
     }
 
+    private func connectionClosedError() -> CodexAppServerClientError {
+        .connectionClosed(message: recentStderrMessage())
+    }
+
+    private func recentStderrMessage() -> String? {
+        guard !stderrBuffer.isEmpty else {
+            return nil
+        }
+        let decoded = String(decoding: stderrBuffer, as: UTF8.self)
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !decoded.isEmpty else {
+            return nil
+        }
+        return decoded
+    }
+
     private func threadReference(fromThreadStartResponse response: CodexAppServerRPCResponse) throws -> CodexThreadReference {
         guard let threadID = response.result?.thread?.id else {
-            throw CodexAppServerClientError.invalidResponse
+            throw CodexAppServerClientError.invalidResponse(message: recentStderrMessage())
         }
 
         let url = CodexThreadReference.deepLinkURL(threadID: threadID)
@@ -549,8 +604,8 @@ private actor AsyncGate {
 public enum CodexAppServerClientError: Error, Equatable, LocalizedError, Sendable {
     case binaryNotFound(path: String)
     case notConnected
-    case connectionClosed
-    case invalidResponse
+    case connectionClosed(message: String?)
+    case invalidResponse(message: String?)
     case serverRejected(message: String)
 
     public var errorDescription: String? {
@@ -559,10 +614,18 @@ public enum CodexAppServerClientError: Error, Equatable, LocalizedError, Sendabl
             "Codex binary not found at \(path). Configure an absolute Codex binary path in Settings."
         case .notConnected:
             "Unable to connect to codex app-server."
-        case .connectionClosed:
-            "codex app-server closed the connection."
-        case .invalidResponse:
-            "codex app-server returned an invalid response."
+        case let .connectionClosed(message):
+            if let message {
+                "codex app-server closed the connection. \(message)"
+            } else {
+                "codex app-server closed the connection."
+            }
+        case let .invalidResponse(message):
+            if let message {
+                "codex app-server returned an invalid response. \(message)"
+            } else {
+                "codex app-server returned an invalid response."
+            }
         case let .serverRejected(message):
             message
         }

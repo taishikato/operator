@@ -73,6 +73,39 @@ import Testing
     #expect((textInput["text_elements"] as? [Any])?.isEmpty == true)
 }
 
+@Test func codexAppServerStdioClientIncludesRecentStderrInInvalidResponseErrors() async throws {
+    let directory = try temporaryDirectory(named: "CodexAppServerStdioClientStderr")
+    let scriptURL = directory.appending(path: "server.py")
+    try writeScript(
+        """
+        import sys
+        import time
+
+        sys.stderr.write("startup diagnostic detail\\n")
+        sys.stderr.flush()
+        time.sleep(0.05)
+        sys.stdout.write("not-json\\n")
+        sys.stdout.flush()
+        """,
+        to: scriptURL
+    )
+    let client = CodexAppServerStdioClient(
+        executableURL: URL(filePath: "/usr/bin/env"),
+        arguments: ["python3", scriptURL.path]
+    )
+
+    await #expect(throws: CodexAppServerClientError.invalidResponse(message: "startup diagnostic detail")) {
+        _ = try await client.startThreadAndTurn(
+            CodexThreadStartRequest(
+                cwd: directory,
+                model: CodexModel.fixed,
+                reasoningEffort: .medium,
+                prompt: "Prompt"
+            )
+        )
+    }
+}
+
 private func writeScript(_ body: String, to url: URL) throws {
     try body.write(to: url, atomically: true, encoding: .utf8)
 }
