@@ -23,6 +23,14 @@ import Testing
     }
 }
 
+@Test func codexStatusCheckerMapsMissingBinaryToNotFound() async {
+    let checker = CodexStatusChecker(runner: StubCodexStatusRunner(result: .success(.ready)))
+
+    let status = await checker.checkStatus(binaryURL: nil)
+
+    #expect(status == .notFound)
+}
+
 @Test func credentialProviderUsesEnvironmentFallbackWhenKeychainIsMissing() throws {
     let storage = InMemoryCursorCredentialStore()
     let provider = CursorCredentialProvider(
@@ -216,5 +224,13 @@ private struct StubCodexBinaryDetector: CodexBinaryDetecting {
 
     func detectedCodexBinaryURL() -> URL? {
         detectedBinaryURL
+    }
+}
+
+private struct StubCodexStatusRunner: CodexStatusRunning {
+    let result: Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure>
+
+    func runCodexStatus(binaryURL: URL) async -> Result<CodexStatusRunnerSuccess, CodexStatusRunnerFailure> {
+        result
     }
 }
