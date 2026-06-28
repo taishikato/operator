@@ -21,6 +21,7 @@ public final class CursorBoardModel: ObservableObject {
     private let codexStatusChecker: any CodexStatusChecking
     private let runtime: any CursorCloudAgentRuntime
     private let externalOpener: any CursorExternalOpening
+    private let codexAppOpener: any CodexAppOpening
     private let codexTaskSender: (any CodexTaskSending)?
     private var cachedNodeState: CursorNodeSetupState?
     private var codexStatus: CodexStatus
@@ -35,6 +36,7 @@ public final class CursorBoardModel: ObservableObject {
         codexStatusChecker: any CodexStatusChecking = CodexStatusChecker(),
         runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
         externalOpener: any CursorExternalOpening = SystemCursorExternalOpener(),
+        codexAppOpener: any CodexAppOpening = OSCodexAppOpener(),
         codexTaskSender: (any CodexTaskSending)? = nil
     ) {
         self.store = store
@@ -45,6 +47,7 @@ public final class CursorBoardModel: ObservableObject {
         self.codexStatusChecker = codexStatusChecker
         self.runtime = runtime
         self.externalOpener = externalOpener
+        self.codexAppOpener = codexAppOpener
         self.codexTaskSender = codexTaskSender
         codexStatus = .notChecked
         repositoryRegistrationService = CursorRepositoryRegistrationService(
@@ -245,7 +248,7 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     public func openInCursor(taskID: UUID) throws {
-        guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded }) else {
+        guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded && $0.harness == .cursor }) else {
             throw CursorOpenInCursorError.noCursorReference
         }
 
@@ -259,6 +262,16 @@ public final class CursorBoardModel: ObservableObject {
         }
 
         externalOpener.perform(action)
+        errorMessage = nil
+    }
+
+    public func openInCodex(taskID: UUID) throws {
+        guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded && $0.harness == .codex }),
+              let target = CodexOpenTarget(run: successfulAttempt) else {
+            throw CodexOpenInCodexError.noCodexReference
+        }
+
+        try codexAppOpener.open(target)
         errorMessage = nil
     }
 
@@ -402,6 +415,14 @@ public final class CursorBoardModel: ObservableObject {
     public func openInCursorReportingErrors(taskID: UUID) {
         do {
             try openInCursor(taskID: taskID)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func openInCodexReportingErrors(taskID: UUID) {
+        do {
+            try openInCodex(taskID: taskID)
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }

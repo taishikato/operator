@@ -18,7 +18,8 @@ public struct CursorBoardProjection: Equatable, Sendable {
                 runReferencesByTaskID[task.id] = CursorTaskRunReference(
                     cursorAgentID: successfulAttempt.cursorAgentID,
                     cursorRunID: successfulAttempt.cursorRunID,
-                    cursorURL: successfulAttempt.cursorURL
+                    cursorURL: successfulAttempt.cursorURL,
+                    codexOpenTarget: CodexOpenTarget(run: successfulAttempt)
                 )
             }
             if task.status == .failed,
@@ -83,6 +84,7 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
     public let title: String
     public let status: CursorTaskStatus
     public let hasCursorReference: Bool
+    public let codexOpenTarget: CodexOpenTarget?
     public let cursorRunID: String?
     public let cursorURL: URL?
     public let failedSendMessage: String?
@@ -99,7 +101,8 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
         id = task.id
         title = task.title
         status = task.status
-        hasCursorReference = runReference != nil
+        hasCursorReference = runReference?.hasCursorReference ?? false
+        codexOpenTarget = runReference?.codexOpenTarget
         cursorRunID = runReference?.cursorRunID
         cursorURL = runReference?.cursorURL
         self.failedSendMessage = failedSendMessage
@@ -110,6 +113,10 @@ public struct CursorTaskCardProjection: Equatable, Identifiable, Sendable {
 
     public var canOpenInCursor: Bool {
         hasCursorReference
+    }
+
+    public var canOpenInCodex: Bool {
+        codexOpenTarget != nil
     }
 
     public var harnessBadgeText: String? {
@@ -184,11 +191,22 @@ public struct CursorTaskRunReference: Equatable, Sendable {
     public let cursorAgentID: String?
     public let cursorRunID: String?
     public let cursorURL: URL?
+    public let codexOpenTarget: CodexOpenTarget?
 
-    public init(cursorAgentID: String?, cursorRunID: String?, cursorURL: URL?) {
+    public init(
+        cursorAgentID: String?,
+        cursorRunID: String?,
+        cursorURL: URL?,
+        codexOpenTarget: CodexOpenTarget? = nil
+    ) {
         self.cursorAgentID = cursorAgentID
         self.cursorRunID = cursorRunID
         self.cursorURL = cursorURL
+        self.codexOpenTarget = codexOpenTarget
+    }
+
+    public var hasCursorReference: Bool {
+        cursorAgentID != nil || cursorRunID != nil || cursorURL != nil
     }
 }
 

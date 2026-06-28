@@ -327,6 +327,46 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
+@Test func boardProjectionAndModelOpenCodexRunsThroughCodexApp() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Open Codex",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    _ = try store.recordStartedCodexRun(
+        taskID: task.id,
+        worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-open",
+        codexThreadURL: URL(string: "codex://threads/thread-open")
+    )
+    _ = try store.completeStartedCodexRun(id: try #require(try store.runs(taskID: task.id).first?.id))
+    let cursorOpener = BoardModelFakeExternalOpener()
+    let codexOpener = BoardModelFakeCodexAppOpener()
+    let model = CursorBoardModel(store: store, externalOpener: cursorOpener, codexAppOpener: codexOpener)
+
+    try model.load()
+    let card = try #require(model.projection.columns.first { $0.id == CursorBoardColumnID.done }?.cards.first)
+
+    #expect(card.canOpenInCursor == false)
+    #expect(card.canOpenInCodex)
+
+    try model.openInCodex(taskID: task.id)
+
+    #expect(cursorOpener.actions.isEmpty)
+    #expect(codexOpener.targets == [.url(URL(string: "codex://threads/thread-open")!)])
+}
+
+@MainActor
 @Test func boardModelManualDoneDoesNotStartCursorRuntime() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
@@ -909,6 +949,14 @@ private final class BoardModelFakeCodexSender: CodexTaskSending, @unchecked Send
             codexThreadID: "thread-board",
             codexThreadURL: URL(string: "codex://threads/thread-board")
         )
+    }
+}
+
+private final class BoardModelFakeCodexAppOpener: CodexAppOpening, @unchecked Sendable {
+    private(set) var targets: [CodexOpenTarget] = []
+
+    func open(_ target: CodexOpenTarget) throws {
+        targets.append(target)
     }
 }
 

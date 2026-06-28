@@ -52,6 +52,17 @@ public enum CodexAppOpenError: Error, Equatable, LocalizedError, Sendable {
     }
 }
 
+public enum CodexOpenInCodexError: Error, Equatable, LocalizedError, Sendable {
+    case noCodexReference
+
+    public var errorDescription: String? {
+        switch self {
+        case .noCodexReference:
+            "This task does not have a Codex thread or worktree reference."
+        }
+    }
+}
+
 public struct OSCodexAppOpener: CodexAppOpening {
     public init() {}
 
