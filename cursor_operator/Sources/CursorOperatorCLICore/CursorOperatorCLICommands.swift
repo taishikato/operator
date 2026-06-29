@@ -165,17 +165,20 @@ public struct CursorOperatorCLICommands: Sendable {
     private let repositoryInspector: any CursorRepositoryInspecting
     private let credentialProvider: CursorCredentialProvider
     private let runtime: any CursorCloudAgentRuntime
+    private let codexSender: (any CodexTaskSending)?
 
     public init(
         store: CursorOperatorStore,
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
-        runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime()
+        runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
+        codexSender: (any CodexTaskSending)? = nil
     ) {
         self.store = store
         self.repositoryInspector = repositoryInspector
         self.credentialProvider = credentialProvider
         self.runtime = runtime
+        self.codexSender = codexSender
     }
 
     public func listRepositories() throws -> [CursorCLIRepository] {
@@ -260,6 +263,15 @@ public struct CursorOperatorCLICommands: Sendable {
 
     public func sendTask(id: String, wait: Bool) async throws -> CursorCLIRunAttempt {
         let task = try resolveTask(id)
+        switch task.harness {
+        case .codex:
+            return try await sendCodexTask(task)
+        case .cursor:
+            break
+        case .claudeCode:
+            throw CodexTriggerError.unsupportedHarness(task.harness)
+        }
+
         let service = CursorTaskSendService(
             store: store,
             credentialReadiness: CursorSendReadiness(provider: credentialProvider),
@@ -274,6 +286,42 @@ public struct CursorOperatorCLICommands: Sendable {
             try await waitForRun(taskID: task.id, runID: attempt.cursorRunID)
         }
         return CursorCLIRunAttempt(attempt)
+    }
+
+    private func sendCodexTask(_ task: CursorTask) async throws -> CursorCLIRunAttempt {
+        let sender = codexSender ?? defaultCodexSender()
+        let run = try await sender.sendTaskToCodex(taskID: task.id)
+        return try await waitForCodexRun(run, taskID: task.id)
+    }
+
+    private func defaultCodexSender() -> any CodexTaskSending {
+        CodexTriggerService(
+            store: store,
+            worktreePreparer: WorktreePreparer(),
+            appServerClientFactory: ConfiguredCodexAppServerClientFactory(),
+            threadVisibility: CodexCLIThreadVisibilityController()
+        )
+    }
+
+    private func waitForCodexRun(_ run: OperatorRun, taskID: UUID) async throws -> CursorCLIRunAttempt {
+        if run.status != .running {
+            if run.status == .failed {
+                throw CursorOperatorCLIError.sendFailed(message: run.errorMessage ?? "Codex did not start the run.")
+            }
+            return CursorCLIRunAttempt(run)
+        }
+
+        while true {
+            let currentRun = try store.runs(taskID: taskID).first { $0.id == run.id } ?? run
+            switch currentRun.status {
+            case .running:
+                try await Task.sleep(for: .milliseconds(50))
+            case .failed:
+                throw CursorOperatorCLIError.sendFailed(message: currentRun.errorMessage ?? "Codex run failed.")
+            case .pending, .succeeded:
+                return CursorCLIRunAttempt(currentRun)
+            }
+        }
     }
 
     private func waitForRun(taskID: UUID, runID: String?) async throws {

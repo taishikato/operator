@@ -265,6 +265,33 @@ import CursorOperatorCore
     #expect(runtime.waitedReferences.map(\.runID) == ["run-123"])
 }
 
+@Test func sendRoutesCodexTasksAndWaitsForInitialTurnCompletion() async throws {
+    let store = try temporaryStore()
+    let repository = try makeRepository(in: store, name: "operator")
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Send through Codex",
+        prompt: "P",
+        harness: .codex
+    )
+    let sender = FakeCodexSender(store: store)
+    let commands = CursorOperatorCLICommands(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(apiKey: "crsr_test")),
+        runtime: FakeRuntime(startResult: .failure(CursorRuntimeFailure(message: "Cursor must not be called."))),
+        codexSender: sender
+    )
+
+    let attempt = try await commands.sendTask(id: task.id.uuidString, wait: false)
+
+    #expect(sender.sentTaskIDs == [task.id])
+    #expect(attempt.harness == "codex")
+    #expect(attempt.status == "succeeded")
+    #expect(attempt.codexThreadID == "thread-\(task.id.uuidString)")
+    #expect(attempt.cursorRunID == nil)
+    #expect(try store.task(id: task.id)?.status == .done)
+}
+
 @Test func sendWaitFailsWhenCursorRunIsStillRunning() async throws {
     let store = try temporaryStore()
     let repository = try makeRepository(in: store, name: "operator")
@@ -400,5 +427,31 @@ private final class FakeRuntime: CursorCloudAgentRuntime, @unchecked Sendable {
     func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
         waitedReferences.append(reference)
         return waitResult
+    }
+}
+
+private final class FakeCodexSender: CodexTaskSending, @unchecked Sendable {
+    let store: CursorOperatorStore
+    private(set) var sentTaskIDs: [UUID] = []
+
+    init(store: CursorOperatorStore) {
+        self.store = store
+    }
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        sentTaskIDs.append(taskID)
+        let run = try store.recordStartedCodexRun(
+            taskID: taskID,
+            worktreeURL: URL(filePath: "/tmp/operator-worktree-\(taskID.uuidString)"),
+            baseBranch: "main",
+            baseRef: "abc123",
+            codexThreadID: "thread-\(taskID.uuidString)",
+            codexThreadURL: URL(string: "codex://threads/thread-\(taskID.uuidString)")
+        )
+        Task {
+            try? await Task.sleep(for: .milliseconds(10))
+            _ = try? store.completeStartedCodexRun(id: run.id)
+        }
+        return run
     }
 }
