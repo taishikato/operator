@@ -128,8 +128,10 @@ import Testing
 
     #expect(text.contains("operator task add"))
     #expect(text.contains("operator task send"))
-    #expect(text.contains("CURSOR_OPERATOR_DB"))
+    #expect(text.contains("--harness codex"))
+    #expect(text.contains("Codex sends always wait"))
     #expect(text.contains("Do not read or write"))
+    #expect(!text.localizedCaseInsensitiveContains("sqlite"))
 }
 
 private func packageScript(named name: String) throws -> String {
