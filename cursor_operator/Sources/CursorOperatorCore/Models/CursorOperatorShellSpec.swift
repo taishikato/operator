@@ -98,4 +98,5 @@ public extension Notification.Name {
     static let cursorOperatorAddRepositoryCommand = Notification.Name("com.focus.operator.add-repository")
     static let cursorOperatorToggleSidebarCommand = Notification.Name("com.focus.operator.toggle-sidebar")
     static let cursorOperatorCredentialsChanged = Notification.Name("com.focus.operator.credentials-changed")
+    static let cursorOperatorRunsChanged = Notification.Name("com.focus.operator.runs-changed")
 }

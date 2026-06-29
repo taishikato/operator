@@ -439,6 +439,8 @@ private struct CursorBoardView: View {
                                     presentEditTask(card.id)
                                 } openInCursor: {
                                     model.openInCursorReportingErrors(taskID: card.id)
+                                } openInCodex: {
+                                    model.openInCodexReportingErrors(taskID: card.id)
                                 } markDone: {
                                     model.markDoneReportingErrors(taskID: card.id)
                                 } recover: {
@@ -613,6 +615,7 @@ private struct CursorTaskCardView: View {
     let send: () -> Void
     let edit: () -> Void
     let openInCursor: () -> Void
+    let openInCodex: () -> Void
     let markDone: () -> Void
     let recover: () -> Void
     let archive: () -> Void
@@ -669,6 +672,10 @@ private struct CursorTaskCardView: View {
                     Button("Open in Cursor", action: openInCursor)
                         .buttonStyle(CursorGhostButtonStyle())
                         .help("Cursor hides SDK agents from the default sidebar. In Cursor, enable Filter > Source > SDK to show Operator runs in the list.")
+                }
+                if card.canOpenInCodex {
+                    Button("Open in Codex", action: openInCodex)
+                        .buttonStyle(CursorGhostButtonStyle())
                 }
                 if card.status == .failed {
                     Button("Recover", action: recover)
@@ -941,6 +948,8 @@ private struct CursorArchivedView: View {
                             } edit: {
                             } openInCursor: {
                                 model.openInCursorReportingErrors(taskID: card.id)
+                            } openInCodex: {
+                                model.openInCodexReportingErrors(taskID: card.id)
                             } markDone: {
                             } recover: {
                             } archive: {

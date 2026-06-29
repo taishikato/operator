@@ -21,6 +21,10 @@ public final class CursorBoardModel: ObservableObject {
     private let codexStatusChecker: any CodexStatusChecking
     private let runtime: any CursorCloudAgentRuntime
     private let externalOpener: any CursorExternalOpening
+    private let codexAppOpener: any CodexAppOpening
+    private let codexTaskSender: (any CodexTaskSending)?
+    private let codexRunRecoverer: (any CodexRunRecovering)?
+    private var cancellables: Set<AnyCancellable>
     private var cachedNodeState: CursorNodeSetupState?
     private var codexStatus: CodexStatus
 
@@ -33,7 +37,10 @@ public final class CursorBoardModel: ObservableObject {
         codexBinarySettings: any CodexBinarySettingsProviding = CodexBinarySettings(),
         codexStatusChecker: any CodexStatusChecking = CodexStatusChecker(),
         runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
-        externalOpener: any CursorExternalOpening = SystemCursorExternalOpener()
+        externalOpener: any CursorExternalOpening = SystemCursorExternalOpener(),
+        codexAppOpener: any CodexAppOpening = OSCodexAppOpener(),
+        codexTaskSender: (any CodexTaskSending)? = nil,
+        codexRunRecoverer: (any CodexRunRecovering)? = nil
     ) {
         self.store = store
         self.credentialProvider = credentialProvider
@@ -43,6 +50,10 @@ public final class CursorBoardModel: ObservableObject {
         self.codexStatusChecker = codexStatusChecker
         self.runtime = runtime
         self.externalOpener = externalOpener
+        self.codexAppOpener = codexAppOpener
+        self.codexTaskSender = codexTaskSender
+        self.codexRunRecoverer = codexRunRecoverer
+        cancellables = []
         codexStatus = .notChecked
         repositoryRegistrationService = CursorRepositoryRegistrationService(
             store: store,
@@ -54,6 +65,12 @@ public final class CursorBoardModel: ObservableObject {
         editingTaskID = nil
         sendingTaskIDs = []
         creationDraft = CursorTaskCreationDraft(harness: settings.defaultHarness())
+        NotificationCenter.default.publisher(for: .cursorOperatorRunsChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.loadReportingErrors()
+            }
+            .store(in: &cancellables)
     }
 
     public func load() throws {
@@ -174,25 +191,54 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     public func sendStatusText(taskID: UUID) -> String? {
-        isSending(taskID: taskID) ? "Sending to Cursor..." : nil
+        guard isSending(taskID: taskID) else {
+            return nil
+        }
+        let harnessName = (try? store.task(id: taskID)?.harness.displayName) ?? CursorHarness.cursor.displayName
+        return "Sending to \(harnessName)..."
     }
 
     public func send(taskID: UUID) async throws {
-        let service = CursorTaskSendService(
-            store: store,
-            credentialReadiness: CursorSendReadiness(provider: credentialProvider),
-            runtime: runtime
-        )
-        let attempt = try await service.send(taskID: taskID)
+        guard let task = try store.task(id: taskID) else {
+            throw CursorOperatorStoreError.taskNotFound
+        }
+        let attempt: OperatorRun
+        switch task.harness {
+        case .cursor:
+            let service = CursorTaskSendService(
+                store: store,
+                credentialReadiness: CursorSendReadiness(provider: credentialProvider),
+                runtime: runtime
+            )
+            attempt = try await service.send(taskID: taskID)
+        case .codex:
+            let sender = codexTaskSender ?? productionCodexTaskSender()
+            attempt = try await sender.sendTaskToCodex(taskID: taskID)
+        case .claudeCode:
+            throw CursorTaskSendError.unsupportedHarness(task.harness)
+        }
         // Reload before surfacing a failure so the board projection reflects the
         // recorded failed attempt (the per-card failed-send indicator), not just
         // the transient global error message.
         try load()
-        guard attempt.status == .succeeded else {
+        guard attempt.status != .failed else {
             throw CursorTaskSendError.sendFailed(
-                message: attempt.errorMessage ?? "Cursor did not start the run."
+                message: attempt.errorMessage ?? "\(task.harness.displayName) did not start the run."
             )
         }
+    }
+
+    private func productionCodexTaskSender() -> any CodexTaskSending {
+        productionCodexTriggerService()
+    }
+
+    private func productionCodexTriggerService() -> CodexTriggerService {
+        CodexTriggerService(
+            store: store,
+            worktreePreparer: WorktreePreparer(),
+            appServerClientFactory: ConfiguredCodexAppServerClientFactory(settings: codexBinarySettings),
+            threadVisibility: CodexCLIThreadVisibilityController(settings: codexBinarySettings)
+        )
     }
 
     public func resumeRunMonitoring() async throws {
@@ -221,7 +267,7 @@ public final class CursorBoardModel: ObservableObject {
     }
 
     public func openInCursor(taskID: UUID) throws {
-        guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded }) else {
+        guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded && $0.harness == .cursor }) else {
             throw CursorOpenInCursorError.noCursorReference
         }
 
@@ -235,6 +281,16 @@ public final class CursorBoardModel: ObservableObject {
         }
 
         externalOpener.perform(action)
+        errorMessage = nil
+    }
+
+    public func openInCodex(taskID: UUID) throws {
+        guard let successfulAttempt = try store.runAttempts(taskID: taskID).last(where: { $0.status == .succeeded && $0.harness == .codex }),
+              let target = CodexOpenTarget(run: successfulAttempt) else {
+            throw CodexOpenInCodexError.noCodexReference
+        }
+
+        try codexAppOpener.open(target)
         errorMessage = nil
     }
 
@@ -268,6 +324,7 @@ public final class CursorBoardModel: ObservableObject {
     /// the same work performed when the board first appears.
     public func refreshReportingErrors() {
         loadReportingErrors()
+        recoverInterruptedCodexRunsReportingErrors()
         resumeRunMonitoringReportingErrors()
     }
 
@@ -351,6 +408,14 @@ public final class CursorBoardModel: ObservableObject {
         }
     }
 
+    public func recoverInterruptedCodexRunsReportingErrors() {
+        Task {
+            let recoverer = codexRunRecoverer ?? productionCodexTriggerService()
+            await recoverer.recoverInterruptedRuns()
+            loadReportingErrors()
+        }
+    }
+
     public func markDoneReportingErrors(taskID: UUID) {
         do {
             try markDone(taskID: taskID)
@@ -378,6 +443,14 @@ public final class CursorBoardModel: ObservableObject {
     public func openInCursorReportingErrors(taskID: UUID) {
         do {
             try openInCursor(taskID: taskID)
+        } catch {
+            errorMessage = Self.userFacingMessage(for: error)
+        }
+    }
+
+    public func openInCodexReportingErrors(taskID: UUID) {
+        do {
+            try openInCodex(taskID: taskID)
         } catch {
             errorMessage = Self.userFacingMessage(for: error)
         }

@@ -99,8 +99,8 @@ import Testing
 
     #expect(model.setupStatus.selectedHarness == .codex)
     #expect(model.setupStatus.codexState == .ready(binaryPath: binaryURL.path))
-    #expect(model.setupStatus.canSend == false)
-    #expect(model.setupStatus.sendDisabledReason == "Codex sending is not available yet.")
+    #expect(model.setupStatus.canSend)
+    #expect(model.setupStatus.sendDisabledReason == "")
 }
 
 @MainActor
@@ -251,7 +251,7 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
-@Test func boardProjectionDisablesCodexTaskSendEvenWhenCursorIsReady() throws {
+@Test func boardProjectionEnablesCodexTaskSendWhenCodexIsReady() throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
         name: "operator",
@@ -268,16 +268,17 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 
     let projection = try CursorBoardProjection.load(from: store)
     let card = try #require(projection.columns.first { $0.id == .ready }?.cards.first)
-    let cursorReady = CursorSetupStatusProjection(
+    let codexReady = CursorSetupStatusProjection(
         repositoryState: .registered(count: 1),
-        credentialState: .ready,
-        nodeState: .ready(version: "v22.13.0"),
-        selectedHarness: .cursor
+        credentialState: .missing,
+        nodeState: .missing,
+        codexState: .ready(binaryPath: "/opt/homebrew/bin/codex"),
+        selectedHarness: .codex
     )
 
     #expect(card.id == task.id)
-    #expect(card.canSend(using: cursorReady) == false)
-    #expect(card.sendDisabledReason(using: cursorReady) == "Codex sending is not available yet.")
+    #expect(card.canSend(using: codexReady))
+    #expect(card.sendDisabledReason(using: codexReady) == "")
 }
 
 @MainActor
@@ -323,6 +324,46 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
         .openURL(URL(string: "https://cursor.com/agents/agent-url")!),
         .copyRunID("run-copy")
     ])
+}
+
+@MainActor
+@Test func boardProjectionAndModelOpenCodexRunsThroughCodexApp() throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Open Codex",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    _ = try store.recordStartedCodexRun(
+        taskID: task.id,
+        worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-open",
+        codexThreadURL: URL(string: "codex://threads/thread-open")
+    )
+    _ = try store.completeStartedCodexRun(id: try #require(try store.runs(taskID: task.id).first?.id))
+    let cursorOpener = BoardModelFakeExternalOpener()
+    let codexOpener = BoardModelFakeCodexAppOpener()
+    let model = CursorBoardModel(store: store, externalOpener: cursorOpener, codexAppOpener: codexOpener)
+
+    try model.load()
+    let card = try #require(model.projection.columns.first { $0.id == CursorBoardColumnID.done }?.cards.first)
+
+    #expect(card.canOpenInCursor == false)
+    #expect(card.canOpenInCodex)
+
+    try model.openInCodex(taskID: task.id)
+
+    #expect(cursorOpener.actions.isEmpty)
+    #expect(codexOpener.targets == [.url(URL(string: "codex://threads/thread-open")!)])
 }
 
 @MainActor
@@ -662,6 +703,148 @@ func boardProjectionSurfacesHarnessBadgeFromLatestRun(harness: CursorHarness, ex
 }
 
 @MainActor
+@Test func boardModelSendsCodexTaskWithInjectedCodexSender() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Send Codex",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let runtime = BoardModelFakeRuntime(reference: CursorCloudAgentReference(
+        agentID: "agent-unused",
+        runID: "run-unused",
+        openURL: URL(string: "https://cursor.com/agents/unused")!
+    ))
+    let codexSender = BoardModelFakeCodexSender(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        runtime: runtime,
+        codexTaskSender: codexSender
+    )
+    try model.load()
+
+    try await model.send(taskID: task.id)
+
+    #expect(codexSender.sentTaskIDs == [task.id])
+    #expect(runtime.requests.isEmpty)
+    #expect(try store.task(id: task.id)?.status == .running)
+    #expect(try store.runs(taskID: task.id).first?.harness == .codex)
+}
+
+@MainActor
+@Test func boardModelDoesNotResumeCursorMonitoringAfterCodexSend() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Send Codex without Cursor key",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let codexSender = BoardModelFakeCodexSender(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        codexTaskSender: codexSender
+    )
+    try model.load()
+
+    model.sendReportingErrors(taskID: task.id)
+    try await waitUntil {
+        try store.task(id: task.id)?.status == .running && !model.isSending(taskID: task.id)
+    }
+    try await Task.sleep(nanoseconds: 50_000_000)
+
+    #expect(codexSender.sentTaskIDs == [task.id])
+    #expect(model.errorMessage == nil)
+}
+
+@MainActor
+@Test func boardModelUsesSelectedHarnessInSendingStatusText() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Codex sending label",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let codexSender = BoardModelSuspendingCodexSender(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        codexTaskSender: codexSender
+    )
+    try model.load()
+
+    model.sendReportingErrors(taskID: task.id)
+    try await codexSender.waitUntilStarted()
+
+    #expect(model.sendStatusText(taskID: task.id) == "Sending to Codex...")
+
+    codexSender.complete()
+}
+
+@MainActor
+@Test func boardModelRefreshRecoversInterruptedCodexRuns() async throws {
+    let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+    let task = try store.createTask(
+        repositoryID: repository.id,
+        title: "Recover interrupted Codex",
+        prompt: "Prompt",
+        harness: .codex
+    )
+    let run = try store.recordStartedCodexRun(
+        taskID: task.id,
+        worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+        baseBranch: "main",
+        baseRef: "abc123",
+        codexThreadID: "thread-recover",
+        codexThreadURL: URL(string: "codex://threads/thread-recover")
+    )
+    let recoverer = BoardModelFakeCodexRunRecoverer(store: store)
+    let model = CursorBoardModel(
+        store: store,
+        credentialProvider: CursorCredentialProvider(store: InMemoryCursorCredentialStore(), environment: [:]),
+        codexRunRecoverer: recoverer
+    )
+
+    model.refreshReportingErrors()
+    try await waitUntil {
+        try store.task(id: task.id)?.status == .failed
+    }
+
+    #expect(recoverer.recoverCallCount == 1)
+    #expect(try store.runs(taskID: task.id).first?.id == run.id)
+    #expect(try store.runs(taskID: task.id).first?.status == .failed)
+    #expect(model.projection.columns.first { $0.id == CursorBoardColumnID.failed }?.cards.map(\.id) == [task.id])
+}
+
+@MainActor
 @Test func boardModelIgnoresDuplicateSendReportsWhileTaskIsAlreadySending() async throws {
     let store = try CursorOperatorStore(databaseURL: temporaryBoardModelDatabaseURL())
     let repository = try store.createRepository(
@@ -850,6 +1033,113 @@ private final class BoardModelMonitoringRuntime: CursorCloudAgentRuntime, @unche
     func waitForRun(reference: CursorCloudAgentReference, apiKey: String) async throws -> CursorCloudAgentRunCompletion {
         waits.append(reference)
         return completion
+    }
+}
+
+private final class BoardModelFakeCodexSender: CodexTaskSending, @unchecked Sendable {
+    let store: CursorOperatorStore
+    private(set) var sentTaskIDs: [UUID] = []
+
+    init(store: CursorOperatorStore) {
+        self.store = store
+    }
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        sentTaskIDs.append(taskID)
+        return try store.recordStartedCodexRun(
+            taskID: taskID,
+            worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+            baseBranch: "main",
+            baseRef: "abc123",
+            codexThreadID: "thread-board",
+            codexThreadURL: URL(string: "codex://threads/thread-board")
+        )
+    }
+}
+
+private final class BoardModelFakeCodexAppOpener: CodexAppOpening, @unchecked Sendable {
+    private(set) var targets: [CodexOpenTarget] = []
+
+    func open(_ target: CodexOpenTarget) throws {
+        targets.append(target)
+    }
+}
+
+private final class BoardModelFakeCodexRunRecoverer: CodexRunRecovering, @unchecked Sendable {
+    let store: CursorOperatorStore
+    private let lock = NSLock()
+    private var recoverCalls = 0
+
+    init(store: CursorOperatorStore) {
+        self.store = store
+    }
+
+    var recoverCallCount: Int {
+        lock.withLock { recoverCalls }
+    }
+
+    func recoverInterruptedRuns() async {
+        lock.withLock {
+            recoverCalls += 1
+        }
+        guard let run = try? store.runningCodexRuns().first else {
+            return
+        }
+        _ = try? store.failStartedCodexRun(
+            id: run.id,
+            errorMessage: "Codex run was interrupted before the initial turn completed."
+        )
+    }
+}
+
+private final class BoardModelSuspendingCodexSender: CodexTaskSending, @unchecked Sendable {
+    let store: CursorOperatorStore
+    private let lock = NSLock()
+    private var startContinuation: CheckedContinuation<Void, Never>?
+    private var completionContinuation: CheckedContinuation<Void, Never>?
+    private var started = false
+
+    init(store: CursorOperatorStore) {
+        self.store = store
+    }
+
+    func sendTaskToCodex(taskID: UUID) async throws -> OperatorRun {
+        lock.withLock {
+            started = true
+            startContinuation?.resume()
+            startContinuation = nil
+        }
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                completionContinuation = continuation
+            }
+        }
+        return try store.recordStartedCodexRun(
+            taskID: taskID,
+            worktreeURL: URL(filePath: "/tmp/operator-codex-worktree"),
+            baseBranch: "main",
+            baseRef: "abc123",
+            codexThreadID: "thread-sending",
+            codexThreadURL: URL(string: "codex://threads/thread-sending")
+        )
+    }
+
+    func waitUntilStarted() async throws {
+        if lock.withLock({ started }) {
+            return
+        }
+        await withCheckedContinuation { continuation in
+            lock.withLock {
+                startContinuation = continuation
+            }
+        }
+    }
+
+    func complete() {
+        lock.withLock {
+            completionContinuation?.resume()
+            completionContinuation = nil
+        }
     }
 }
 

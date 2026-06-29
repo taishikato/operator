@@ -23,8 +23,11 @@ public struct CursorRunMonitorService: Sendable {
     }
 
     public func resumeRunningTasks() async throws -> [CursorRunMonitorOutcome] {
-        let apiKey = try credentialReadiness.apiKeyForSending()
         let references = try runningRunReferences()
+        guard !references.isEmpty else {
+            return []
+        }
+        let apiKey = try credentialReadiness.apiKeyForSending()
 
         return try await withThrowingTaskGroup(of: CursorRunMonitorOutcome.self) { group in
             for reference in references {
