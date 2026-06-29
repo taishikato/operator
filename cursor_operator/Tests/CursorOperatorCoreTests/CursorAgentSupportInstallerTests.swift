@@ -106,6 +106,27 @@ import Testing
     }
 }
 
+@Test func operatorSkillDocumentsThinCursorAndCodexCLISurface() throws {
+    let skillText = try String(contentsOf: packageRoot().appending(path: "skills/operator/SKILL.md"), encoding: .utf8)
+
+    #expect(skillText.contains("operator task send <task-id> --json"))
+    #expect(skillText.contains("--harness codex"))
+    #expect(skillText.contains("Cursor"))
+    #expect(skillText.contains("Codex"))
+    #expect(skillText.contains("wait"))
+    #expect(!skillText.localizedCaseInsensitiveContains("sqlite"))
+    #expect(!skillText.localizedCaseInsensitiveContains("select "))
+    #expect(!skillText.localizedCaseInsensitiveContains("insert "))
+    #expect(!skillText.localizedCaseInsensitiveContains("secret"))
+}
+
+private func packageRoot() -> URL {
+    URL(filePath: #filePath)
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+        .deletingLastPathComponent()
+}
+
 private struct CursorAgentSupportInstallerFixture {
     let temporaryDirectory: URL
     let homeDirectory: URL

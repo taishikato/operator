@@ -66,9 +66,17 @@ public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
     public let model: String
     public let autoCreatePR: Bool
     public let prompt: String
+    public let harness: String
+    public let reasoningEffort: String
+    public let useFastModel: Bool
     public let cursorAgentID: String?
     public let cursorRunID: String?
     public let cursorURL: String?
+    public let worktreePath: String?
+    public let baseBranch: String?
+    public let baseRef: String?
+    public let codexThreadID: String?
+    public let codexThreadURL: String?
     public let errorMessage: String?
     public let createdAt: Date
     public let completedAt: Date
@@ -83,9 +91,17 @@ public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
         model = attempt.model
         autoCreatePR = attempt.autoCreatePR
         prompt = attempt.prompt
+        harness = attempt.harness.rawValue
+        reasoningEffort = attempt.reasoningEffort.rawValue
+        useFastModel = attempt.useFastModel
         cursorAgentID = attempt.cursorAgentID
         cursorRunID = attempt.cursorRunID
         cursorURL = attempt.cursorURL?.absoluteString
+        worktreePath = attempt.worktreePath
+        baseBranch = attempt.baseBranch
+        baseRef = attempt.baseRef
+        codexThreadID = attempt.codexThreadID
+        codexThreadURL = attempt.codexThreadURL?.absoluteString
         errorMessage = attempt.errorMessage
         createdAt = attempt.createdAt
         completedAt = attempt.completedAt
@@ -103,9 +119,17 @@ public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
         try container.encode(model, forKey: .model)
         try container.encode(autoCreatePR, forKey: .autoCreatePR)
         try container.encode(prompt, forKey: .prompt)
+        try container.encode(harness, forKey: .harness)
+        try container.encode(reasoningEffort, forKey: .reasoningEffort)
+        try container.encode(useFastModel, forKey: .useFastModel)
         try container.encode(cursorAgentID, forKey: .cursorAgentID)
         try container.encode(cursorRunID, forKey: .cursorRunID)
         try container.encode(cursorURL, forKey: .cursorURL)
+        try container.encode(worktreePath, forKey: .worktreePath)
+        try container.encode(baseBranch, forKey: .baseBranch)
+        try container.encode(baseRef, forKey: .baseRef)
+        try container.encode(codexThreadID, forKey: .codexThreadID)
+        try container.encode(codexThreadURL, forKey: .codexThreadURL)
         try container.encode(errorMessage, forKey: .errorMessage)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(completedAt, forKey: .completedAt)
@@ -141,17 +165,20 @@ public struct CursorOperatorCLICommands: Sendable {
     private let repositoryInspector: any CursorRepositoryInspecting
     private let credentialProvider: CursorCredentialProvider
     private let runtime: any CursorCloudAgentRuntime
+    private let codexSender: (any CodexTaskSending)?
 
     public init(
         store: CursorOperatorStore,
         repositoryInspector: any CursorRepositoryInspecting = CursorGitRepositoryInspector(),
         credentialProvider: CursorCredentialProvider = CursorCredentialProvider(store: KeychainCursorCredentialStore()),
-        runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime()
+        runtime: any CursorCloudAgentRuntime = CursorCloudAgentSDKRuntime(),
+        codexSender: (any CodexTaskSending)? = nil
     ) {
         self.store = store
         self.repositoryInspector = repositoryInspector
         self.credentialProvider = credentialProvider
         self.runtime = runtime
+        self.codexSender = codexSender
     }
 
     public func listRepositories() throws -> [CursorCLIRepository] {
@@ -168,14 +195,16 @@ public struct CursorOperatorCLICommands: Sendable {
         repository: String,
         title: String,
         prompt: String,
-        autoCreatePR: Bool
+        autoCreatePR: Bool,
+        harness: CursorHarness = .cursor
     ) throws -> CursorCLITask {
         let repository = try resolveRepository(repository)
         let task = try CursorTaskCreationDraft(
             repositoryID: repository.id,
             title: title,
             prompt: prompt,
-            autoCreatePR: autoCreatePR
+            autoCreatePR: autoCreatePR,
+            harness: harness
         ).createTask(in: store)
         return CursorCLITask(task)
     }
@@ -185,13 +214,15 @@ public struct CursorOperatorCLICommands: Sendable {
         title: String,
         prompt: String,
         autoCreatePR: Bool,
+        harness: CursorHarness = .cursor,
         autoSend: Bool
     ) async throws -> CursorCLITaskAddResult {
         let task = try addTask(
             repository: repository,
             title: title,
             prompt: prompt,
-            autoCreatePR: autoCreatePR
+            autoCreatePR: autoCreatePR,
+            harness: harness
         )
         guard autoSend else {
             return CursorCLITaskAddResult(task: task, runAttempt: nil)
@@ -236,6 +267,15 @@ public struct CursorOperatorCLICommands: Sendable {
 
     public func sendTask(id: String, wait: Bool) async throws -> CursorCLIRunAttempt {
         let task = try resolveTask(id)
+        switch task.harness {
+        case .codex:
+            return try await sendCodexTask(task)
+        case .cursor:
+            break
+        case .claudeCode:
+            throw CodexTriggerError.unsupportedHarness(task.harness)
+        }
+
         let service = CursorTaskSendService(
             store: store,
             credentialReadiness: CursorSendReadiness(provider: credentialProvider),
@@ -250,6 +290,42 @@ public struct CursorOperatorCLICommands: Sendable {
             try await waitForRun(taskID: task.id, runID: attempt.cursorRunID)
         }
         return CursorCLIRunAttempt(attempt)
+    }
+
+    private func sendCodexTask(_ task: CursorTask) async throws -> CursorCLIRunAttempt {
+        let sender = codexSender ?? defaultCodexSender()
+        let run = try await sender.sendTaskToCodex(taskID: task.id)
+        return try await waitForCodexRun(run, taskID: task.id)
+    }
+
+    private func defaultCodexSender() -> any CodexTaskSending {
+        CodexTriggerService(
+            store: store,
+            worktreePreparer: WorktreePreparer(),
+            appServerClientFactory: ConfiguredCodexAppServerClientFactory(),
+            threadVisibility: CodexCLIThreadVisibilityController()
+        )
+    }
+
+    private func waitForCodexRun(_ run: OperatorRun, taskID: UUID) async throws -> CursorCLIRunAttempt {
+        if run.status != .running {
+            if run.status == .failed {
+                throw CursorOperatorCLIError.sendFailed(message: run.errorMessage ?? "Codex did not start the run.")
+            }
+            return CursorCLIRunAttempt(run)
+        }
+
+        while true {
+            let currentRun = try store.runs(taskID: taskID).first { $0.id == run.id } ?? run
+            switch currentRun.status {
+            case .running:
+                try await Task.sleep(for: .milliseconds(50))
+            case .failed:
+                throw CursorOperatorCLIError.sendFailed(message: currentRun.errorMessage ?? "Codex run failed.")
+            case .pending, .succeeded:
+                return CursorCLIRunAttempt(currentRun)
+            }
+        }
     }
 
     private func waitForRun(taskID: UUID, runID: String?) async throws {
@@ -382,10 +458,14 @@ public func cursorCLIFailure(for error: Error) -> CursorCLIFailure {
         return CursorCLIFailure(exitCode: 3, code: "lifecycleViolation", message: lifecycleMessage)
     case CursorTaskSendError.missingCredentials:
         return CursorCLIFailure(exitCode: 4, code: "cursorUnavailable", message: message)
+    case is CodexBinaryConfigurationError:
+        return CursorCLIFailure(exitCode: 4, code: "codexUnavailable", message: message)
     case CursorTaskSendError.unsupportedHarness,
          CursorTaskSendError.sendFailed,
          CursorOperatorCLIError.sendFailed,
          CursorTaskSendError.startedRunCouldNotBeRecorded,
+         is CodexTriggerError,
+         is WorktreePreparationError,
          is CursorRuntimeFailure,
          is CursorNodeResolutionError:
         return CursorCLIFailure(exitCode: 5, code: "sendFailed", message: message)
