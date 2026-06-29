@@ -55,6 +55,19 @@ import Testing
     #expect(script.contains(#"cp -R "$SKILL_SOURCE" "$APP_SKILLS_DIR/cursor-operator""#))
 }
 
+@Test func buildAndRunBundlesSparkleFrameworkAndUpdateMetadata() throws {
+    let script = try packageScript(named: "build_and_run.sh")
+
+    #expect(script.contains("APP_FRAMEWORKS"))
+    #expect(script.contains("Sparkle.framework"))
+    #expect(script.contains(#"/usr/bin/ditto "$framework_src" "$APP_FRAMEWORKS/$SPARKLE_FRAMEWORK_NAME""#))
+    #expect(script.contains("CURSOR_OPERATOR_APPCAST_URL"))
+    #expect(script.contains("CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY"))
+    #expect(script.contains("SUFeedURL"))
+    #expect(script.contains("SUPublicEDKey"))
+    #expect(script.contains("SUEnableAutomaticChecks"))
+}
+
 @Test func packageDistributionBuildsSignedNotarizableDMG() throws {
     let script = try packageScript(named: "package_distribution.sh")
 
@@ -66,6 +79,15 @@ import Testing
     #expect(script.contains("/usr/bin/xcrun notarytool submit"))
     #expect(script.contains("/usr/bin/xcrun stapler staple"))
     #expect(script.contains("/usr/bin/shasum -a 256"))
+}
+
+@Test func packageDistributionCanGenerateSparkleAppcast() throws {
+    let script = try packageScript(named: "package_distribution.sh")
+
+    #expect(script.contains("CURSOR_OPERATOR_GENERATE_APPCAST=1"))
+    #expect(script.contains("CURSOR_OPERATOR_APPCAST_URL and CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY must be set when CURSOR_OPERATOR_GENERATE_APPCAST=1."))
+    #expect(script.contains("generate_appcast"))
+    #expect(script.contains(#""$generate_appcast" "$RELEASE_DIR""#))
 }
 
 @Test func homebrewCaskRendererDocumentsRuntimeRequirements() throws {

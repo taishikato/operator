@@ -1,15 +1,18 @@
 import CursorOperatorCore
 import AppKit
 import Foundation
+import Sparkle
 import SwiftUI
 
 @main
 struct CursorOperatorApp: App {
     private let appDataURL: URL
     private let store: CursorOperatorStore
+    private let updaterController: SPUStandardUpdaterController?
 
     init() {
         NSApplication.shared.setActivationPolicy(.regular)
+        updaterController = CursorOperatorSparkleUpdater.makeUpdaterController()
         do {
             appDataURL = try CursorOperatorAppBootstrap.applicationDataURL()
             try FileManager.default.createDirectory(
@@ -36,6 +39,10 @@ struct CursorOperatorApp: App {
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentMinSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                CursorOperatorCheckForUpdatesView(updater: updaterController?.updater)
+            }
+
             // The app draws its own sidebar (NavigationSplitView was removed), so
             // the stock SidebarCommands() toggle is inert. Replace it with a command
             // wired to the view's showSidebar state via notification.

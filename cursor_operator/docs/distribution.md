@@ -31,6 +31,7 @@ Outputs:
 The DMG contains `CursorOperator.app` plus bundled agent support files:
 
 - `Contents/Library/Helpers/cursor-operator-cli`
+- `Contents/Frameworks/Sparkle.framework`
 - `Contents/Resources/CursorSDKHelper`
 - `Contents/Resources/skills/cursor-operator`
 
@@ -48,6 +49,49 @@ CURSOR_OPERATOR_BUILD_NUMBER=42 \
 ```
 
 `CURSOR_OPERATOR_VERSION` must be numeric dotted form such as `0.1.0`, because it is written to `CFBundleShortVersionString`.
+
+## Sparkle Auto-Update
+
+Cursor Operator integrates Sparkle 2 through Swift Package Manager.
+The app starts Sparkle only when both `SUFeedURL` and `SUPublicEDKey` are present in the app bundle's `Info.plist`.
+Local development bundles omit those keys by default, so debug launches do not try to contact an update feed.
+
+Generate the Sparkle EdDSA key pair once from Sparkle's tools:
+
+```bash
+swift package resolve
+"$(/usr/bin/find .build -path '*/Sparkle/bin/generate_keys' -type f -perm -111 -print -quit)"
+```
+
+Keep the private key in the login Keychain.
+Use the printed public key when building a release:
+
+```bash
+CURSOR_OPERATOR_VERSION=0.1.0 \
+CURSOR_OPERATOR_BUILD_NUMBER=42 \
+CURSOR_OPERATOR_APPCAST_URL=https://example.com/cursor-operator/appcast.xml \
+CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY="<base64-public-key>" \
+./script/package_distribution.sh dmg
+```
+
+When those variables are set, the build script writes `SUFeedURL`, `SUPublicEDKey`, `SUEnableAutomaticChecks`, `SUAutomaticallyUpdate`, `SUVerifyUpdateBeforeExtraction`, and `SURequireSignedFeed` to the app bundle.
+Automatic update checks are enabled by default for configured release builds.
+Automatic installation remains disabled by default.
+
+After building the DMG, generate the Sparkle appcast from the release directory:
+
+```bash
+CURSOR_OPERATOR_VERSION=0.1.0 \
+CURSOR_OPERATOR_BUILD_NUMBER=42 \
+CURSOR_OPERATOR_APPCAST_URL=https://example.com/cursor-operator/appcast.xml \
+CURSOR_OPERATOR_SPARKLE_PUBLIC_ED_KEY="<base64-public-key>" \
+CURSOR_OPERATOR_GENERATE_APPCAST=1 \
+./script/package_distribution.sh dmg
+```
+
+`CURSOR_OPERATOR_GENERATE_APPCAST=1` runs Sparkle's `generate_appcast` tool against `dist/release`.
+Upload the DMG, any generated delta files, and `appcast.xml` to the HTTPS location referenced by `CURSOR_OPERATOR_APPCAST_URL`.
+Use the app's `Check for Updates...` menu item to test a manual check from an older installed build.
 
 ## Signing
 
