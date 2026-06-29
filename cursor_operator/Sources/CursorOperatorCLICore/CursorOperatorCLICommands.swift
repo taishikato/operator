@@ -195,14 +195,16 @@ public struct CursorOperatorCLICommands: Sendable {
         repository: String,
         title: String,
         prompt: String,
-        autoCreatePR: Bool
+        autoCreatePR: Bool,
+        harness: CursorHarness = .cursor
     ) throws -> CursorCLITask {
         let repository = try resolveRepository(repository)
         let task = try CursorTaskCreationDraft(
             repositoryID: repository.id,
             title: title,
             prompt: prompt,
-            autoCreatePR: autoCreatePR
+            autoCreatePR: autoCreatePR,
+            harness: harness
         ).createTask(in: store)
         return CursorCLITask(task)
     }
@@ -212,13 +214,15 @@ public struct CursorOperatorCLICommands: Sendable {
         title: String,
         prompt: String,
         autoCreatePR: Bool,
+        harness: CursorHarness = .cursor,
         autoSend: Bool
     ) async throws -> CursorCLITaskAddResult {
         let task = try addTask(
             repository: repository,
             title: title,
             prompt: prompt,
-            autoCreatePR: autoCreatePR
+            autoCreatePR: autoCreatePR,
+            harness: harness
         )
         guard autoSend else {
             return CursorCLITaskAddResult(task: task, runAttempt: nil)

@@ -77,6 +77,34 @@ import CursorOperatorCore
     #expect(try store.tasks().first?.status == .ready)
 }
 
+@Test func taskAddCanCreateCodexTasksFromTheOperatorBinary() throws {
+    let scratchDirectory = FileManager.default.temporaryDirectory
+        .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+    let databaseURL = scratchDirectory.appending(path: "operator.sqlite")
+    let store = try CursorOperatorStore(databaseURL: databaseURL)
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+
+    let result = try runCLI([
+        "task", "add",
+        "--repo", repository.id.uuidString,
+        "--title", "Codex task",
+        "--prompt", "Prompt",
+        "--harness", "codex",
+        "--json"
+    ], databaseURL: databaseURL)
+
+    #expect(result.exitCode == 0)
+    let task = try #require(try JSONSerialization.jsonObject(with: Data(result.stdout.utf8)) as? [String: Any])
+    #expect(task["harness"] as? String == "codex")
+    #expect(try store.tasks().first?.harness == .codex)
+}
+
 @Test func usageErrorWithoutJSONKeepsThePlainTextContract() throws {
     let result = try runCLI(["task", "list", "--bogus"])
 

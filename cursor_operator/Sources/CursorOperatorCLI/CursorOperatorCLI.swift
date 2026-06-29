@@ -102,7 +102,7 @@ struct TaskCommand: ParsableCommand {
 struct TaskAdd: AsyncParsableCommand {
     static let configuration = CommandConfiguration(
         commandName: "add",
-        abstract: "Create a new Ready Cursor task."
+        abstract: "Create a new Ready task."
     )
 
     @Option(help: "Repository name or id the task belongs to.")
@@ -119,6 +119,9 @@ struct TaskAdd: AsyncParsableCommand {
 
     @Flag(help: "Ask Cursor to create a pull request automatically.")
     var autoCreatePR = false
+
+    @Option(help: "Harness to send this task with: cursor or codex.")
+    var harness: CursorHarness = .cursor
 
     @Flag(help: "Send the task to Cursor Cloud Agent immediately after creating it.")
     var autoSend = false
@@ -147,6 +150,7 @@ struct TaskAdd: AsyncParsableCommand {
                     title: title,
                     prompt: promptText,
                     autoCreatePR: autoCreatePR,
+                    harness: harness,
                     autoSend: true
                 )
                 output.emit(result) { result in
@@ -158,7 +162,8 @@ struct TaskAdd: AsyncParsableCommand {
                         repository: repo,
                         title: title,
                         prompt: promptText,
-                        autoCreatePR: autoCreatePR
+                        autoCreatePR: autoCreatePR,
+                        harness: harness
                     ),
                     human: renderTaskLine
                 )
@@ -376,3 +381,5 @@ private func renderRunLine(_ run: CursorCLIRunAttempt) -> String {
 }
 
 extension CursorTaskStatus: ExpressibleByArgument {}
+
+extension CursorHarness: ExpressibleByArgument {}
