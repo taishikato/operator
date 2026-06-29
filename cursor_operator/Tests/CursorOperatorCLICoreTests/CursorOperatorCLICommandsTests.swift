@@ -206,7 +206,7 @@ import CursorOperatorCore
 
 // MARK: - run list/send
 
-@Test func runListReturnsAttemptsForTaskWithStableNullFields() throws {
+@Test func runListReturnsAttemptsForTaskWithStableProviderArtifactFields() throws {
     let store = try temporaryStore()
     let repository = try makeRepository(in: store, name: "operator")
     let task = try store.createTask(repositoryID: repository.id, title: "Runs", prompt: "P")
@@ -225,15 +225,20 @@ import CursorOperatorCore
 
     #expect(attempts.count == 1)
     #expect(attempts.first?.status == "failed")
+    #expect(attempts.first?.harness == "cursor")
     #expect(attempts.first?.errorMessage == "boom")
 
     let json = try CursorCLIJSONOutput.encode(try #require(attempts.first))
     let object = try #require(try JSONSerialization.jsonObject(with: Data(json.utf8)) as? [String: Any])
     #expect(Set(object.keys) == [
         "id", "taskID", "repositoryID", "status", "repositoryURL", "startingRef",
-        "model", "autoCreatePR", "prompt", "cursorAgentID", "cursorRunID",
-        "cursorURL", "errorMessage", "createdAt", "completedAt"
+        "model", "autoCreatePR", "prompt", "harness", "reasoningEffort",
+        "useFastModel", "cursorAgentID", "cursorRunID", "cursorURL",
+        "worktreePath", "baseBranch", "baseRef", "codexThreadID",
+        "codexThreadURL", "errorMessage", "createdAt", "completedAt"
     ])
+    #expect(object["worktreePath"] is NSNull)
+    #expect(object["codexThreadID"] is NSNull)
 }
 
 @Test func sendStartsCursorRunAndCanWaitForCompletion() async throws {

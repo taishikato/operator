@@ -66,9 +66,17 @@ public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
     public let model: String
     public let autoCreatePR: Bool
     public let prompt: String
+    public let harness: String
+    public let reasoningEffort: String
+    public let useFastModel: Bool
     public let cursorAgentID: String?
     public let cursorRunID: String?
     public let cursorURL: String?
+    public let worktreePath: String?
+    public let baseBranch: String?
+    public let baseRef: String?
+    public let codexThreadID: String?
+    public let codexThreadURL: String?
     public let errorMessage: String?
     public let createdAt: Date
     public let completedAt: Date
@@ -83,9 +91,17 @@ public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
         model = attempt.model
         autoCreatePR = attempt.autoCreatePR
         prompt = attempt.prompt
+        harness = attempt.harness.rawValue
+        reasoningEffort = attempt.reasoningEffort.rawValue
+        useFastModel = attempt.useFastModel
         cursorAgentID = attempt.cursorAgentID
         cursorRunID = attempt.cursorRunID
         cursorURL = attempt.cursorURL?.absoluteString
+        worktreePath = attempt.worktreePath
+        baseBranch = attempt.baseBranch
+        baseRef = attempt.baseRef
+        codexThreadID = attempt.codexThreadID
+        codexThreadURL = attempt.codexThreadURL?.absoluteString
         errorMessage = attempt.errorMessage
         createdAt = attempt.createdAt
         completedAt = attempt.completedAt
@@ -103,9 +119,17 @@ public struct CursorCLIRunAttempt: Codable, Equatable, Sendable {
         try container.encode(model, forKey: .model)
         try container.encode(autoCreatePR, forKey: .autoCreatePR)
         try container.encode(prompt, forKey: .prompt)
+        try container.encode(harness, forKey: .harness)
+        try container.encode(reasoningEffort, forKey: .reasoningEffort)
+        try container.encode(useFastModel, forKey: .useFastModel)
         try container.encode(cursorAgentID, forKey: .cursorAgentID)
         try container.encode(cursorRunID, forKey: .cursorRunID)
         try container.encode(cursorURL, forKey: .cursorURL)
+        try container.encode(worktreePath, forKey: .worktreePath)
+        try container.encode(baseBranch, forKey: .baseBranch)
+        try container.encode(baseRef, forKey: .baseRef)
+        try container.encode(codexThreadID, forKey: .codexThreadID)
+        try container.encode(codexThreadURL, forKey: .codexThreadURL)
         try container.encode(errorMessage, forKey: .errorMessage)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(completedAt, forKey: .completedAt)
