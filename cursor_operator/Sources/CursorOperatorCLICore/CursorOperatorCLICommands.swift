@@ -458,10 +458,14 @@ public func cursorCLIFailure(for error: Error) -> CursorCLIFailure {
         return CursorCLIFailure(exitCode: 3, code: "lifecycleViolation", message: lifecycleMessage)
     case CursorTaskSendError.missingCredentials:
         return CursorCLIFailure(exitCode: 4, code: "cursorUnavailable", message: message)
+    case is CodexBinaryConfigurationError:
+        return CursorCLIFailure(exitCode: 4, code: "codexUnavailable", message: message)
     case CursorTaskSendError.unsupportedHarness,
          CursorTaskSendError.sendFailed,
          CursorOperatorCLIError.sendFailed,
          CursorTaskSendError.startedRunCouldNotBeRecorded,
+         is CodexTriggerError,
+         is WorktreePreparationError,
          is CursorRuntimeFailure,
          is CursorNodeResolutionError:
         return CursorCLIFailure(exitCode: 5, code: "sendFailed", message: message)
