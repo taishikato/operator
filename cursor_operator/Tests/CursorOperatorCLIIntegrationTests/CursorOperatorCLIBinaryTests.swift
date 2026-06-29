@@ -77,6 +77,65 @@ import CursorOperatorCore
     #expect(try store.tasks().first?.status == .ready)
 }
 
+@Test func taskAddRejectsUnsupportedHarnessClaudeCode() throws {
+    let scratchDirectory = FileManager.default.temporaryDirectory
+        .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+    let databaseURL = scratchDirectory.appending(path: "operator.sqlite")
+    let store = try CursorOperatorStore(databaseURL: databaseURL)
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+
+    let result = try runCLI([
+        "task", "add",
+        "--repo", repository.id.uuidString,
+        "--title", "Claude Code task",
+        "--prompt", "Prompt",
+        "--harness", "claude-code",
+        "--json"
+    ], databaseURL: databaseURL)
+
+    #expect(result.exitCode == 64)
+    let envelope = try errorEnvelope(in: result.stdout)
+    #expect(envelope.code == "usage")
+    #expect(envelope.message.contains("cursor or codex"))
+    #expect(try store.tasks().isEmpty)
+}
+
+@Test func taskAddRejectsAutoCreatePRForCodexTasks() throws {
+    let scratchDirectory = FileManager.default.temporaryDirectory
+        .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: scratchDirectory, withIntermediateDirectories: true)
+    let databaseURL = scratchDirectory.appending(path: "operator.sqlite")
+    let store = try CursorOperatorStore(databaseURL: databaseURL)
+    let repository = try store.createRepository(
+        name: "operator",
+        localPath: "/tmp/operator",
+        githubURL: URL(string: "https://github.com/example/operator")!,
+        defaultBranch: "main"
+    )
+
+    let result = try runCLI([
+        "task", "add",
+        "--repo", repository.id.uuidString,
+        "--title", "Codex PR task",
+        "--prompt", "Prompt",
+        "--harness", "codex",
+        "--auto-create-pr",
+        "--json"
+    ], databaseURL: databaseURL)
+
+    #expect(result.exitCode == 64)
+    let envelope = try errorEnvelope(in: result.stdout)
+    #expect(envelope.code == "usage")
+    #expect(envelope.message.contains("auto-create-pr"))
+    #expect(try store.tasks().isEmpty)
+}
+
 @Test func taskAddCanCreateCodexTasksFromTheOperatorBinary() throws {
     let scratchDirectory = FileManager.default.temporaryDirectory
         .appending(path: "CursorOperatorCLIIntegrationTests-\(UUID().uuidString)", directoryHint: .isDirectory)

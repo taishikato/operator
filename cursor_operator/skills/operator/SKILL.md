@@ -35,6 +35,7 @@ Human output is not stable.
 | List tasks | `operator task list [--repo <name\|id>] [--status ready\|running\|failed\|done\|archived] --json` |
 | Show one task | `operator task show <task-id> --json` |
 | Archive a task | `operator task archive <task-id> --json` |
+| Recover a failed task | `operator task recover <task-id> --json` |
 | Send a Ready task | `operator task send <task-id> --json` |
 | Send a Cursor task and wait | `operator task send <task-id> --wait --json` |
 | List a task's runs | `operator run list --task <task-id> --json` |
@@ -64,6 +65,7 @@ Only `ready` tasks can be sent.
 Archive is the manual removal path.
 Do not retry a `lifecycleViolation`.
 For failed sends, inspect `operator run list --task <task-id> --json` before deciding what to do next.
+When retry is appropriate, move the task back to `ready` with `operator task recover <task-id> --json`, then send again.
 
 ## Exit codes and errors
 

@@ -132,6 +132,12 @@ struct TaskAdd: AsyncParsableCommand {
         guard (prompt == nil) != (promptFile == nil) else {
             throw ValidationError("Provide exactly one of --prompt or --prompt-file.")
         }
+        guard harness == .cursor || harness == .codex else {
+            throw ValidationError("Harness must be cursor or codex.")
+        }
+        guard !(harness == .codex && autoCreatePR) else {
+            throw ValidationError("--auto-create-pr is only supported for Cursor tasks.")
+        }
     }
 
     func run() async throws {
